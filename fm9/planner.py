@@ -128,6 +128,32 @@ def _validate(plan_obj: dict) -> dict:
     return plan_obj
 
 
+def _cli_error_message(proc: subprocess.CompletedProcess) -> str:
+    """Best available error text from a failed CLI run.
+
+    The CLI reports failures like an expired login inside the JSON envelope on
+    stdout (is_error / result) and leaves stderr empty, so stderr alone is
+    usually blank.
+    """
+    parts = []
+    try:
+        envelope = json.loads(proc.stdout)
+    except (json.JSONDecodeError, ValueError):
+        envelope = None
+    if isinstance(envelope, dict):
+        for key in ("result", "error", "api_error_status", "terminal_reason"):
+            val = envelope.get(key)
+            if isinstance(val, str) and val.strip():
+                parts.append(val.strip())
+                break
+    stderr = (proc.stderr or "").strip()
+    if stderr:
+        parts.append(stderr)
+    if not parts:
+        parts.append(f"exit code {proc.returncode}, no output")
+    return " | ".join(parts)[:300]
+
+
 def _plan_via_cli(prompt: str, device_state: str, param_reference: str) -> dict:
     full_prompt = (
         f"{SYSTEM}\n\n"
@@ -149,8 +175,14 @@ def _plan_via_cli(prompt: str, device_state: str, param_reference: str) -> dict:
         env={**os.environ, "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"},
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI failed: {proc.stderr.strip()[:300]}")
-    envelope = json.loads(proc.stdout)
+        raise RuntimeError(f"claude CLI failed: {_cli_error_message(proc)}")
+    try:
+        envelope = json.loads(proc.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(
+            f"claude CLI returned unreadable output: {proc.stdout.strip()[:200]}") from exc
+    if envelope.get("is_error"):
+        raise RuntimeError(f"claude CLI failed: {_cli_error_message(proc)}")
     result_text = envelope.get("result", "")
     return _extract_json(result_text)
 
@@ -184,10 +216,28 @@ def _plan_via_api(prompt: str, device_state: str, param_reference: str) -> dict:
     return json.loads(text)
 
 
+def _api_available() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY")) or \
+        (Path(__file__).resolve().parent.parent / ".env").exists()
+
+
 def plan(prompt: str, device_state: str, param_reference: str) -> dict:
+    cli_error = None
     if find_claude_cli():
-        return _validate(_plan_via_cli(prompt, device_state, param_reference))
-    if os.environ.get("ANTHROPIC_API_KEY") or \
-            (Path(__file__).resolve().parent.parent / ".env").exists():
-        return _validate(_plan_via_api(prompt, device_state, param_reference))
+        try:
+            return _validate(_plan_via_cli(prompt, device_state, param_reference))
+        except Exception as exc:
+            # A present-but-unusable CLI (expired login, bad install) should not
+            # shadow a working API key.
+            if not _api_available():
+                raise
+            cli_error = exc
+    if _api_available():
+        try:
+            return _validate(_plan_via_api(prompt, device_state, param_reference))
+        except Exception as exc:
+            if cli_error is not None:
+                raise RuntimeError(
+                    f"{cli_error}; API fallback also failed: {exc}") from exc
+            raise
     raise RuntimeError("No planner backend: install the claude CLI or set ANTHROPIC_API_KEY")
