@@ -89,7 +89,7 @@ Rules:
 - Values must always be the ABSOLUTE target display value, computed from the current value shown in the device state.
 
 Amp/drive/reverb model selection (set_type):
-- Use set_type with the EXACT model name from the roster. Pick the model that best matches the artist/era/sound requested (e.g. Van Halen Balance era = the Peavey 5150 = "PVH 6160 Block Lead"; brown sound / 5150III = "5153 100W Red"; Plexi era = "Plexi 100W High"). After a type change, also set sensible gain/EQ values for that sound.
+- Use set_type with the EXACT model name from the roster. The amp roster lists each entry as `type_name = the real-world amp it models`; Fractal's names are deliberately oblique, so match the artist/era/sound against the real amp on the right, then send the name on the LEFT verbatim as type_name (e.g. Van Halen Balance era = a Peavey 5150, whose roster entry is "PVH 6160 Block Lead"). A few entries have no real-world amp listed; do not invent one for them. After a type change, also set sensible gain/EQ values for that sound.
 - A type change replaces the block's model on its CURRENT channel and affects every scene that uses that channel. It cannot be undone by scene changes, only by re-selecting the preset (which discards all edits).
 
 Scenes and multi-scene requests:

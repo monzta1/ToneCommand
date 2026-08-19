@@ -4,8 +4,9 @@ Loads config/fm9_catalog.json (device-true param catalog mined by
 mcp-midi-control, Apache-2.0) and maps friendly block/param names onto
 (effect_id, param_id, display range, scale).
 
-Firmware pin: FM9 11.x. After a firmware update, re-verify the editor
-protocol paths (fn 0x01) before trusting writes.
+Firmware: catalog mined against FM9 11.x; parameter get/set re-verified on
+12.00 (test_phase2.py, 2026-08-19). After any firmware update, re-verify the
+editor protocol paths (fn 0x01) before trusting writes.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "fm9_catalog.json"
+AMP_MODELS = Path(__file__).resolve().parent.parent / "config" / "amp_models.json"
 
 # v1.4 PDF Appendix 1: family -> effect ID of instance 1 (instances contiguous)
 EFFECT_ID_BASE = {
@@ -70,8 +72,13 @@ class ParamSpec:
     enum_count: int | None
 
 
+class AmpModelsStale(RuntimeError):
+    """config/amp_models.json describes a roster that no longer matches."""
+
+
 class Registry:
-    def __init__(self, config_path: Path = CONFIG):
+    def __init__(self, config_path: Path = CONFIG,
+                 amp_models_path: Path = AMP_MODELS):
         raw = json.loads(config_path.read_text())
         data = raw["data"]
         self.model_byte = int(raw["model_byte"], 16)
@@ -82,6 +89,38 @@ class Registry:
         self.amp_roster: dict = data.get("FM9_AMP_ROSTER", {})
         self.drive_roster: dict = data.get("FM9_DRIVE_ROSTER", {})
         self.reverb_roster: dict = data.get("FM9_REVERB_TYPE_ROSTER", {})
+        self.amp_models: dict = self._load_amp_models(amp_models_path)
+
+    def _load_amp_models(self, path: Path) -> dict:
+        """Load the real-world amp sidecar, refusing it if the roster moved.
+
+        Each record carries a copy of the Fractal name it was built against. A
+        catalog refresh that renumbers ordinals would otherwise silently
+        mislabel every amp, which is invisible at runtime and poisons planning.
+        """
+        if not path.exists():
+            return {}                      # optional sidecar; core still works
+        amps = json.loads(path.read_text()).get("amps", {})
+        drift = [f"{k}: sidecar {v.get('fractal')!r} != roster "
+                 f"{self.amp_roster.get(k)!r}"
+                 for k, v in amps.items() if self.amp_roster.get(k) != v.get("fractal")]
+        if drift:
+            raise AmpModelsStale(
+                f"{path.name} is out of sync with the catalog amp roster "
+                f"({len(drift)} of {len(amps)} entries). Regenerate it with "
+                f"tools/build_amp_models.py. First mismatches: " + "; ".join(drift[:3]))
+        return amps
+
+    def amp_model(self, ordinal: int | str) -> str | None:
+        """Real-world amp modeled by a roster ordinal, if known."""
+        return self.amp_models.get(str(ordinal), {}).get("model")
+
+    def amp_description(self, ordinal: int | str) -> str:
+        """Fractal name annotated with the modeled amp, e.g.
+        'Brit 800 2204 High = 50W Marshall JCM800 2204, High sensitivity in'."""
+        name = self.amp_roster.get(str(ordinal), str(ordinal))
+        model = self.amp_model(ordinal)
+        return f"{name} = {model}" if model else name
 
     def effect_id(self, family: str, instance: int = 1) -> int:
         base, count = EFFECT_ID_BASE[family]

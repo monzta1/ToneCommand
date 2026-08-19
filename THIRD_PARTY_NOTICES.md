@@ -145,3 +145,25 @@ FM9 with its model byte 0x12.
 "Fractal Audio", "Axe-Fx", "FM3", and "FM9" are trademarks of Fractal
 Audio Systems, Inc. This project is not affiliated with or endorsed by
 Fractal Audio Systems.
+
+---
+
+## Amplifier Library Guide
+
+- Document: "Amplifier Library Guide v1 (Comprehensive)", a community
+  reference for the Fractal amp library.
+- Not redistributed by this project. The guide itself is not in this
+  repository; `tools/build_amp_models.py` reads a local copy.
+
+`config/amp_models.json` is generated from that guide: for each FM9 amp-roster
+ordinal it records the real-world amplifier modeled, the original cab, DynaCab
+pairing, front-panel controls, tube complement, tonestack position, and the
+guide's notes and tips for that amp.
+
+That extract includes the guide's prose, not only factual specifications, and
+some of its tips quote other people. `tools/build_amp_models.py --facts-only`
+rebuilds the sidecar without the prose for anyone who would rather not carry
+it.
+
+Amplifier specifications in that guide derive from manufacturer manuals and
+websites.

@@ -101,8 +101,8 @@ presets. Use at your own risk.
 
 ## Install / Setup
 
-Tested on macOS (Apple Silicon) with Python 3.12 and an FM9 on firmware
-11.00, connected over USB.
+Tested on macOS (Apple Silicon) with Python 3.12 and an FM9 connected over
+USB, on firmware 11.00 and 12.00.
 
 ```bash
 git clone https://github.com/monzta1/ToneCommand.git
@@ -135,8 +135,9 @@ Notes:
 - Do not run FM9-Edit and this tool at the same time; FM9-Edit resets the
   edit buffer when it connects. Stored presets are safe and remain fully
   viewable/editable in FM9-Edit afterwards.
-- Firmware other than 11.x is untested; the editor protocol is unofficial
-  and firmware-sensitive. `test_phase2.py` passing is the green light.
+- Firmware other than 11.x and 12.00 is untested; the editor protocol is
+  unofficial and firmware-sensitive. `test_phase2.py` passing is the green
+  light after any update.
 
 ## License
 
