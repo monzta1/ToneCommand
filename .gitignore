@@ -10,6 +10,10 @@ __pycache__/
 # personal working notes (agent knowledge base) - not part of the release
 kb/
 
+# local --with-prose build of the amp sidecar: carries the source guide's own
+# notes and tips, which are its author's writing and are not redistributed.
+config/amp_models.full.json
+
 # never commit preset/backup payloads (personal presets, Fractal-Bot
 # backups, Gift of Tone content)
 *.syx

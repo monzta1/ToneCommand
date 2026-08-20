@@ -155,15 +155,15 @@ Fractal Audio Systems.
 - Not redistributed by this project. The guide itself is not in this
   repository; `tools/build_amp_models.py` reads a local copy.
 
-`config/amp_models.json` is generated from that guide: for each FM9 amp-roster
-ordinal it records the real-world amplifier modeled, the original cab, DynaCab
-pairing, front-panel controls, tube complement, tonestack position, and the
-guide's notes and tips for that amp.
+`config/amp_models.json` is generated from that guide. For each FM9 amp-roster
+ordinal it records factual specifications only: the real-world amplifier
+modeled, the original cab, DynaCab pairing, front-panel controls, tube
+complement, and tonestack position.
 
-That extract includes the guide's prose, not only factual specifications, and
-some of its tips quote other people. `tools/build_amp_models.py --facts-only`
-rebuilds the sidecar without the prose for anyone who would rather not carry
-it.
+The guide's prose notes and tips are the author's own writing, and some of them
+quote other people. They are deliberately not reproduced here. The generator can
+extract them with `--with-prose` for local use, to `config/amp_models.full.json`,
+which is gitignored.
 
 Amplifier specifications in that guide derive from manufacturer manuals and
 websites.

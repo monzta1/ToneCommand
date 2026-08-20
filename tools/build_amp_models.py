@@ -16,8 +16,8 @@ Structure of the source (an InDesign/Acrobat XML export):
     inline, separated by the bullet glyph "g".
 
 Usage:
-    .venv/bin/python tools/build_amp_models.py                # everything
-    .venv/bin/python tools/build_amp_models.py --facts-only   # specs, no prose
+    .venv/bin/python tools/build_amp_models.py                # specs, committed
+    .venv/bin/python tools/build_amp_models.py --with-prose   # + prose, local only
 
 Re-run after a catalog refresh; the load-time check in fm9/registry.py will
 tell you if the roster moved out from under this file.
@@ -34,14 +34,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "config" / "fm9_catalog.json"
 OUT = ROOT / "config" / "amp_models.json"
+OUT_PROSE = ROOT / "config" / "amp_models.full.json"
 DEFAULT_XML = Path.home() / "Downloads/FractalAmpGuides/Amplifier Library Guide.xml"
 
 SCHEMA_VERSION = 2
 EXPECTED_ENTRIES = 331
 
-# The default build carries everything the guide gives per amp, prose included.
-# --facts-only drops the notes and tips, leaving just the specifications; it is
-# there for anyone who wants the mapping without the commentary.
+# The sidecar carries factual specifications only: which real amplifier a roster
+# entry models, and its cab, tubes, controls and tonestack. The guide's prose
+# notes and tips are its author's writing and are not redistributed here.
+# --with-prose extracts them for local use, to a gitignored path, so that build
+# can never overwrite the committed one by accident.
 
 # Guide index -> roster ordinal, for the amps whose guide title and catalog name
 # genuinely disagree. Each was confirmed against the entry's own "Model:" line.
@@ -264,15 +267,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("xml", nargs="?", type=Path, default=DEFAULT_XML,
                     help="guide XML export (default: %(default)s)")
-    ap.add_argument("--facts-only", action="store_true",
-                    help="omit the guide's notes and tips, keeping only the "
-                         "modeled amp and its specifications")
+    ap.add_argument("--with-prose", action="store_true",
+                    help="also extract the guide's notes and tips, for local "
+                         "use only. Writes to config/amp_models.full.json, "
+                         "which is gitignored; that text is the guide author's "
+                         "own writing and is not redistributed.")
     ap.add_argument("-o", "--out", type=Path, default=None,
                     help="override the output path")
     args = ap.parse_args()
 
     xml_path = args.xml
-    out_path = args.out or OUT
+    out_path = args.out or (OUT_PROSE if args.with_prose else OUT)
     if not xml_path.exists():
         raise SystemExit(f"guide XML not found: {xml_path}")
 
@@ -293,7 +298,7 @@ def main() -> int:
 
     data, no_model, empty = {}, [], []
     for i, ordinal in sorted(pairs.items(), key=lambda kv: int(kv[1])):
-        fields = extract(bullets[i], with_prose=not args.facts_only)
+        fields = extract(bullets[i], with_prose=args.with_prose)
         fields.update(OVERRIDES.get(ordinal, {}))
         if not bullets[i]:
             empty.append(f"{ordinal} = {roster[ordinal]}")
@@ -309,7 +314,7 @@ def main() -> int:
     out = {
         "schema_version": SCHEMA_VERSION,
         "device": "FM9",
-        "content": "facts" if args.facts_only else "facts+prose",
+        "content": "facts+prose" if args.with_prose else "facts",
         "keyed_by": "FM9_AMP_ROSTER ordinal (the DISTORT_TYPE wire value)",
         "source": "Amplifier Library Guide v1 (Comprehensive), XML export",
         "generated_by": "tools/build_amp_models.py",
@@ -323,11 +328,11 @@ def main() -> int:
 
     print(f"matched       : {len(data)}/{len(roster)}")
     print(f"with a model  : {len(data) - len(no_model)}")
-    if args.facts_only:
-        print("prose         : excluded (--facts-only)")
-    else:
+    if args.with_prose:
         print(f"with notes    : {sum(1 for v in data.values() if v.get('notes'))}")
         print(f"with tips     : {sum(1 for v in data.values() if v.get('tips'))}")
+    else:
+        print("prose         : excluded")
     if empty:
         print(f"no bullets at all ({len(empty)}): {', '.join(empty)}")
     if no_model:
