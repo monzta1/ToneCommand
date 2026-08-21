@@ -16,6 +16,8 @@ from pathlib import Path
 
 CONFIG = Path(__file__).resolve().parent.parent / "config" / "fm9_catalog.json"
 AMP_MODELS = Path(__file__).resolve().parent.parent / "config" / "amp_models.json"
+CAB_MODELS = Path(__file__).resolve().parent.parent / "config" / "cab_models.json"
+LEGACY_CAB_BANK = "3"      # FM9_CAB_BANK_NAMES: 3 = LEGACY
 
 # v1.4 PDF Appendix 1: family -> effect ID of instance 1 (instances contiguous)
 EFFECT_ID_BASE = {
@@ -80,9 +82,14 @@ class DriveModelsStale(RuntimeError):
     """config/drive_models.json describes a roster that no longer matches."""
 
 
+class CabModelsStale(RuntimeError):
+    """config/cab_models.json describes a roster that no longer matches."""
+
+
 class Registry:
     def __init__(self, config_path: Path = CONFIG,
-                 amp_models_path: Path = AMP_MODELS):
+                 amp_models_path: Path = AMP_MODELS,
+                 cab_models_path: Path = CAB_MODELS):
         raw = json.loads(config_path.read_text())
         data = raw["data"]
         self.model_byte = int(raw["model_byte"], 16)
@@ -93,9 +100,14 @@ class Registry:
         self.amp_roster: dict = data.get("FM9_AMP_ROSTER", {})
         self.drive_roster: dict = data.get("FM9_DRIVE_ROSTER", {})
         self.reverb_roster: dict = data.get("FM9_REVERB_TYPE_ROSTER", {})
+        self.cab_bank_names: dict = data.get("FM9_CAB_BANK_NAMES", {})
+        self.cab_rosters: dict = data.get("FM9_CAB_ROSTERS_BY_BANK", {})
         self.amp_models: dict = self._load_amp_models(amp_models_path)
         self.drive_models: dict = self._load_drive_models(
             Path(__file__).resolve().parent.parent / "config" / "drive_models.json")
+        cab_sidecar = self._load_cab_models(cab_models_path)
+        self.cab_models: dict = cab_sidecar.get("cabs", {})
+        self.dynacabs: dict = cab_sidecar.get("dynacabs", {})
 
     def _load_amp_models(self, path: Path) -> dict:
         """Load the real-world amp sidecar, refusing it if the roster moved.
@@ -130,6 +142,44 @@ class Registry:
                 f"({len(drift)} of {len(drives)} entries). Regenerate with "
                 f"tools/build_drive_models.py.")
         return drives
+
+    def _load_cab_models(self, path: Path) -> dict:
+        """Cab sidecar, same contract as the others: refuse on drift.
+
+        Keyed by cab bank id then slot, covering FACTORY 1, FACTORY 2 and
+        LEGACY, plus a name-keyed `dynacabs` map (DynaCabs are a cab mode, not
+        IR slots, so they have no roster ordinal and nothing to drift against).
+        """
+        if not path.exists():
+            return {}
+        blob = json.loads(path.read_text())
+        drift = [f"bank {bank} slot {slot}"
+                 for bank, records in blob.get("cabs", {}).items()
+                 for slot, rec in records.items()
+                 if self.cab_rosters.get(bank, {}).get(slot) != rec.get("fractal")]
+        if drift:
+            raise CabModelsStale(
+                f"{path.name} is out of sync with the catalog cab rosters "
+                f"({len(drift)} entries, first {drift[:3]}). Regenerate with "
+                f"tools/build_cab_models.py.")
+        return blob
+
+    def cab(self, ordinal: int | str, bank: int | str = LEGACY_CAB_BANK) -> dict:
+        """Everything known about one cab slot: name, size, mic, what it models."""
+        return self.cab_models.get(str(bank), {}).get(str(ordinal), {})
+
+    def cab_model(self, ordinal: int | str, bank: int | str = LEGACY_CAB_BANK) -> str | None:
+        """Real cabinet a slot was captured from, if known."""
+        return self.cab(ordinal, bank).get("model")
+
+    def cab_description(self, ordinal: int | str, bank: int | str = LEGACY_CAB_BANK) -> str:
+        name = self.cab_rosters.get(str(bank), {}).get(str(ordinal), str(ordinal))
+        model = self.cab_model(ordinal, bank)
+        return f"{name} = {model}" if model else name
+
+    def dynacab_model(self, name: str) -> str | None:
+        """Real cabinet a firmware DynaCab is based on, if known."""
+        return self.dynacabs.get(name, {}).get("model")
 
     def drive_model(self, ordinal: int | str) -> str | None:
         """Real pedal modeled by a drive roster ordinal, if known."""

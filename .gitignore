@@ -14,6 +14,10 @@ kb/
 # notes and tips, which are its author's writing and are not redistributed.
 config/amp_models.full.json
 
+# local --with-prose build of the cab sidecar: keeps the wiki's descriptions
+# verbatim instead of reducing them to the cabinet's identity.
+config/cab_models.full.json
+
 # never commit preset/backup payloads (personal presets, Fractal-Bot
 # backups, Gift of Tone content)
 *.syx

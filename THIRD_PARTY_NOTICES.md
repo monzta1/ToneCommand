@@ -181,3 +181,22 @@ websites.
 headings ("<model> (based on <pedal>)"): factual model-to-pedal identity
 only. The guide's prose synopses and tips are not reproduced. FM9 drive
 models added after the guide's last update remain unmapped by design.
+
+---
+
+## Fractal Audio Wiki (community wiki)
+
+- Page: "Cab models", https://wiki.fractalaudio.com/wiki/index.php?title=Cab_models
+- Not redistributed by this project. `tools/build_cab_models.py` reads a
+  locally saved copy of the page.
+
+`config/cab_models.json` records, for 2,235 of the FM9's 2,237 stock cab slots
+and for all 45 firmware DynaCabs, the cabinet each was captured from, and where
+the source gives them the manufacturer, size and microphone.
+
+Facts only. Each `model` value is the cabinet's identity - make, model, speaker
+complement - reduced to its first clause. The wiki's surrounding commentary and
+its quotations from named individuals are deliberately not reproduced; the
+generator's `--with-prose` mode keeps them in a gitignored local file instead.
+
+Check the wiki's content licence before redistributing this file further.
