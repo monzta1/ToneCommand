@@ -62,12 +62,30 @@ def test_zeroed_get_is_noop(fm9):
     assert fm9.get_param_display(spec) == 4.86
 
 
-def test_amp_type_names_fresh_others_stale(fm9):
-    import time
-    fm9.set_param_ordinal(fm9.reg.spec("DISTORT", 10), 39)
-    time.sleep(0.1)                    # writes are async; settle before reading
-    assert fm9.read_display_name(58, 10) == "PVH 6160 Block Lead"
-    assert fm9.read_display_name(70, 11) != "PVH 6160 Block Lead"  # stale elsewhere
+def test_amp_type_display_name_does_not_track_the_param(fm9):
+    """read_display_name never reflects DISTORT_TYPE, settled or not.
+
+    Checked on an FM9 running firmware 12.00 (2026-08-21). The sub 0x1F
+    display-name query returned "59 Bassguy Bright" -- the roster's first entry
+    -- while the amp was actually on ordinal 28 (Recto2 Red Modern), and went on
+    returning it after a write to ordinal 39 at settles of 0.1s, 0.5s, 1.0s and
+    3.0s. It is already wrong BEFORE the write, which no settle can explain.
+
+    The write itself is fine: get_param_wire reads back 39 immediately, with no
+    settle at all. Only the name query is broken, and it is worse than an error
+    because the name looks plausible -- anything trusting it silently reports
+    the wrong amp. server.py avoids it, reading the wire value and mapping it
+    through the roster. See also the README note that the same query returns
+    "NONE" for modifier source enums.
+    """
+    spec = fm9.reg.spec("DISTORT", 10)
+    before = fm9.read_display_name(58, 10)
+
+    fm9.set_param_ordinal(spec, 39)
+
+    after = fm9.read_display_name(58, 10)
+    assert after == before
+    assert after != "PVH 6160 Block Lead"
 
 
 def test_grid_insert_requires_select(fm9):
