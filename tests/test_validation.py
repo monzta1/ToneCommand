@@ -83,8 +83,57 @@ def test_fm9_and_simulator_satisfy_the_device_adapter_contract():
     for name in ("status_dump", "current_preset", "select_preset",
                  "set_scene", "set_bypass", "set_channel",
                  "set_param_display", "set_param_ordinal", "bulk_read",
-                 "store_preset", "close"):
+                 "store_preset", "capabilities", "close"):
         assert callable(getattr(FM9, name, None)), f"FM9 lacks {name}"
+
+
+def test_an_undeclared_device_promises_nothing():
+    """Capabilities are deny-by-default, like the send guard: an unfinished
+    adapter under-promises rather than over-promises."""
+    from fm9.adapter import UNDECLARED, ReadPath
+    assert UNDECLARED.read_path is ReadPath.NONE
+    assert not UNDECLARED.can_verify
+    assert "no read path" in UNDECLARED.why_unverified()
+
+
+def test_the_fm9_declares_what_hardware_sessions_proved():
+    from fm9.adapter import ReadPath
+    from fm9.device import FM9
+    caps = FM9.CAPABILITIES
+    assert caps.read_path is ReadPath.DEVICE
+    assert caps.can_verify
+    assert caps.why_unverified() == ""      # nothing to excuse
+    assert caps.reads_by_slot and caps.has_scenes and caps.stores_presets
+    assert not caps.split_transport
+
+
+def test_a_read_path_on_a_separate_channel_still_counts_as_evidence():
+    """The ToneX shape (#23): control goes out over MIDI, state comes back on
+    a serial port. That is weaker than the FM9's same-channel read but it is
+    still evidence, and it must not be lumped in with having no read path."""
+    from fm9.adapter import Capabilities, ReadPath
+    tonex = Capabilities(read_path=ReadPath.OBSERVED, split_transport=True,
+                         verifies_writes=True)
+    assert tonex.can_verify
+    assert ReadPath.NONE < tonex.read_path < ReadPath.DEVICE
+
+
+def test_ears_outrank_every_read_path():
+    """Invariant 4, made comparable rather than merely stated."""
+    from fm9.adapter import ReadPath
+    assert ReadPath.EARS > ReadPath.DEVICE > ReadPath.OBSERVED > ReadPath.NONE
+
+
+def test_a_mixed_rig_reports_its_weakest_link():
+    """A multi-device 'done' is only as strong as the weakest device, so the
+    rig's rank is a min() and never an average."""
+    from fm9.adapter import Capabilities, ReadPath
+    from fm9.device import FM9
+    tonex = Capabilities(read_path=ReadPath.OBSERVED, verifies_writes=True)
+    switcher = Capabilities()                      # nothing declared yet
+    rig = [FM9.CAPABILITIES, tonex, switcher]
+    assert min(c.read_path for c in rig) is ReadPath.NONE
+    assert not all(c.can_verify for c in rig)
 
 
 def test_recipe_replays_clean_in_sim():

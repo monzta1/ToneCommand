@@ -4,6 +4,34 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed (2026-08-24 session)
+- The adapter contract declares capabilities instead of assuming them.
+  fm9/adapter.py adds Capabilities and a ranked ReadPath (NONE <
+  OBSERVED < DEVICE < EARS, making invariant 4's ranking comparable so a
+  mixed rig reports its weakest link rather than an average). The
+  contract previously assumed every method was answerable everywhere,
+  which left an adapter on a device without a read path choosing between
+  inventing state and failing; now it can say what it cannot do and the
+  layer above degrades openly. Declaring is deny-by-default, so an
+  unfinished adapter under-promises. A second real device is what
+  surfaced this, including the shape the contract could not express: one
+  device whose read and write paths are different transports.
+- Invariant 0 is now architecture rather than one class's policy.
+  fm9/safety.py holds the deny-by-default SendGuard every device
+  transport passes through; a transport that declares no allowlist can
+  send nothing. The never-brick check previously lived inside
+  FM9._send, which protected the FM9 and left any second adapter with
+  no protection at all. The FM9's own allowlist and behaviour are
+  unchanged, and the refusal is still a PermissionError for callers
+  that predate the lift.
+
+### Added (2026-08-24 session)
+- tools/tonex_probe.py: read-only Phase 1 feasibility probe for the IK
+  Multimedia ToneX pedal. Outbound traffic is limited to Program and
+  Control Change by the shared SendGuard, and the pedal's serial
+  control port is opened read-only, since firmware and bootloader
+  traffic travels over that kind of channel on an undecoded device.
+
 ### Added (2026-08-23 session)
 - tools/apply_template.py: apply any owner-defined 8-scene layout to a
   preset from a mapping file; mechanics only, conventions stay local.

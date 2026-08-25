@@ -13,7 +13,9 @@ from dataclasses import dataclass
 import mido
 
 from . import protocol as p
+from .adapter import Capabilities, ReadPath
 from .registry import Registry, ParamSpec
+from .safety import sysex_guard
 
 RESULT_CODES = {
     0x00: "ok",
@@ -104,6 +106,23 @@ class FM9:
                 "query. Either it is still booting, FM9-Edit is running, or a "
                 "zombie process is holding the MIDI port (ps aux | grep python).")
 
+    # What the FM9 can actually answer. Every field here is backed by
+    # hardware sessions, not by the manual: SysEx reads answer on the same
+    # channel writes go out on, slot names read by number without disturbing
+    # the loaded preset (PR #19), and set_param_display already settles and
+    # reads back before reporting.
+    CAPABILITIES = Capabilities(
+        read_path=ReadPath.DEVICE,
+        split_transport=False,
+        reads_by_slot=True,
+        verifies_writes=True,
+        has_scenes=True,
+        stores_presets=True,
+    )
+
+    def capabilities(self) -> Capabilities:
+        return self.CAPABILITIES
+
     def __enter__(self):
         return self
 
@@ -140,17 +159,17 @@ class FM9:
     # are structurally unreachable - not policy, architecture. Extending
     # this set requires a hardware-verified decode of the new function
     # and a documented recovery path (power-cycle + preset reselect).
+    #
+    # The enforcement lives in fm9.safety (lifted there 2026-08-24) so a
+    # second device inherits it. It used to be a check inside this method,
+    # which protected the FM9 and nothing else.
     SENDABLE_FNS = frozenset({0x01, 0x08, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
                               0x13, 0x14, 0x1F})
+    guard = sysex_guard("FM9", SENDABLE_FNS)
 
     def _send(self, frame: list[int]):
         if len(frame) > 5 and frame[0] == 0xF0:
-            fn = frame[5]
-            if fn not in self.SENDABLE_FNS:
-                raise PermissionError(
-                    f"NEVER-BRICK GUARD: refusing to send function 0x{fn:02x}. "
-                    f"Only decoded, user-data-scoped functions may reach any "
-                    f"device. See ARCHITECTURE.md invariant 0.")
+            self.guard.check(frame[5])
         self.outp.send(mido.Message("sysex", data=frame[1:-1]))
 
     def _request(self, frame: list[int], want, timeout: float = 1.0):
