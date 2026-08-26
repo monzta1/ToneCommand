@@ -25,6 +25,20 @@ Notable changes to ToneCommand. Dates are UTC.
   unchanged, and the refusal is still a PermissionError for callers
   that predate the lift.
 
+### Fixed (2026-08-25 session)
+- ToneX frame decoding was correct by luck rather than by
+  understanding. It ignored HDLC byte stuffing entirely (0x7d escapes,
+  next byte XOR 0x20; present in 36 of the 128 reference captures) and
+  left the frame check sequence unverified. tools/tonex_decode.py now
+  unstuffs and validates the FCS, which is CRC-16/X-25: established
+  empirically rather than assumed, since of the five common CRC-CCITT
+  variants it is the only one that validates, and it validates all 128
+  captures. A validated CRC is the difference between a frame parsed
+  correctly and one parsed without crashing. Decoded values are
+  unchanged (the escapes fell in the FCS region), so earlier analysis
+  stands. Frames without delimiters report the CRC as unchecked rather
+  than as valid.
+
 ### Added (2026-08-24 session)
 - tools/tonex_probe.py: read-only Phase 1 feasibility probe for the IK
   Multimedia ToneX pedal. Outbound traffic is limited to Program and
