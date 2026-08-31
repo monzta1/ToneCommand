@@ -352,17 +352,19 @@ class SimFM9Core:
         # 200 to it read back as exactly 200 (2026-08-29). Restricting this to
         # enums made cab auditioning untestable here while it worked on the
         # unit, which is the wrong way round for a test double.
-        # The zeroed GET is byte-identical to a discrete write of zero:
-        # build_get_param sends this same sub 0x09 with value 0.0. Hardware
-        # treats it as a query and does NOT write, so a continuous parameter
-        # written with exactly 0.0 is a NO-OP here too. Only the echo goes
-        # back. Without this the sim answered a read by destroying the value
-        # being read, which test_zeroed_get_is_noop exists to catch and only
-        # caught on a slow enough machine: the settle window served the read
-        # from a pre-write snapshot and hid the damage on a fast one.
-        if val == 0.0 and self._param_kind(eid, pid) == "float":
-            return [self._echo(eid, pid)]
-        self.st.set_block_param(eid, pid, int(round(val)))
+        #
+        # Value 0 is the exception, and it is not a special case we invented:
+        # sub 09 00 carrying zero IS the device's zeroed GET, so it reads
+        # rather than writes. It does that for EVERY parameter, not only the
+        # continuous ones. Narrowing it by parameter kind invents a
+        # distinction the device does not make, and the proof is in
+        # device.set_param_ordinal: ordinal 0 is sent as a CONTINUOUS 0.0
+        # precisely because the discrete path cannot carry it. So there is no
+        # such thing as a discrete write of zero that lands, and a simulator
+        # that lets one land is more permissive than the hardware, which is
+        # the wrong direction for a test double to be wrong in.
+        if val:
+            self.st.set_block_param(eid, pid, int(round(val)))
         return [self._echo(eid, pid)]
 
     def _set_continuous(self, b):
@@ -373,12 +375,6 @@ class SimFM9Core:
             return []
         self.st.set_block_param(eid, pid, round(norm * 65534))
         return [self._echo(eid, pid)]
-
-    def _param_kind(self, eid, pid):
-        fam = self.st.reg.family_of_effect_id(eid)
-        if not fam:
-            return "unknown"
-        return self.st.reg.spec(fam[0], pid, fam[1]).kind
 
     def _echo(self, eid, pid):
         wire = self.st.block_param(eid, pid) or 0

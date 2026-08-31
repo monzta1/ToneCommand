@@ -53,13 +53,47 @@ def test_param_set_and_bulk_read(fm9):
     assert fm9.get_param_display(spec) == 6.5
 
 
-def test_zeroed_get_is_noop(fm9):
-    """sub 09 00 with value 0 must NOT change a continuous param."""
+def test_zeroed_get_is_noop(fm9, monkeypatch):
+    """sub 09 00 with value 0 must NOT change a param.
+
+    SETTLE is stood down for the duration. Brian's point on #37, and he was
+    right: this test passed on a fast machine for a reason that had nothing to
+    do with the behaviour it names. The settle window served the read from the
+    pre-write snapshot while the live buffer had already been zeroed, so the
+    damage was hidden. It failed only on CI, which was slow enough for the
+    window to lapse first. With no window there is nowhere for a bad write to
+    hide, and if this test ever goes quiet again, that is why.
+    """
+    import fm9.sim as sim
+    monkeypatch.setattr(sim, "SETTLE", 0.0)
     spec = fm9.reg.spec("DISTORT", 11)
     fm9.set_param_display(spec, 4.86)
     fm9._drain()
     fm9._send(p.build_get_param(58, 11))     # the zeroed GET
     assert fm9.get_param_display(spec) == 4.86
+
+
+def test_a_discrete_zero_is_a_read_for_every_kind_of_param(fm9, monkeypatch):
+    """Not only for continuous ones.
+
+    device.set_param_ordinal sends ordinal 0 as a CONTINUOUS 0.0 precisely
+    because the discrete path cannot carry it: sub 09 with a zero value is the
+    zeroed GET whatever the parameter is. A simulator that lets a discrete
+    zero land on an enum is more permissive than the hardware, so code doing
+    it would pass here and silently do nothing on the rig.
+    """
+    import fm9.sim as sim
+    monkeypatch.setattr(sim, "SETTLE", 0.0)
+    spec = fm9.reg.spec("DISTORT", 10)               # DISTORT_TYPE, an enum
+    fm9.set_param_ordinal(spec, 28)
+    assert fm9.get_param_wire(spec) == 28
+    fm9._drain()
+    fm9._send(p.build_set_param_discrete(58, 10, 0))  # a discrete zero
+    assert fm9.get_param_wire(spec) == 28, \
+        "a discrete zero wrote; on hardware it is a read"
+    # and the way that IS supported still works
+    fm9.set_param_ordinal(spec, 0)
+    assert fm9.get_param_wire(spec) == 0
 
 
 def test_amp_type_display_name_does_not_track_the_param(fm9):

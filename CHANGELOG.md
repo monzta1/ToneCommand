@@ -2,6 +2,28 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## 0.6.1 (2026-08-31)
+
+### Fixed
+- **The simulator let a discrete write of zero land on an enum.** Hardware
+  never does: sub 09 carrying a zero value IS the zeroed GET, and it reads
+  rather than writes for EVERY parameter, not only the continuous ones. The
+  proof was already in `device.set_param_ordinal`, which sends ordinal 0 as a
+  CONTINUOUS 0.0 precisely because the discrete path cannot carry it.
+- 0.6.0 shipped the narrower guard, taken from #37 while merging #35 on the
+  reasoning that it protected a legitimate discrete write of ordinal 0. There
+  is no such write. Narrowing by parameter kind invented a distinction the
+  device does not make, and left the simulator MORE permissive than the
+  hardware, which is the wrong direction for a test double: code doing a
+  discrete zero would have passed here and silently done nothing on the rig.
+  Reported by @bschmalz81401 on #37.
+- `test_zeroed_get_is_noop` now stands the settle window down. It had been
+  passing for a reason unrelated to what it claimed: the window served the
+  read from the pre-write snapshot while the live buffer had already been
+  zeroed, so the damage was hidden on any machine fast enough. It failed only
+  on CI. With no window there is nowhere for a bad write to hide, and a
+  companion test now covers the enum case the old guard got wrong.
+
 ## 0.6.0 (2026-08-31)
 
 Four things the tool could not do at all before: splice a block into a packed
