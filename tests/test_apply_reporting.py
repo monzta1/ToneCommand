@@ -73,7 +73,10 @@ def test_an_empty_preset_is_not_described_as_having_no_free_cell(client,
     detail = results[0]["detail"]
     assert results[0]["ok"] is False
     assert "this preset is empty" in detail
-    assert "build_from_scratch" in detail, "say what the answer actually is"
+    # The answer used to be a terminal, which is what issue #36 was about.
+    # It is now a button, and the point of the assertion is unchanged: a
+    # refusal has to say what the way forward IS, not only that this is not it.
+    assert "BUILD A STARTING CHAIN" in detail, "say what the answer actually is"
     assert "no free pass-through cell" not in detail
 
 

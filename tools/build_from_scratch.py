@@ -31,16 +31,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from fm9 import protocol as p  # noqa: E402
 from fm9.registry import Registry  # noqa: E402
-from tools.path_audit import scene_alive  # noqa: E402
-
-# Consecutive columns on display row 3: cables only ever run to the next
-# column, and shunts cannot be inserted (PROTOCOL.md finding 8), so a gap
-# would need a unity Volume block as a hop rather than a shunt.
-ROW = 3
-CHAIN = [(37, "INPUT"), (58, "amp"), (62, "cab"), (42, "OUTPUT")]
-SETTLE = 0.4
+from fm9.scratch_build import CHAIN, ROW, SETTLE, build  # noqa: E402,F401
 
 
 def describe(cells, reg) -> list[str]:
@@ -75,85 +67,29 @@ def main(argv=None) -> int:
         dev = FM9(reg)
 
     with dev:
-        held = dev.current_preset()
-        try:
-            target = (dev.require_empty_slot(args.slot) if args.slot is not None
-                      else dev.first_empty_slot(*args.range))
-        # RuntimeError, not its subclasses: NoEmptySlot and FM9NotFound are
-        # both RuntimeError, but _request raises the bare parent on a device
-        # NACK, and naming only the children let that escape as a traceback
-        # where a refusal line belongs.
-        except (RuntimeError, ValueError) as exc:
-            print(f"refusing to build: {exc}")
-            return 1
-        print(f"target: slot {target.label}, reported {target.name!r} by the "
-              f"device" + (f" (ghost {target.ghost!r})" if target.ghost else ""))
-        if held:
-            print(f"leaving preset {p.slot_label(held[0])} ({held[1]!r}); its "
-                  "edit buffer is discarded by the switch")
-
-        # The select decides which preset every insert below edits. A dropped
-        # bank or program change would leave the owner's loaded preset in the
-        # buffer, and the verification afterwards would still pass because it
-        # reads back what it just wrote. Confirm the unit agrees first.
-        landed = dev.select_preset(target.number)
-        time.sleep(SETTLE)
-        if landed is None or landed[0] != target.number:
-            print(f"refusing to build: asked for slot {target.label} but the "
-                  f"unit reports {landed!r} loaded. Not editing a preset that "
-                  "was never checked as empty.")
-            return 1
-        for col, (eid, label) in enumerate(CHAIN, start=1):
-            dev.place_block(ROW, col, eid)
-            time.sleep(SETTLE)
-            print(f"  placed {label} (eid {eid}) at row {ROW} col {col}")
-        for col in range(1, len(CHAIN)):
-            dev.connect_cells(ROW, col, ROW)
-            time.sleep(SETTLE)
-            print(f"  cabled ({ROW},{col}) -> ({ROW},{col + 1})")
-
-        time.sleep(SETTLE)
-        cells = sorted(dev.read_grid() or [], key=lambda c: (c.col, c.row))
-        print("\ngrid:")
-        for line in describe(cells, reg):
-            print(line)
-        placed = {c.effect_id for c in cells}
-        missing = [label for eid, label in CHAIN if eid not in placed]
-        blocks = {b.effect_id: b for b in dev.status_dump() or []}
-        bypassed = [label for eid, label in CHAIN
-                    if eid in blocks and blocks[eid].bypassed]
-        # Membership is not a path. A block sitting on the cursor cell at row 1
-        # col 1 is "present" and un-starved while being nowhere near the signal
-        # - the silent-scene class this project has been bitten by repeatedly.
-        # path_audit walks Input to Output over the real cable masks.
-        alive, why = scene_alive(cells, blocks, reg)
-
+        res = build(dev, reg, slot=args.slot, search=tuple(args.range))
+        for line in res["steps"]:
+            print(f"  {line}" if not line.startswith("target") else line)
+        if res.get("cells"):
+            print("\ngrid:")
+            for c in sorted(res["cells"], key=lambda c: (c["col"], c["row"])):
+                fam = reg.family_of_effect_id(c["effect_id"] or 0)
+                name = ("SHUNT" if c["shunt"]
+                        else (fam[0] if fam else f"eid{c['effect_id']}"))
+                print(f"  row {c['row']} col {c['col']}: {name:9s} "
+                      f"in_mask={c['in_mask']:#06b}")
         print()
-        ok = True
-        if missing:
-            print(f"INCOMPLETE: never landed: {', '.join(missing)}")
-            ok = False
-        if not alive:
-            print(f"NO LIVE SIGNAL PATH: {why}")
-            ok = False
-        if bypassed:
-            print(f"NOTE: bypassed blocks: {', '.join(bypassed)}")
-        # On the simulator, say what it did NOT vouch for. Silence here would
-        # read as "all verified" when some of it was modelled, not proven.
-        undecoded = sorted(getattr(getattr(dev, "sim_core", None),
-                                   "undecoded", []) or [])
-        if undecoded:
-            print("\nsimulated but NOT hardware-verified:")
-            for note in undecoded:
+        if res["bypassed"]:
+            print(f"NOTE: bypassed blocks: {', '.join(res['bypassed'])}")
+        if res["undecoded"]:
+            print("simulated but NOT hardware-verified:")
+            for note in res["undecoded"]:
                 print(f"  !! {note}")
-
-        if ok:
-            print(f"live signal path confirmed: {why}")
-            print(f"loaded on {target.label}, edit buffer only - nothing "
-                  "stored, so the slot still reads <EMPTY> in flash")
-            print("PLAY IT. Audible is the claim; your ears outrank every read "
-                  "path here.")
-        return 0 if ok else 1
+        print(res["detail"])
+        if res["ok"]:
+            print("PLAY IT. Audible is the claim; your ears outrank every "
+                  "read path here.")
+        return 0 if res["ok"] else 1
 
 
 if __name__ == "__main__":

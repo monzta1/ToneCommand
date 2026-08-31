@@ -36,9 +36,9 @@ def _panels(with_class: bool):
 
 def test_the_panels_that_need_hardware_are_marked():
     marked = set(_panels(True))
-    assert marked == {"SCENES", "SIGNAL CHAIN", "AMP & CAB", "GRAPHIC EQ",
-                      "EFFECTS", "DYNAMICS & LEVELS", "UNDO / COMPARE",
-                      "PRESET HEALTH", "SAVE TO PRESET"}, marked
+    assert marked == {"SCENES", "SIGNAL CHAIN", "EMPTY SLOT", "AMP & CAB",
+                      "GRAPHIC EQ", "EFFECTS", "DYNAMICS & LEVELS",
+                      "UNDO / COMPARE", "PRESET HEALTH", "SAVE TO PRESET"}, marked
 
 
 def test_the_panels_that_work_offline_are_not_dimmed():

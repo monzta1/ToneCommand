@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from fm9.device import FM9, FM9NotFound
 from fm9.registry import Registry
 from fm9 import (ai_settings, designs, editbuffer, health, planner,
-                 recipes as recipebook, rigprofile, share)
+                 recipes as recipebook, rigprofile, scratch_build, share)
 from tools import path_audit
 from fm9 import protocol as proto
 from fm9.signal_path import resolve_aliases
@@ -827,8 +827,9 @@ def _no_placement_detail(a: Action, pos: str, cells: list | None) -> str:
     if not cells:
         return (f"this preset is empty: it has no grid cells at all, not even "
                 f"pass-through cells, so there is nothing to place {a.block} "
-                f"onto. Load a preset with a signal chain, or build one from "
-                f"scratch with tools/build_from_scratch.py")
+                f"onto. Load a preset with a signal chain, or use BUILD A "
+                f"STARTING CHAIN in the EMPTY SLOT panel to make one from "
+                f"nothing")
     return (f"no free pass-through cell {where} to place {a.block} on; "
             f"refusing rather than rewiring the grid")
 
@@ -1593,6 +1594,47 @@ def api_grid():
                     "cols": 1 + max((c["col"] for c in out), default=0)}
         except Exception as e:
             return {"error": str(e)}
+
+
+class ScratchBody(BaseModel):
+    slot: int | None = None
+
+
+@app.post("/api/build-scratch")
+def api_build_scratch(body: ScratchBody):
+    """Build a starting chain into an empty slot (issue #36).
+
+    An empty FM9 slot has no grid cells at all, so add_block has nothing to
+    replace and splice has nothing to displace: both refuse, correctly, and
+    until now the only way forward was a terminal. The logic is the same one
+    the CLI has always run, moved somewhere shipped code can reach it.
+
+    A POST, and not only because it writes. It switches the loaded preset,
+    which discards whatever is in the edit buffer, and that is not something a
+    prefetch or a refresh may do on someone's behalf.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: building a preset selects a different slot "
+                      "and discards the edit buffer. Not while you are playing."},
+            status_code=423)
+    with _lock:
+        try:
+            # get_fm9() hands back an already-open device, the way every other
+            # route uses it. Wrapping it in `with` re-enters the context and
+            # reopens the MIDI port on an endpoint that is already held, which
+            # took the whole server process down with no traceback rather than
+            # raising anything catchable.
+            res = scratch_build.build(get_fm9(), reg, slot=body.slot)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+    if not res["ok"]:
+        return JSONResponse(res, status_code=409)
+    return res
 
 
 @app.post("/api/health")

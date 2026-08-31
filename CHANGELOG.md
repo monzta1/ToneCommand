@@ -4,6 +4,28 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (empty slots, 2026-08-30)
+- **Build a starting chain into an empty slot from the app** (#36). An empty
+  FM9 slot has no grid cells at all, not even pass-through cells, so add_block
+  has nothing to replace and the new splice has nothing to displace: both
+  refuse, correctly, and the only way forward was a terminal. The builder now
+  lives in `fm9/scratch_build.py`, which shipped code can import, and
+  `tools/build_from_scratch.py` is a thin CLI over the same function rather
+  than a second copy of a hardware sequence. An EMPTY SLOT panel appears when
+  the loaded slot has no blocks, and the refusal from add_block points at the
+  button instead of at a script.
+- Unchanged: it only ever lands on a slot the device itself reports as
+  `<EMPTY>`, it takes no force flag, gig mode refuses it, and nothing is
+  stored, so the slot keeps reading `<EMPTY>` until the owner saves it.
+
+### Fixed (server lifetime, 2026-08-30)
+- A route that wrapped `get_fm9()` in `with` took the whole server process
+  down, with no traceback and nothing in the log. The handle is already open,
+  so re-entering it reopens a MIDI port on an endpoint that is already held;
+  every other route uses the device without a context manager. Found on
+  hardware, because the simulator does not model it.
+
+
 ### Added (splice in the planner, 2026-08-24)
 - `add_block` splices when no free pass-through cell exists, instead of
   refusing. That refusal is what real presets hit, because none keep a spare
