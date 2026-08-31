@@ -2,7 +2,13 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## Unreleased
+## 0.6.0 (2026-08-31)
+
+Four things the tool could not do at all before: splice a block into a packed
+chain, build into an empty slot without a terminal, erase a preset slot, and
+rename one. Between them they close the last of the "you have to go and do
+that part on the unit" gaps in preset structure.
+
 
 ### Added (renaming a slot, 2026-08-30)
 - **A stored preset can be renamed from the app.** Not a text edit: the FM9
