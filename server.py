@@ -21,6 +21,9 @@ from fm9.device import FM9, FM9NotFound
 from fm9.registry import Registry
 from fm9 import (ai_settings, designs, editbuffer, health, planner,
                  recipes as recipebook, rigprofile, scratch_build, share)
+# `slots` is a local variable in more than one function here, so the module
+# gets a name that cannot be shadowed by one.
+from fm9 import slots as slotops
 from tools import path_audit
 from fm9 import protocol as proto
 from fm9.signal_path import resolve_aliases
@@ -1594,6 +1597,107 @@ def api_grid():
                     "cols": 1 + max((c["col"] for c in out), default=0)}
         except Exception as e:
             return {"error": str(e)}
+
+
+class ClearBody(BaseModel):
+    slot: int
+    confirm_name: str
+
+
+@app.get("/api/slot/{slot}")
+def api_slot(slot: int):
+    """What is stored in a slot, without loading it (finding 15).
+
+    So a confirmation can name what is about to be destroyed rather than
+    asking someone to trust a number.
+    """
+    with _lock:
+        try:
+            return slotops.describe(get_fm9(), slot)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "detail": str(exc)}, status_code=500)
+
+
+class RenameBody(BaseModel):
+    slot: int
+    name: str
+
+
+@app.post("/api/rename-slot")
+def api_rename_slot(body: RenameBody):
+    """Rename a stored preset.
+
+    Reaches flash, because the FM9 keeps the name inside the preset rather
+    than beside it: renaming means selecting it, setting the name, and storing
+    the whole preset back. So it carries the store whitelist and the gig gate
+    like anything else that writes, even though the intent is only to change
+    some text.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: renaming stores the preset, which is a write "
+                      "to flash. Not while you are playing."}, status_code=423)
+    with _lock:
+        try:
+            res = slotops.rename(get_fm9(), body.slot, body.name)
+        except PermissionError as exc:
+            return JSONResponse({"ok": False, "detail": str(exc)},
+                                status_code=403)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"ok": False, "detail": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "detail": str(exc)}, status_code=500)
+    _preset_cache["slots"] = None
+    return res if res["ok"] else JSONResponse(res, status_code=409)
+
+
+@app.post("/api/clear-slot")
+def api_clear_slot(body: ClearBody):
+    """Empty a preset slot, permanently.
+
+    The second irreversible operation here, and the only one that destroys
+    rather than overwrites: a store replaces a preset with the one you are
+    holding, this replaces it with nothing.
+
+    `confirm_name` must match the name the slot currently holds. Not
+    ceremony: the numbers differ by one between the wire and every screen the
+    owner reads, and a clear aimed one slot off is unrecoverable. Making the
+    caller echo the name back means the thing being destroyed was actually
+    looked at.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: refusing to erase a preset while you are "
+                      "playing."}, status_code=423)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            found = slotops.describe(fm9, body.slot)
+            if not found["ok"]:
+                return JSONResponse(found, status_code=409)
+            if (found.get("name") or "").strip() != body.confirm_name.strip():
+                return JSONResponse(
+                    {"ok": False,
+                     "detail": (f"refusing to clear {found['label']}: it holds "
+                                f"{found.get('name')!r}, not "
+                                f"{body.confirm_name!r}. Nothing was changed.")},
+                    status_code=409)
+            res = slotops.clear(fm9, body.slot)
+        except PermissionError as exc:
+            return JSONResponse({"ok": False, "detail": str(exc)},
+                                status_code=403)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"ok": False, "detail": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "detail": str(exc)}, status_code=500)
+    # The preset browser reads names from here, and one of them just stopped
+    # being true.
+    _preset_cache["slots"] = None
+    return res if res["ok"] else JSONResponse(res, status_code=409)
 
 
 class ScratchBody(BaseModel):

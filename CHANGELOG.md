@@ -4,6 +4,43 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (renaming a slot, 2026-08-30)
+- **A stored preset can be renamed from the app.** Not a text edit: the FM9
+  keeps the name inside the preset, so renaming means selecting it, setting
+  the name and storing the whole preset back. That makes it a flash write, and
+  it carries the store whitelist, the gig gate, the select-landed check and
+  the reload verification like anything else that writes. The slot is selected
+  fresh first, so the store puts that preset back under a new name rather than
+  baking in whatever edit buffer happened to be loaded.
+- No `FM9AI-` prefix. `run_action` forces one on renames the planner proposes,
+  so a tool-built preset is identifiable; a name the owner typed is theirs.
+
+### Added (erasing a slot, 2026-08-30)
+- **A preset slot can be erased from the app.** The second irreversible
+  operation here, and the only one that destroys rather than overwrites: a
+  store replaces a preset with the one you are holding, this replaces it with
+  nothing.
+- An empty slot is not "a preset with no blocks". The FM9 marks one in its
+  NAME field, `"<EMPTY>"` over the first 8 bytes with the tail of the old name
+  left as a ghost (finding 14), so all three parts are written: the grid is
+  emptied, the eight scene names are blanked, and the marker goes into the
+  name. A slot with an empty grid and its old name is not empty to the device,
+  to FM9-Edit, or to `first_empty_slot`.
+- Believed only after a reload. Finding 16's lesson applies to anything stored:
+  an incomplete write reads healthy immediately, survives the store, and is
+  found undone once the preset reloads, so the verification selects away and
+  back before reporting. A clear that did not take says the preset may be
+  damaged rather than cleared, because half-erased is worse than either end.
+- Gated like nothing else in the product: the store whitelist (enforced by
+  `store_preset` itself rather than re-implemented), gig mode, a select that
+  must land where it was aimed, a confirmation naming the preset, and the name
+  typed back by hand. The wire number and the number every screen shows differ
+  by one, and a clear aimed one slot off cannot be taken back.
+- The button is offered only for a slot whose name has actually been read.
+  "Erase" over an unknown name is an invitation to destroy something nobody
+  looked at.
+
+
 ### Added (empty slots, 2026-08-30)
 - **Build a starting chain into an empty slot from the app** (#36). An empty
   FM9 slot has no grid cells at all, not even pass-through cells, so add_block

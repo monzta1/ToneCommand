@@ -370,6 +370,21 @@
   .audbtn.sub .l { white-space: normal; line-height: 1.5; min-width: 0; }
   .audbtn.sub::after { margin-top: 5px; }
 
+  /* Set apart from SAVE above it: same panel, because both write to flash,
+     but not the same row, because one replaces a preset and the other
+     removes it. */
+  .renamerow { margin-top: 16px; padding-top: 14px;
+               border-top: 1px solid var(--line); }
+  .renamerow input {
+    background: #0d0f0d; border: 1px solid #3a2f18; color: var(--fg);
+    font: inherit; font-size: var(--fs-hint); padding: 6px 9px;
+    border-radius: 3px; flex: 1 1 260px; min-width: 0;
+  }
+  .clearrow { margin-top: 16px; padding-top: 14px;
+              border-top: 1px solid rgba(255,180,84,0.22); }
+  #clearslot { flex: 0 0 auto; border-color: var(--red); color: var(--red); }
+  #clearslot:hover:not(:disabled) { background: rgba(255,90,90,0.12); }
+  #clearslot:disabled { opacity: 0.4; }
   .knobs { columns: 340px; column-gap: 30px; }
   /* What is driving this parameter, when it is not you. Amber rather than
      cyan: cyan is "you can move this", and this is the one row you cannot. */
@@ -1161,6 +1176,26 @@
       is edit buffer only and reversible. This is not: it overwrites whatever is
       stored in the slot, permanently, and
       <span class="savewarn">UNDO does not cover it</span>.</div>
+
+    <!-- Erasing lives beside saving because they are the only two operations
+         that touch flash, and hiding the more destructive one somewhere else
+         would make it feel like less than it is. -->
+    <div class="saverow renamerow">
+      <input id="newname" maxlength="32" autocomplete="off" spellcheck="false"
+             placeholder="rename the selected preset (32 characters)">
+      <button class="small" id="renameslot" disabled>RENAME</button>
+      <span class="hint">The FM9 keeps the name inside the preset, so this
+        stores it. The tone is untouched; the slot is written back exactly as
+        it is, under the new name.</span>
+    </div>
+
+    <div class="saverow clearrow">
+      <button class="small" id="clearslot" disabled>ERASE THIS SLOT</button>
+      <span class="hint" id="clearwhat">Empties the selected slot so it reads
+        &lt;EMPTY&gt; on the unit, the same as clearing it from the FM9's own
+        Utility menu. There is <span class="savewarn">no copy kept anywhere</span>:
+        a preset erased here is gone.</span>
+    </div>
   </div>
 
   <div class="console" data-label="TONE RECIPES">
@@ -2648,9 +2683,108 @@ function updateSaveButton() {
   const sel = saveSlots.find(s => s.number === Number($('saveslot').value));
   $('save').textContent = sel ? `SAVE TO ${sel.label}` : 'SAVE';
   $('save').title = sel ? `overwrite ${sel.label}` : '';
+  // Erasing is offered only for a slot whose name we have actually read, and
+  // never for one already empty. "Erase" over an unknown name is an invitation
+  // to destroy something nobody looked at.
+  const named = sel && sel.name && sel.empty !== true;
+  // Renaming needs a real preset to rename, same as erasing needs one to
+  // erase, and both need the name read so the confirmation can say it.
+  $('renameslot').disabled = !named || !$('newname').value.trim();
+  $('renameslot').title = named
+    ? `rename ${sel.label}, currently "${sel.name}"`
+    : 'press NAMES first, so the preset being renamed can be named';
+  $('clearslot').disabled = !named;
+  $('clearslot').textContent = named ? `ERASE ${sel.label}` : 'ERASE THIS SLOT';
+  $('clearslot').title = named
+    ? `permanently erase ${sel.label}, which holds "${sel.name}"`
+    : (sel && sel.empty === true
+       ? 'this slot already reads <EMPTY>'
+       : 'press NAMES first, so the slot being erased can be named');
 }
 
 $('saveslot').addEventListener('change', updateSaveButton);
+
+// Erasing a slot. The only operation here that destroys rather than
+// overwrites, so it asks twice and the second one has to be typed: the wire
+// number and the number every screen shows differ by one, and a clear aimed
+// one slot off cannot be taken back.
+$('newname').addEventListener('input', updateSaveButton);
+
+$('renameslot').onclick = async () => {
+  const n = Number($('saveslot').value);
+  const slot = saveSlots.find(s => s.number === n);
+  const name = $('newname').value.trim();
+  if (!slot || !name) return;
+  // A rename stores the preset, so it is a flash write and gets the same
+  // kind of confirmation as one, even though nothing about the tone changes.
+  if (!window.confirm(
+        `Rename slot ${slot.label} from "${slot.name}" to "${name}"?\n\n`
+        + `The FM9 keeps the name inside the preset, so this writes the slot `
+        + `back to flash. The tone is unchanged; the old NAME is not `
+        + `recoverable from here.`)) {
+    log('rename cancelled', 'warn');
+    return;
+  }
+  const b = $('renameslot');
+  b.disabled = true;
+  const was = b.textContent;
+  b.textContent = 'RENAMING...';
+  try {
+    const r = await fetch('/api/rename-slot', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slot: n, name})});
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.detail || d.error || 'refused');
+    for (const step of d.steps || []) log(step);
+    log(d.detail, 'ok');
+    $('newname').value = '';
+    await loadSaveSlots(true);
+  } catch (e) {
+    log(`rename failed: ${e.message}`, 'err');
+  } finally {
+    b.textContent = was;
+    updateSaveButton();
+    await refresh();
+  }
+};
+
+$('clearslot').onclick = async () => {
+  const n = Number($('saveslot').value);
+  const slot = saveSlots.find(s => s.number === n);
+  if (!slot || !slot.name) return;
+  if (!window.confirm(
+        `Permanently erase slot ${slot.label}?\n\n`
+        + `It holds "${slot.name}".\n\n`
+        + `The slot will read <EMPTY> on the unit afterwards. There is no `
+        + `copy of that preset anywhere in this app, UNDO does not cover it, `
+        + `and it cannot be brought back.`)) {
+    log('erase cancelled', 'warn');
+    return;
+  }
+  const typed = window.prompt(
+    `Type the preset's name exactly to confirm erasing ${slot.label}:`, '');
+  if (typed === null) { log('erase cancelled', 'warn'); return; }
+  const b = $('clearslot');
+  b.disabled = true;
+  const was = b.textContent;
+  b.textContent = 'ERASING...';
+  try {
+    const r = await fetch('/api/clear-slot', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slot: n, confirm_name: typed})});
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.detail || d.error || 'refused');
+    for (const step of d.steps || []) log(step);
+    log(d.detail, 'ok');
+    await loadSaveSlots(true);        // that slot's name has just changed
+  } catch (e) {
+    log(`erase failed: ${e.message}`, 'err');
+  } finally {
+    b.textContent = was;
+    updateSaveButton();
+    await refresh();
+  }
+};
 
 async function saveToSlot() {
   const n = Number($('saveslot').value);
