@@ -23,6 +23,7 @@ from fm9 import (ai_settings, designs, editbuffer, health, planner,
                  recipes as recipebook, rigprofile, share)
 from tools import path_audit
 from fm9 import protocol as proto
+from fm9.signal_path import resolve_aliases
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="FM9 Tone Control")
@@ -629,6 +630,25 @@ def api_plan(body: PromptBody):
                         a["block"], int(a.get("instance") or 1))[1]
                 except Exception:
                     pass
+        # A splice moves blocks the user did not ask about, and may spend a
+        # pass-through cell that cannot be put back, so the consequences are
+        # attached HERE rather than discovered at apply time: the plan is what
+        # gets confirmed, and consent to "add a block" is not consent to
+        # rearrange the row.
+        adds = [a for a in result.get("actions", []) if a.get("kind") == "add_block"]
+        if adds:
+            with _lock:
+                try:
+                    fm9 = get_fm9()
+                    for a in adds:
+                        intent = _splice_plan_for(fm9, Action(**a))
+                        if intent is not None:
+                            a["splice"] = intent
+                            if not intent["ok"]:
+                                a["validation_errors"] = a["validation_errors"] + [
+                                    f"cannot place this block: {intent['detail']}"]
+                except FM9NotFound:
+                    drop_fm9()
         return result
     except Exception as e:
         return JSONResponse({"error": f"planner failed: {e}"}, status_code=502)
@@ -813,6 +833,62 @@ def _no_placement_detail(a: Action, pos: str, cells: list | None) -> str:
             f"refusing rather than rewiring the grid")
 
 
+AMP_FAMILY = "DISTORT"
+
+
+def _amp_cell(fm9: FM9, cells):
+    """The first amp on the grid, alias-aware.
+
+    Grid ids alias mod 128, so FX Return (186) reads as 58 and would pass for
+    an amp in a naive scan, putting "before the amp" in front of the wrong
+    block. resolve_aliases settles it against the status dump.
+    """
+    present = {b.effect_id for b in fm9.status_dump() or []}
+    resolved = resolve_aliases(cells, present)
+    amps = []
+    for c in cells:
+        if c.effect_id is None:
+            continue
+        true_id = resolved.get((c.row, c.col), c.effect_id)
+        fam = reg.family_of_effect_id(true_id)
+        if fam and fam[0] == AMP_FAMILY:
+            amps.append(c)
+    return min(amps, key=lambda c: c.col) if amps else None
+
+
+def _splice_plan_for(fm9: FM9, a: Action) -> dict | None:
+    """What add_block would have to displace, or None if it need not.
+
+    Called at plan time so the consequences are visible BEFORE anyone
+    confirms: a splice moves someone else's blocks, and it may spend a
+    pass-through cell that cannot be put back.
+    """
+    try:
+        fam, eid = reg.resolve_block(a.block or "", a.instance)
+    except Exception:
+        return None
+    cells = fm9.read_grid() or []
+    if not cells:
+        return None
+    amp = _amp_cell(fm9, cells)
+    if amp is None:
+        return None
+    pos = a.position or "any"
+    shunts = [(c.row, c.col) for c in cells if c.is_shunt]
+    if pos == "pre":
+        shunts = [(r, c) for r, c in shunts if c < amp.col]
+    elif pos == "post":
+        shunts = [(r, c) for r, c in shunts if c > amp.col]
+    if shunts:
+        return None                    # a free pass-through exists: no splice
+    row = amp.row + 1
+    at_col = amp.col + 1 if pos != "post" else amp.col + 2
+    intent = fm9.plan_splice(row, at_col)
+    intent["effect_id"] = eid
+    intent["block"] = f"{fam} {a.instance}"
+    return intent
+
+
 def _add_block(fm9: FM9, a: Action) -> dict:
     """Insert a block onto a free shunt cell. Refuses when no sane placement
     exists rather than guessing (no cable drawing in the planner path)."""
@@ -832,7 +908,22 @@ def _add_block(fm9: FM9, a: Action) -> dict:
     elif pos == "post" and amp_col is not None:
         shunts = [(r, c) for r, c in shunts if c > amp_col]
     if not shunts:
-        return {"ok": False, "detail": _no_placement_detail(a, pos, cells)}
+        # No free pass-through: splice instead of refusing, but only on the
+        # terms the plan already showed the user (issue #10). When even a
+        # splice cannot be done, the refusal still names the wall it actually
+        # hit rather than describing a packed preset to someone holding an
+        # empty one.
+        intent = _splice_plan_for(fm9, a)
+        if intent is None or not intent["ok"]:
+            detail = ((intent or {}).get("detail")
+                      or _no_placement_detail(a, pos, cells))
+            return {"ok": False, "detail": detail,
+                    "reason": (intent or {}).get("reason", "no_placement")}
+        res = fm9.splice_block(intent["row"], intent["at_col"], eid)
+        res["spliced"] = True
+        res["detail"] = (f"{a.block} spliced in at row {intent['row']} col "
+                         f"{intent['at_col']}; " + res.get("detail", ""))
+        return res
     row, col = sorted(shunts, key=lambda rc: rc[1])[0]
     fm9.place_block(row + 1, col + 1, eid)
     after = fm9.read_grid() or []

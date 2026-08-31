@@ -627,75 +627,94 @@ class FM9:
             self._send(p.build_set_param_discrete(eid, pid, 0))
             time.sleep(0.15)
 
+    def plan_splice(self, row_1based: int, at_col: int) -> dict:
+        """What a splice at this cell WOULD do, without doing any of it.
+
+        Split out of splice_block because the answer has to be shown before
+        anyone approves it. Two of the consequences are not equivalent:
+        re-selecting the preset puts the slid blocks back, while nothing puts
+        a spent pass-through cell back on its own, since shunts cannot be
+        re-inserted (finding 8). Discarding the whole edit is the only route,
+        and a store makes the loss permanent (finding 27). A confirmation
+        that shows both the same way is not informed consent, so they are
+        reported separately.
+
+        Refusals carry a `reason` as well as prose, so a caller can say which
+        wall it hit rather than a generic no.
+        """
+        cells = {(c.row + 1, c.col + 1): c for c in (self.read_grid() or [])}
+        row = row_1based
+        if not any(r == row for (r, _) in cells):
+            return {"ok": False, "reason": "empty_row", "moves": [],
+                    "detail": f"row {row} is empty; nothing to splice into"}
+        if (row, at_col) not in cells:
+            return {"ok": False, "reason": "already_free", "moves": [],
+                    "detail": f"row {row} col {at_col} is already free, so the "
+                              "block can be placed directly rather than spliced"}
+
+        # Slack is the first column right that can absorb the shift: a free
+        # cell (nothing lost) or a shunt (spent, and not re-insertable).
+        slack = next((c for c in range(at_col + 1, p.GRID_COLS + 1)
+                      if (row, c) not in cells or cells[(row, c)].is_shunt), None)
+        if slack is None:
+            return {"ok": False, "reason": "no_room_right", "moves": [],
+                    "detail": f"no free or pass-through cell right of col "
+                              f"{at_col} on row {row}: a block would have to "
+                              "fall off the end of the grid. Try another preset, "
+                              "or free a slot on this row"}
+
+        # Cross-row feeds into the span would be silently broken: the cables
+        # redrawn here are same-row only, and multi-row geometry is not decoded.
+        foreign = [c for c in range(at_col, slack + 1)
+                   if (row, c) in cells
+                   and cells[(row, c)].cable_in_mask & ~(1 << row)]
+        if foreign:
+            return {"ok": False, "reason": "fed_from_another_row", "moves": [],
+                    "detail": f"cells {foreign} on row {row} are fed from "
+                              "another row, and the same-row redraw would "
+                              "silently break routing this code does not model"}
+
+        moves = []
+        for col in range(slack - 1, at_col - 1, -1):
+            cell = cells.get((row, col))
+            if cell is None or cell.effect_id is None:
+                continue                       # a shunt in the span: it dies
+            fam = self.reg.family_of_effect_id(cell.effect_id)
+            moves.append({"effect_id": cell.effect_id,
+                          "family": fam[0] if fam else None,
+                          "instance": fam[1] if fam else None,
+                          "from_col": col, "to_col": col + 1})
+        return {"ok": True, "reason": "", "row": row, "at_col": at_col,
+                "slack_col": slack, "moves": moves,
+                "spends_shunt": (row, slack) in cells,
+                "detail": ""}
+
     def splice_block(self, row_1based: int, at_col: int, effect_id: int,
                      settle: float = 0.35) -> dict:
         """Insert a block into a PACKED row, shifting neighbours right.
 
         add_block can only replace a free pass-through cell, and real presets
         keep none before the amp (issue #10). Splicing needs three things that
-        are now all verified on hardware:
+        are all verified on hardware: blocks displace without loss (finding
+        25), cables can be removed selectively (finding 24), and same-row
+        draws work on rows 2-5 (findings 6 and 20).
 
-        - blocks displace without loss. Clear-and-reinsert keeps the whole
-          parameter array, every channel, plus the selected channel and the
-          bypass state (finding 25).
-        - cables can be REMOVED, selectively (finding 24).
-        - same-row draws work on rows 2-5 (findings 6 and 20).
-
-        The slack comes from a shunt to the right: cables only ever run to the
-        next column, so nothing can be inserted between two adjacent blocks
-        without moving one of them, and a shunt is the one cell that can be
-        overwritten for free. Shunts cannot be re-inserted, so this spends one
-        each time, and refuses when the row has none left rather than
-        rearranging someone's preset on a guess.
-
-        Returns a report; never raises for a refusal.
+        What it will do is decided by plan_splice, so a caller can show the
+        consequences first and execute the same decision afterwards.
         """
-        cells = {(c.row + 1, c.col + 1): c for c in (self.read_grid() or [])}
-        row = row_1based
-        occupied = sorted(c for (r, c) in cells if r == row)
-        if not occupied:
-            return {"ok": False, "detail": f"row {row} is empty; nothing to splice into"}
-        if (row, at_col) not in cells:
-            return {"ok": False,
-                    "detail": f"row {row} col {at_col} is already free - place "
-                              "the block directly instead of splicing"}
-
-        # Slack is the first column to the right that can absorb the shift: an
-        # empty cell (nothing lost) or a shunt (spent, and shunts cannot be
-        # re-inserted). Without one, the row would have to push a block off the
-        # end of the grid.
-        slack = next((c for c in range(at_col + 1, p.GRID_COLS + 1)
-                      if (row, c) not in cells or cells[(row, c)].is_shunt), None)
-        if slack is None:
-            return {"ok": False,
-                    "detail": f"no free or pass-through cell right of col "
-                              f"{at_col} on row {row} to take up the shift; "
-                              "refusing rather than displacing a block off the "
-                              "end of the grid"}
-        spent_shunt = (row, slack) in cells
-
-        # Cross-row feeds into the shift span would be silently broken: the
-        # cables we redraw are same-row only, and multi-row geometry is not
-        # fully decoded.
-        foreign = [c for c in range(at_col, slack + 1)
-                   if (row, c) in cells
-                   and cells[(row, c)].cable_in_mask & ~(1 << row)]
-        if foreign:
-            return {"ok": False,
-                    "detail": f"cells {foreign} on row {row} are fed from another "
-                              "row; splicing would break routing this code does "
-                              "not model"}
+        intent = self.plan_splice(row_1based, at_col)
+        if not intent["ok"]:
+            return dict(intent, moved=[])
+        row, slack = intent["row"], intent["slack_col"]
 
         moved = []
-        for col in range(slack - 1, at_col - 1, -1):
-            cell = cells.get((row, col))
-            if cell is None or cell.effect_id is None:
-                continue                       # a shunt in the span: let it die
-            self.place_block(row, col, 0)      # clear frees the cell AND its cables
+        for move in intent["moves"]:
+            col = move["from_col"]
+            self.place_block(row, col, 0)      # clear frees the cell AND cables
             time.sleep(settle)
-            self.place_block(row, col + 1, cell.effect_id)
+            self.place_block(row, col + 1, move["effect_id"])
             time.sleep(settle)
-            moved.append((cell.effect_id, col, col + 1))
+            moved.append((move["effect_id"], col, col + 1))
 
         self.place_block(row, at_col, effect_id)
         time.sleep(settle)
@@ -723,11 +742,12 @@ class FM9:
             "placed_at": (row, at_col),
             "moved": moved,
             "slack_col": slack,
-            "spent_a_shunt": spent_shunt,
+            "spent_a_shunt": intent["spends_shunt"],
             "alive": alive,
             "detail": (f"spliced in, live signal path confirmed: {why}"
                        if landed and alive else
-                       f"block did not land at row {row} col {at_col}" if not landed
+                       f"block did not land at row {row} col {at_col}"
+                       if not landed
                        else f"NO LIVE SIGNAL PATH after splice: {why}"),
         }
 

@@ -86,11 +86,19 @@ def test_the_position_reads_as_a_phrase_not_an_enum(client, monkeypatch,
                                                     pos, phrase):
     """It rendered as "no free pass-through cell any of the amp".
 
-    Driven through /api/apply on a PACKED grid, not by calling the helper: a
-    test that only exercises the helper stays green if the caller goes back to
-    interpolating the raw enum, which is the regression that matters.
+    Driven through /api/apply, not by calling the helper: a test that only
+    exercises the helper stays green if the caller goes back to interpolating
+    the raw enum, which is the regression that matters.
+
+    The grid here is packed AND has no amp. A packed grid on its own no longer
+    refuses: #32 splices into one, which is the whole point of it. Refusal is
+    now the case where a splice is impossible too, and removing the amp is the
+    smallest way to reach it, since "before the amp" has no meaning without
+    one. That is the path this wording still has to be right on.
     """
-    packed = [c for c in (server._fm9.read_grid() or []) if not c.is_shunt]
+    amp = server.reg.effect_id("DISTORT")
+    packed = [c for c in (server._fm9.read_grid() or [])
+              if not c.is_shunt and c.effect_id != amp]
     monkeypatch.setattr(server._fm9, "read_grid", lambda: packed)
     results = client.post("/api/apply", json={"actions": [
         {"kind": "add_block", "block": "wah", "instance": 1,

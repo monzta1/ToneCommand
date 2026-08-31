@@ -32,13 +32,33 @@ def test_add_block_refuses_duplicate(fm9):
     assert not res["ok"] and "already exists" in res["detail"]
 
 
-def test_add_block_refuses_without_free_cell(fm9):
+def test_add_block_splices_once_the_free_cells_are_gone(fm9):
+    """Issue #10, decided as option 2: exhausting the pass-through cells used
+    to mean refusal, which is what real presets hit, because none keep a spare
+    before the amp. It now displaces neighbours right instead, and reports what
+    it moved."""
     # the sim's default chain has exactly three shunt cells
-    run_action(fm9, Action(kind="add_block", block="wah"))
-    run_action(fm9, Action(kind="add_block", block="phaser"))
-    run_action(fm9, Action(kind="add_block", block="chorus"))
+    for block in ("wah", "phaser", "chorus"):
+        run_action(fm9, Action(kind="add_block", block=block))
     res = run_action(fm9, Action(kind="add_block", block="flanger"))
-    assert not res["ok"] and "refusing" in res["detail"]
+    assert res["ok"], res["detail"]
+    assert res.get("spliced") is True
+    assert res["moved"], "a splice has to say which blocks it displaced"
+    assert res["alive"], "and prove the signal still gets through"
+
+
+def test_add_block_still_refuses_when_the_row_cannot_shift(fm9):
+    """The refusal survives where it is real: with no room to the right, a
+    block would fall off the end of the grid."""
+    for block in ("wah", "phaser", "chorus"):
+        run_action(fm9, Action(kind="add_block", block=block))
+    for col in range(12, 15):                     # fill the row to the end
+        fm9.place_block(2, col, 100 + col)
+    res = run_action(fm9, Action(kind="add_block", block="flanger"))
+    assert not res["ok"]
+    assert res.get("reason") == "no_room_right", res
+    assert "fall off the end of the grid" in res["detail"]
+    assert "another preset" in res["detail"], "say what to do instead"
 
 
 def test_bind_pedal_uses_free_slot_and_curve(fm9):

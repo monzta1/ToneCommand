@@ -996,6 +996,10 @@
     line-height: 1; padding: 4px 6px;
   }
   .mclose:hover { color: var(--red); }
+.splice { margin-top: 6px; font-size: 11px; line-height: 1.5; }
+.splice .slide { color: var(--dim); }
+.splice .oneway { color: #e8b04b; }
+.splice .oneway::before { content: "ONE WAY: "; letter-spacing: .08em; }
 </style>
   <link rel="icon" type="image/png" href="/logo.png">
 </head>
@@ -3448,7 +3452,7 @@ function showPlan(plan) {
     <div class="plan-card${vclass}">
       <div><div class="what">${esc(describe(a))}</div><div class="why">${esc(a.reason || '')}</div>${vmsg}${
         (() => { const s = alsoAffects(a, currentSceneNumber);
-                 return s ? `<div class="spread">${esc(s)}</div>` : ''; })()}</div>
+                 return s ? `<div class="spread">${esc(s)}</div>` : ''; })()}${spliceNote(a)}</div>
       <div class="delta">${errs.length ? 'BLOCKED' : (a.kind === 'set_param' ? '→ ' + a.value : '')}</div>
     </div>`;
   }).join('');
@@ -3456,6 +3460,30 @@ function showPlan(plan) {
   if (blocked) log(`validation blocked ${blocked} action(s); they will not be transmitted`, 'err');
   $('planbox').style.display = 'block';
   log(`plan ready: ${plan.actions.length} change(s). Confirm to transmit.`, 'ok');}
+
+// A splice moves blocks the user did not ask about, and may spend a
+// pass-through cell that cannot be put back. Those two are not the same thing,
+// so they do not get the same line: one approval covering a reversible slide
+// and an irreversible spend, with nothing to tell them apart, is not informed
+// consent.
+function spliceNote(a) {
+  const sp = a.splice;
+  if (!sp || !sp.ok) return '';
+  const moves = (sp.moves || []).map(m =>
+    `${m.family || m.effect_id} ${m.instance || ''}`.trim()).join(', ');
+  const lines = [];
+  if (moves) {
+    lines.push(`<div class="slide">moves ${moves} one column right `
+      + `(re-selecting the preset puts them back)</div>`);
+  }
+  if (sp.spends_shunt) {
+    lines.push('<div class="oneway">spends the pass-through cell at column '
+      + `${sp.slack_col}. Shunts cannot be re-inserted, so nothing here puts `
+      + 'it back: the only way is to re-select the preset, which throws away '
+      + 'every other change too. Store the preset and it is gone for good</div>');
+  }
+  return lines.length ? `<div class="splice">${lines.join('')}</div>` : '';
+}
 
 async function engage() {
   const prompt = $('prompt').value.trim();
@@ -3620,6 +3648,20 @@ refreshSnaps();
 
 async function apply() {
   if (!currentPlan) return;
+  const spends = currentPlan.actions.filter(
+    a => a.splice && a.splice.ok && a.splice.spends_shunt);
+  if (spends.length) {
+    const where = spends.map(a => `column ${a.splice.slack_col}`).join(', ');
+    if (!window.confirm(
+        `This plan spends a pass-through cell (${where}) to make room. Shunts `
+        + `cannot be re-inserted, so nothing here puts it back: the only way `
+        + `is to re-select the preset and lose every other change with it, and `
+        + `storing the preset makes it permanent. Moving the blocks one column `
+        + `right is reversible. Continue?`)) {
+      log('splice not confirmed; transmit cancelled', 'err');
+      return;
+    }
+  }
   const stores = currentPlan.actions.filter(a => a.kind === 'store');
   if (stores.length) {
     const slots = stores.map(a => a.slot_label || a.value).join(', ');

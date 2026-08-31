@@ -225,6 +225,19 @@ float32), 0x32 grid insert, 0x35 cable draw.
     a shunt to its right to absorb it; shunts cannot be re-inserted
     (finding 8), so spending one is one-way, and a row with neither must be
     refused rather than pushing a block off the end of the grid.
+27. **Spending a shunt is one-way within the edit buffer, and only there.**
+    Verified on fw 12.00, preset wire 1 (`65 Bassguy`), whose row 3 was
+    packed from column 1 to 10 with its only shunt at column 11. A GEQ
+    spliced in ahead of the amp shifted five blocks right, consumed the
+    shunt, and left row 3 with no pass-through cell at all; an independent
+    read-back in a separate process showed every cell carrying an incoming
+    cable and a live Input-to-Output path. Re-selecting the same preset
+    brought the shunt back along with everything else, because that reloads
+    from flash. So the accurate claim is NOT that a spent cell never
+    returns: it is that nothing can return it on its own, the only route is
+    discarding the whole edit, and a store makes the loss permanent. A
+    confirmation that overstates this teaches the reader to stop believing
+    confirmations.
 
 ## Undecoded territory (help welcome)
 

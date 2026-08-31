@@ -4,6 +4,33 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (splice in the planner, 2026-08-24)
+- `add_block` splices when no free pass-through cell exists, instead of
+  refusing. That refusal is what real presets hit, because none keep a spare
+  cell before the amp (issue #10, decided as option 2). It displaces
+  neighbours right, redraws the span, and proves a live Input-to-Output path
+  before reporting success.
+- The consequences are attached to the PLAN, not discovered at apply time,
+  and the two kinds are kept apart: re-selecting the preset puts the slid
+  blocks back, while nothing puts a spent pass-through cell back on its own,
+  since shunts cannot be re-inserted. The plan card states each separately,
+  the one-way step is styled differently and prefixed ONE WAY, and TRANSMIT
+  asks about it in its own confirmation. One approval covering both with
+  nothing to tell them apart is not informed consent.
+- The one-way wording is the one hardware supports, which is not the one it
+  started as. The first version said the spent cell does not come back "even
+  after re-selecting the preset"; re-selecting reloads from flash, so it
+  does. What is actually one-way is that nothing can put that cell back on
+  its own: the only route is discarding the whole edit, and a store makes
+  the loss permanent. Corrected on the unit before the claim shipped.
+- Refusals name themselves rather than returning a generic no: no room to
+  the right (and what to do instead), a span fed from another row, or a
+  target column that is already free and needs no splice at all.
+- Amp detection on the grid is alias-hardened. Grid ids alias mod 128, so FX
+  Return (186) reads as 58 and would pass for an amp in a naive scan, putting
+  "before the amp" in front of the wrong block. It now resolves against the
+  status dump (issue #10 asked for this).
+
 
 ### Added (splice, 2026-08-24)
 - `FM9.splice_block()`: insert a block into a packed row by displacing its
