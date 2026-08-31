@@ -63,6 +63,41 @@ class _Cell:
 SIM_EMPTY_SLOTS = {386: "Phat Time", 387: "Live FM9+", 449: "", 511: ""}
 
 
+def _copy_buffer(buf: dict) -> dict:
+    """A preset buffer copy, without walking every integer in it.
+
+    The settle window is modelled by snapshotting the whole buffer before each
+    write, and `copy.deepcopy` was 16 of the 23 seconds of a single splice:
+    fifteen MILLION calls, because a preset holds thousands of parameter ints
+    and deepcopy memoises its way through each one. The shape here is known
+    and entirely plain data, so slicing the lists does the same job at C
+    speed.
+
+    Unrecognised keys fall back to deepcopy rather than being aliased in,
+    because a snapshot that shares mutable state with the live buffer would
+    silently stop modelling the settle window at all, which is the one thing
+    this copy exists for.
+    """
+    out = {}
+    for k, v in buf.items():
+        if k in ("number", "name", "tempo"):
+            out[k] = v
+        elif k == "scene_names":
+            out[k] = dict(v)
+        elif k == "grid":
+            out[k] = {pos: copy.copy(cell) for pos, cell in v.items()}
+        elif k == "scenes":
+            out[k] = {sc: {eid: dict(st) for eid, st in blocks.items()}
+                      for sc, blocks in v.items()}
+        elif k == "params":
+            out[k] = {eid: [chan[:] for chan in chans] for eid, chans in v.items()}
+        elif k == "modifiers":
+            out[k] = {slot: fields[:] for slot, fields in v.items()}
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
 def _empty_preset(number: int) -> dict:
     """A cleared slot: no blocks, no grid, no cables, blank scene names.
     Hardware reads an empty preset's scene-name fields as all-NUL."""
@@ -137,7 +172,7 @@ class SimState:
             self.presets[number] = (
                 _empty_preset(number) if number in self.empty_slots
                 else _default_preset(number, self.reg))
-        return copy.deepcopy(self.presets[number])
+        return _copy_buffer(self.presets[number])
 
     def select_preset(self, number: int):
         self.buffer = self._load(number)     # discards edit buffer
@@ -294,10 +329,10 @@ class SimFM9Core:
             return []
         if sub == (0x26, 0x00):
             slot = p.decode14(b[6], b[7])
-            snap = copy.deepcopy(self.st.buffer)
+            snap = _copy_buffer(self.st.buffer)
             snap["number"] = slot
             self.st.presets[slot] = snap
-            self.st.buffer = copy.deepcopy(snap)
+            self.st.buffer = _copy_buffer(snap)
             return []
         return []
 
@@ -541,7 +576,7 @@ class _SimOut:
                 # hardware applies writes asynchronously: snapshot the
                 # pre-write state so reads inside the settle window see it
                 if now >= self.core._snapshot_expire:
-                    self.core._snapshot = copy.deepcopy(self.core.st.buffer)
+                    self.core._snapshot = _copy_buffer(self.core.st.buffer)
                 self.core._snapshot_expire = now + SETTLE
                 for resp in self.core.handle(frame):
                     self.inp.queue.append(SimpleNamespace(type="sysex", data=resp[1:-1]))

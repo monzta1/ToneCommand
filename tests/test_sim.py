@@ -240,3 +240,59 @@ def test_a_discrete_write_of_zero_to_an_enum_still_lands(fm9, monkeypatch):
     fm9.set_param_ordinal(spec, 0)
     fm9._drain()
     assert fm9.get_param_wire(spec) == 0, "an enum write of 0 is a real write"
+
+
+def test_a_snapshot_shares_nothing_with_the_live_buffer():
+    """The settle window is modelled by snapshotting the buffer before each
+    write, so a snapshot that aliases the live one stops modelling anything:
+    the write lands in both and a read inside the window sees the new value.
+
+    `copy.deepcopy` guaranteed this and cost 16 of the 23 seconds of a single
+    splice, fifteen million calls deep. `_copy_buffer` knows the shape and
+    slices instead. This is the property that made deepcopy worth its price,
+    so it is checked directly rather than assumed.
+    """
+    from fm9.registry import Registry
+    from fm9.sim import SimFM9, _copy_buffer
+    dev = SimFM9(Registry())
+    with dev:
+        live = dev.sim_core.st.buffer
+        snap = _copy_buffer(live)
+        # _Cell has no __eq__, so cells compare by identity and a whole-dict
+        # comparison would fail for deepcopy too. Compare what they hold.
+        assert snap.keys() == live.keys()
+        assert {k: v for k, v in snap.items() if k != "grid"} \
+            == {k: v for k, v in live.items() if k != "grid"}
+        assert {pos: vars(c) for pos, c in snap["grid"].items()} \
+            == {pos: vars(c) for pos, c in live["grid"].items()}
+
+        eid = next(iter(live["params"]))
+        live["params"][eid][0][0] = 4321
+        assert snap["params"][eid][0][0] != 4321, "parameter lists are shared"
+
+        pos = next(iter(live["grid"]))
+        live["grid"][pos].effect_id = 999
+        assert snap["grid"][pos].effect_id != 999, "grid cells are shared"
+
+        sc = next(iter(live["scenes"]))
+        beid = next(iter(live["scenes"][sc]))
+        live["scenes"][sc][beid]["bypassed"] = not live["scenes"][sc][beid]["bypassed"]
+        assert snap["scenes"][sc][beid] != live["scenes"][sc][beid], \
+            "per-scene block state is shared"
+
+        slot = next(iter(live["modifiers"]))
+        live["modifiers"][slot][0] = 77
+        assert snap["modifiers"][slot][0] != 77, "modifier slots are shared"
+
+        live["scene_names"][1] = "changed"
+        assert snap["scene_names"][1] != "changed", "scene names are shared"
+
+
+def test_an_unrecognised_key_is_still_copied_deeply():
+    """A shape-aware copier is only safe while it knows the shape. Anything
+    added to the buffer later must not be aliased in by default."""
+    from fm9.sim import _copy_buffer
+    live = {"number": 1, "surprise": {"nested": [1, 2, 3]}}
+    snap = _copy_buffer(live)
+    live["surprise"]["nested"].append(4)
+    assert snap["surprise"]["nested"] == [1, 2, 3]
