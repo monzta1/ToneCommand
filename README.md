@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="docs/img/banner.png"
-       alt="ToneCommand. Program, connect, command your tone. Plan, preview, confirm, send."
+  <img src="docs/img/social-preview.png"
+       alt="ToneCommand. Program, connect, command your tone."
        width="820">
 </p>
 
