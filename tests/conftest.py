@@ -40,8 +40,16 @@ def isolated_env(tmp_path, monkeypatch):
     test asserting the built-in default - the same ambient-env leak, one PR
     later.
     """
-    from fm9 import planner
+    from fm9 import planner, share
     monkeypatch.setattr(planner, "_env_path", lambda: tmp_path / ".env")
+    # Third time, same lesson. share.endpoint() gained a .env fallback the day
+    # the service was deployed, because reading only os.environ meant the
+    # documented setup left sharing silently dark. Within a minute a test
+    # asserting "no service, work is queued locally" was reading the
+    # developer's live endpoint out of the real file. Any module that falls
+    # back to .env belongs in this fixture the moment it gains the fallback.
+    monkeypatch.setattr(share, "_env_path", lambda: tmp_path / ".env")
+    monkeypatch.delenv("TONECOMMAND_SHARE_URL", raising=False)
     # The same lesson, one file later. store_slots.json is the boundary that
     # decides which of the owner's 512 presets may be overwritten, and tests
     # that exercise the endpoint were isolating it one by one. A test that

@@ -38,7 +38,56 @@ from pathlib import Path
 #: Where copies go. Empty means sharing is local only, which is a perfectly
 #: good state and the one a fresh checkout starts in.
 def endpoint() -> str:
-    return os.environ.get("TONECOMMAND_SHARE_URL", "").strip().rstrip("/")
+    """The service URL, from the environment or from `.env`.
+
+    The `.env` fallback is not a convenience. Every other setting in this
+    project lives there, the service README says to set this one the same way,
+    and reading only `os.environ` meant following those instructions left the
+    feature silently dark: recipes queue in the outbox forever and the app
+    reports no endpoint, with nothing anywhere saying why. A configuration
+    that fails closed AND says nothing is the worst of both.
+    """
+    raw = os.environ.get("TONECOMMAND_SHARE_URL", "").strip()
+    if not raw:
+        raw = _from_env_file("TONECOMMAND_SHARE_URL")
+    return raw.rstrip("/")
+
+
+def _env_path() -> Path:
+    """The .env this reads. Indirected for the same reason planner._env_path
+    is: without it a test that unsets the variable still picks up whatever the
+    developer has configured on their own machine, and the suite starts
+    depending on the box it runs on. Caught immediately, by a test that
+    asserted sharing was local-only and found a live endpoint."""
+    return Path(__file__).resolve().parent.parent / ".env"
+
+
+def _from_env_file(key: str) -> str:
+    """One line out of `.env`, quotes and trailing comment removed.
+
+    Deliberately small rather than a dotenv dependency: this project has no
+    runtime dependencies it does not need, and the file is ours.
+    """
+    env_file = _env_path()
+    if not env_file.exists():
+        return ""
+    try:
+        lines = env_file.read_text().splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        line = line.strip()
+        if not line.startswith(f"{key}="):
+            continue
+        val = line.split("=", 1)[1].strip()
+        if val[:1] in ('"', "'"):
+            close = val.find(val[0], 1)
+            if close != -1:
+                return val[1:close]
+        if " #" in val:
+            val = val.split(" #", 1)[0].strip()
+        return val
+    return ""
 
 
 def outbox_path() -> Path:

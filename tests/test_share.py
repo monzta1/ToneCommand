@@ -140,3 +140,60 @@ def test_ranking_uses_recent_plays_not_a_lifetime_total(monkeypatch):
     d = TestClient(server.app).get("/api/recipes").json()
     order = [r["name"] for r in d["recipes"]]
     assert order.index("steve-lukather-lead") < order.index("goodbye-yesterday-rock-intro")
+
+
+# --- the endpoint has to be findable where the docs say to put it ---------
+
+def test_the_endpoint_is_read_from_the_env_file_too(tmp_path, monkeypatch):
+    """Every other setting in this project lives in `.env`, and the service
+    README says to set this one the same way. Reading only os.environ meant
+    following those instructions left the feature silently dark: recipes queue
+    in the outbox forever while the app reports no endpoint, with nothing
+    anywhere saying why. Found by deploying the service and watching the app
+    ignore it.
+    """
+    from fm9 import share
+    monkeypatch.delenv("TONECOMMAND_SHARE_URL", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("OTHER=ignored\nTONECOMMAND_SHARE_URL=https://example.workers.dev\n")
+    monkeypatch.setattr(share, "_env_path", lambda: env)
+    assert share.endpoint() == "https://example.workers.dev"
+
+
+def test_the_environment_outranks_the_file(tmp_path, monkeypatch):
+    """An explicit export is an operator pin, the same rule the store
+    whitelist follows."""
+    from fm9 import share
+    env = tmp_path / ".env"
+    env.write_text("TONECOMMAND_SHARE_URL=https://from-file.example\n")
+    monkeypatch.setattr(share, "_env_path", lambda: env)
+    monkeypatch.setenv("TONECOMMAND_SHARE_URL", "https://from-env.example")
+    assert share.endpoint() == "https://from-env.example"
+
+
+def test_a_trailing_slash_is_dropped(monkeypatch):
+    """Routes are appended as "/submit", so a trailing slash would give
+    "//submit"."""
+    from fm9 import share
+    monkeypatch.setenv("TONECOMMAND_SHARE_URL", "https://x.example/")
+    assert share.endpoint() == "https://x.example"
+
+
+def test_the_file_parser_handles_quotes_and_trailing_comments(tmp_path,
+                                                              monkeypatch):
+    from fm9 import share
+    monkeypatch.delenv("TONECOMMAND_SHARE_URL", raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        'TONECOMMAND_SHARE_URL="https://quoted.example"  # deployed today\n')
+    monkeypatch.setattr(share, "_env_path", lambda: env)
+    assert share.endpoint() == "https://quoted.example"
+
+
+def test_a_missing_env_file_is_not_an_error(tmp_path, monkeypatch):
+    """A fresh checkout has none, and sharing is local only, which is a
+    supported state rather than a fault."""
+    from fm9 import share
+    monkeypatch.delenv("TONECOMMAND_SHARE_URL", raising=False)
+    monkeypatch.setattr(share, "_env_path", lambda: tmp_path / "nope.env")
+    assert share.endpoint() == ""

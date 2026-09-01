@@ -32,16 +32,28 @@ surface rather than a leaderboard of whatever was posted first.
 ## Running it
 
 ```sh
-wrangler d1 create tonecommand
-wrangler d1 execute tonecommand --file service/schema.sql
-wrangler deploy
+cd service
+npx wrangler login                 # once, per Cloudflare account
+npx wrangler d1 create tonecommand # prints database_id, paste into wrangler.toml
+npx wrangler d1 execute tonecommand --remote --file schema.sql
+npx wrangler deploy
 ```
+
+`--remote` matters: without it the schema is applied to a local simulation and
+the deployed worker talks to an empty database.
+
+A brand new `workers.dev` subdomain takes a few minutes for its certificate to
+be issued. Until then every request fails the TLS handshake, which looks like
+an outage and is not one. Wait and retry before debugging anything.
 
 Then point the app at it:
 
 ```sh
 TONECOMMAND_SHARE_URL=https://your-worker.workers.dev
 ```
+
+Exported, or as a line in `.env` at the repo root, which is where every other
+setting in this project lives. An explicit export outranks the file.
 
 Unset, the app is local only, which is a perfectly good state and the one a
 fresh checkout starts in.

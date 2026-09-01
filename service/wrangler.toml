@@ -1,0 +1,27 @@
+# Deployment config for the sharing service.
+#
+# The worker holds an inbox and a counter, nothing else: recipe CONTENT lives
+# in this repository's recipes/ folder. That split is what makes the failure
+# mode acceptable. If this is down, browsing and using recipes still work,
+# because the app reads them from GitHub; only submission and ranking pause,
+# and the client holds both in a local outbox until it comes back.
+#
+# database_id is filled in by `wrangler d1 create tonecommand`, which prints
+# it. It is not a secret: it names a database that only this worker's binding
+# can reach, and Cloudflare authorises by account rather than by knowing the id.
+
+name = "tonecommand-share"
+main = "worker.js"
+compatibility_date = "2026-08-31"
+
+# Free tier is ample and is the point: 100k requests a day against a service
+# that stores no content and is not on the critical path for anything.
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"                 # env.DB in worker.js
+database_name = "tonecommand"
+database_id = "22e0e38f-ea37-4333-bf45-6452d5e435c9"
+
+[observability]
+enabled = true
