@@ -250,23 +250,62 @@ def test_the_description_is_the_half_that_actually_works():
     assert "VIDEO DESCRIPTION" in src and "SPOKEN TRANSCRIPT" in src
 
 
-def test_a_missing_transcript_does_not_blame_the_video():
-    """"This video has no captions" is a false statement about most videos and
-    points the player at the wrong problem. It has to say whose limitation it
-    is, and what to do about it."""
+def test_captions_are_tried_before_transcribing():
+    """Subtitles are free and instant where they exist. Whisper downloads
+    audio and burns CPU for minutes, so it is the fallback and not the
+    default."""
     src = inspect.getsource(describe.read_youtube)
-    assert "will not serve this" in src and "Show" in src and "transcript" in src
-    assert "has no captions" not in src
+    assert src.index("_subtitle_text") < src.index("_whisper_transcript")
 
 
-def test_the_page_fetch_is_not_capped_at_the_source_limit():
-    """The watch page is about 1.3MB and shortDescription sits at roughly
-    offset 745,000. Capping the fetch at MAX_SOURCE truncated the page before
-    the only part worth reading, which looked exactly like a video with no
-    description."""
-    assert describe.MAX_FETCH > 1_300_000
-    assert describe.MAX_FETCH > describe.MAX_SOURCE
-    assert "raw = r.read(cap)" in inspect.getsource(describe._get)
+def test_when_whisper_cannot_run_the_note_says_what_to_do():
+    """Never a dead end. Every reason there is no transcript comes with the
+    two click alternative that always works."""
+    src = inspect.getsource(describe._whisper_transcript)
+    assert "faster-whisper is not" in src
+    assert "Show" in src and "transcript" in src
+    assert "too long to" in src
+
+
+def test_a_transcript_this_tool_produced_is_labelled_as_such():
+    """The extractor should know it is reading machine heard speech rather
+    than the creator's own captions, because gear names come out of it
+    mangled."""
+    src = inspect.getsource(describe.read_youtube)
+    assert "SPOKEN TRANSCRIPT (transcribed here)" in src
+
+
+def test_the_vad_filter_stays_off_and_says_why():
+    """It silently returned zero segments for an entire video here, which
+    reads as "this video has no speech" and is a far worse failure than
+    transcribing a few seconds of music."""
+    src = inspect.getsource(describe._whisper_transcript)
+    assert "vad_filter" not in src.replace("# NO vad_filter", "")
+    assert "NO vad_filter" in src
+
+
+def test_auto_caption_duplicates_are_dropped():
+    """Auto-generated captions repeat each line as they roll. Left in, a forty
+    minute video arrives as eighty minutes of text saying everything twice."""
+    src = inspect.getsource(describe._subtitle_text)
+    assert "line != last" in src
+
+
+def test_the_whisper_model_is_configurable_with_a_documented_default():
+    """base is 14.7x realtime here and small is 5.4x. base mishears gear
+    names, which matters less than it looks because the extraction pass
+    repairs them from context and grounding refuses what it cannot resolve."""
+    assert describe.whisper_model_name() == "base"
+    import os
+    os.environ["TONECOMMAND_WHISPER_MODEL"] = "small"
+    try:
+        assert describe.whisper_model_name() == "small"
+    finally:
+        os.environ.pop("TONECOMMAND_WHISPER_MODEL")
+
+
+def test_there_is_a_length_past_which_transcribing_is_the_wrong_trade():
+    assert 1800 <= describe.WHISPER_MAX_SECONDS <= 10800
 
 
 def test_the_extractor_is_told_not_to_invent_settings():

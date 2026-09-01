@@ -19,6 +19,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Reading a YouTube link. Optional on purpose: without these the app runs
+# exactly as before and the source field still takes a pasted transcript, a
+# page URL, or plain text. yt-dlp does the metadata and subtitles;
+# faster-whisper only runs when a video has no captions at all.
+video = [
+    "yt-dlp>=2026.1",
+    "faster-whisper>=1.2",
+]
+
 dev = [
     "pytest>=8",
     # The suite is dominated by the simulator's settle window, which is

@@ -39,8 +39,11 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import re
+import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -118,108 +121,179 @@ def youtube_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+#: Whisper is the fallback, not the default: subtitles are free and instant
+#: where they exist. Measured on this machine, CPU int8, no GPU involved:
+#:
+#:     base    14.7x realtime   a 40 minute video in about 2.7 minutes
+#:     small    5.4x realtime   the same video in about 7.4 minutes
+#:
+#: `base` mishears gear names, and that matters less than it looks: the
+#: extraction pass repairs "match less DC 30" from context, and the grounding
+#: layer refuses a name it cannot resolve rather than guessing at it. Speed
+#: wins, because the build after this already takes minutes. Set
+#: TONECOMMAND_WHISPER_MODEL to small or medium to trade it back.
+WHISPER_MODEL = "base"
+
+#: Past this, transcribing is a worse deal than asking for a paste. Two hours
+#: of stream is eight minutes of CPU before the build even starts.
+WHISPER_MAX_SECONDS = 5400
+
+
+def whisper_model_name() -> str:
+    return os.environ.get("TONECOMMAND_WHISPER_MODEL", "").strip() or WHISPER_MODEL
+
+
 def read_youtube(url: str) -> dict:
-    """Description first, captions if the platform will part with them.
+    """Everything the video will give us, cheapest source first.
 
-    The description is the reliable half and, usefully, often the better half:
-    creators list gear and settings there in a tidy block, where the spoken
-    version is scattered through forty minutes of talking.
+    The order is the whole design:
 
-    Captions are attempted and usually refused (see _fetch_transcript). That
-    is a note on the result rather than a failure, because a description alone
-    is frequently enough to build from, and the note tells the player how to
-    get the transcript themselves in two clicks.
+        1. metadata    always. The description is where players put their gear
+                       list, in a tidy block, and it costs one request.
+        2. subtitles   usually. Free, instant, and exact where the creator
+                       published them or YouTube auto-generated them.
+        3. whisper     rarely. Downloads the audio and transcribes it locally,
+                       which takes minutes but always works.
+
+    An earlier version scraped the watch page with regexes and asked the bare
+    timedtext endpoint for captions. Both broke: the page truncated before the
+    description, and YouTube answers unsigned caption requests with zero bytes
+    however the URL is signed. yt-dlp handles all of it and keeps handling it
+    when YouTube changes, which it will.
     """
     vid = youtube_id(url)
     if not vid:
         raise SourceError("that does not look like a YouTube video link")
+    try:
+        import yt_dlp
+    except ImportError:
+        raise SourceError(
+            "reading YouTube links needs yt-dlp (pip install yt-dlp). Open the "
+            "video, use Show transcript, and paste the text instead.")
+
     notes, parts = [], []
-
-    title = description = ""
-    page = ""
+    workdir = tempfile.mkdtemp(prefix="tonecommand-src-")
     try:
-        page = _get(f"https://www.youtube.com/watch?v={vid}")
-        m = re.search(r'"shortDescription":"(.*?)","', page, re.S)
-        if m:
-            description = json.loads(f'"{m.group(1)}"')
-        t = re.search(r'"title":"([^"]{3,160})"', page)
-        if t:
-            title = json.loads(f'"{t.group(1)}"')
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        notes.append(f"could not read the video page ({exc})")
+        info = _yt_info(yt_dlp, url, workdir)
+        title = info.get("title") or ""
+        duration = info.get("duration") or 0
 
-    if description:
-        parts.append(f"VIDEO DESCRIPTION:\n{description}")
-    else:
-        notes.append("this video has no description text")
-
-    try:
-        text = _fetch_transcript(page)
-        if text:
-            parts.append(f"SPOKEN TRANSCRIPT:\n{text}")
+        description = (info.get("description") or "").strip()
+        if description:
+            parts.append(f"VIDEO DESCRIPTION:\n{description}")
         else:
-            # Accurate about whose limitation this is. "No captions" would be a
-            # false statement about most videos, and it points the player at
-            # the wrong problem.
-            notes.append(
-                "only the description was read: YouTube will not serve this "
-                "video's captions to anything but a browser. For the spoken "
-                "detail, open the video, click the three dots then Show "
-                "transcript, copy it, and paste it here instead.")
-    except SourceError as exc:
-        notes.append(str(exc))
+            notes.append("this video has no description text")
+
+        subs = _subtitle_text(workdir)
+        if subs:
+            parts.append(f"SPOKEN TRANSCRIPT:\n{subs}")
+        else:
+            spoken, note = _whisper_transcript(yt_dlp, url, workdir, duration)
+            if spoken:
+                parts.append(f"SPOKEN TRANSCRIPT (transcribed here):\n{spoken}")
+            if note:
+                notes.append(note)
+    except SourceError:
+        raise
+    except Exception as exc:
+        raise SourceError(f"could not read that video ({exc})")
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
 
     if not parts:
         raise SourceError(
-            "nothing readable came back from that video: no description and no "
-            "captions. Paste the relevant text instead and it will work the "
-            "same way.")
-    return {"text": "\n\n".join(parts), "title": title, "notes": notes,
-            "kind": "youtube", "url": url}
+            "nothing readable came back from that video: no description, no "
+            "captions, and no transcript. Paste the relevant text instead.")
+    return {"text": "\n\n".join(parts)[:MAX_SOURCE], "title": title,
+            "notes": notes, "kind": "youtube", "url": url}
 
 
-def _fetch_transcript(page: str) -> str:
-    """Captions from the track list embedded in the watch page.
+def _yt_info(yt_dlp, url: str, workdir: str) -> dict:
+    """Metadata, and subtitles written alongside it in one pass."""
+    opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "noprogress": True, "consoletitle": False,
+        "writesubtitles": True, "writeautomaticsub": True,
+        "subtitleslangs": ["en", "en-US", "en-GB"], "subtitlesformat": "vtt",
+        "outtmpl": os.path.join(workdir, "%(id)s.%(ext)s"),
+    }
+    with yt_dlp.YoutubeDL(opts) as y:
+        return y.extract_info(url, download=True)
 
-    Verified against a real video on 2026-09-01, and the honest state of it is
-    that this rarely returns anything.
 
-    The bare timedtext endpoint answers an unsigned request with zero bytes.
-    The signed baseUrls carried in the page's own captionTracks do too, in
-    every format tried (bare, fmt=json3, fmt=srv3), on a video whose captions
-    are plainly there in a browser. YouTube now gates caption fetching behind
-    signals a server-side request does not carry.
+def _subtitle_text(workdir: str) -> str:
+    """VTT on disk becomes plain prose.
 
-    It is kept because it costs one request off a page already fetched, it
-    works where a track is served, and it will start working again if that
-    changes. What it must never do is imply the video had no captions when the
-    truth is that we could not get them, so the caller says which.
+    Cues, timestamps and the WEBVTT header all go. Auto-generated captions
+    also repeat each line as they roll, so consecutive duplicates are dropped:
+    left in, a forty minute video arrives as eighty minutes of text saying
+    everything twice.
     """
-    if not page:
+    files = [f for f in os.listdir(workdir) if f.endswith(".vtt")]
+    if not files:
         return ""
-    m = re.search(r'"captionTracks":(\[.*?\])', page, re.S)
-    if not m:
-        return ""
+    raw = pathlib.Path(workdir, sorted(files)[0]).read_text(
+        encoding="utf-8", errors="replace")
+    out, last = [], None
+    for line in raw.splitlines():
+        line = line.strip()
+        if (not line or line.startswith(("WEBVTT", "Kind:", "Language:", "NOTE"))
+                or "-->" in line or line.isdigit()):
+            continue
+        line = re.sub(r"<[^>]+>", "", line).strip()
+        if line and line != last:
+            out.append(line)
+            last = line
+    return re.sub(r"\s+", " ", " ".join(out)).strip()
+
+
+def _whisper_transcript(yt_dlp, url: str, workdir: str,
+                        duration: int) -> tuple[str, str]:
+    """Download the audio and transcribe it locally. The last resort.
+
+    Returns (text, note). A note without text is the reason there is none, and
+    it is always something the player can act on.
+    """
     try:
-        tracks = json.loads(m.group(1))
-    except (json.JSONDecodeError, ValueError):
-        return ""
-    # English if it is there, otherwise whatever the creator published: a
-    # gear list in Spanish still names the same pedals.
-    pick = next((t for t in tracks
-                 if str(t.get("languageCode", "")).startswith("en")), None)
-    pick = pick or (tracks[0] if tracks else None)
-    if not pick or not pick.get("baseUrl"):
-        return ""
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return "", ("this video has no captions and faster-whisper is not "
+                    "installed, so only the description was read. Either pip "
+                    "install faster-whisper, or open the video, use Show "
+                    "transcript, and paste the text here.")
+    if duration and duration > WHISPER_MAX_SECONDS:
+        return "", (f"this video has no captions and runs "
+                    f"{duration // 60} minutes, which is too long to "
+                    f"transcribe here. Paste the part that describes the tone "
+                    f"instead.")
+    audio = os.path.join(workdir, "audio.mp3")
+    opts = {"quiet": True, "no_warnings": True, "noprogress": True,
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(workdir, "audio.%(ext)s"),
+            "postprocessors": [{"key": "FFmpegExtractAudio",
+                                "preferredcodec": "mp3",
+                                "preferredquality": "64"}]}
     try:
-        raw = _get(pick["baseUrl"])
-    except (urllib.error.URLError, OSError) as exc:
-        raise SourceError(f"could not fetch this video's captions ({exc})")
-    lines = re.findall(r"(?s)<text[^>]*>(.*?)</text>", raw)
-    if not lines:
-        lines = re.findall(r'"utf8":"(.*?)"', raw)
-    text = " ".join(_strip_html(x) for x in lines)
-    return re.sub(r"\s+", " ", text).strip()
+        with yt_dlp.YoutubeDL(opts) as y:
+            y.download([url])
+    except Exception as exc:
+        return "", f"could not download this video's audio to transcribe ({exc})"
+    if not os.path.exists(audio):
+        return "", "could not extract audio from this video to transcribe"
+    try:
+        model = WhisperModel(whisper_model_name(), device="cpu",
+                             compute_type="int8")
+        # NO vad_filter. It silently returned zero segments for a whole video
+        # here, which reads as "this video has no speech" and is a far worse
+        # failure than transcribing a few seconds of music.
+        segments, _ = model.transcribe(audio, language="en")
+        text = " ".join(seg.text.strip() for seg in segments)
+    except Exception as exc:
+        return "", f"could not transcribe this video's audio ({exc})"
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return "", "transcribing this video produced no speech"
+    return text, ""
 
 
 def read_page(url: str) -> dict:

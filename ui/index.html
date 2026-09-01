@@ -1139,9 +1139,9 @@
     <div class="hint" id="srchint">Reads what the source actually says and
       proposes a build for <em>your</em> rig. An interpretation to review and
       tweak, not a copy: sources rarely state everything, and what it had to
-      guess is marked separately. YouTube links read the video description,
-      which is where most players put their gear list; for the spoken detail,
-      open the video, Show transcript, and paste that.</div>
+      guess is marked separately. YouTube links read the description and the
+      captions, and transcribe the audio here if the video has none, which
+      takes a few minutes on a long one.</div>
     <div id="srcprogress" class="srcprog" hidden></div>
   </div>
 
@@ -3601,7 +3601,7 @@ $('buildscratch').onclick = async () => {
 // shape. It is also the only architecture that works: a raw source handed
 // straight to the planner times out.
 const SRC_STEPS = [
-  ['read',  'Reading the source'],
+  ['read',  'Reading the source, transcribing if the video has no captions'],
   ['found', 'Working out what tone it describes'],
   ['build', 'Building it against your rig'],
 ];
