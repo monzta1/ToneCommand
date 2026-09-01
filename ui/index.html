@@ -1139,6 +1139,11 @@
   scroll-behavior: smooth;
 }
 #chat .cthinking { font-size: 13px; opacity: .5; }
+/* What this tool did, as opposed to what either party said. */
+#chat .cnote {
+  font-size: 12px; color: var(--cyan-dim); border-left: 2px solid var(--line);
+  padding-left: 11px; line-height: 1.6;
+}
 
 /* The empty state: a question and six real requests, centred in the space the
    conversation will fill. It is most people's first sight of this panel, and
@@ -4477,6 +4482,16 @@ let chatLog = [];              // {role, content}
 let chatReady = false;         // the model thinks it has enough to go on
 let chatRequest = '';          // the agreed instruction, in its words
 let chatBusy = false;          // a turn is in flight
+let chatWorking = '';          // what it is doing, said where you are looking
+
+// A line in the transcript that this tool wrote about itself, rather than
+// something either party said. Rendered, and NEVER sent back to the model:
+// "I proposed 3 changes" is our bookkeeping, and feeding it back as though
+// the model had said it would have it answering its own status notes.
+function chatNote(text) {
+  chatLog.push({role: 'note', content: text});
+  renderChat();
+}
 
 // A conversation is work. Losing four turns of it to a reload, a crash, or a
 // closed laptop is the kind of small betrayal that stops people using a thing
@@ -4522,13 +4537,16 @@ function renderChat() {
   $('cempty').hidden = !!chatLog.length;
   if (!chatLog.length) { feed.innerHTML = ''; saveChat(); return; }
   feed.innerHTML = chatLog.map(m =>
-    `<div class="cmsg ${m.role}"><span class="cwho">${
-      m.role === 'user' ? 'YOU' : 'TONECOMMAND'}</span>${esc(m.content)}</div>`
+    m.role === 'note'
+      ? `<div class="cnote">${esc(m.content)}</div>`
+      : `<div class="cmsg ${m.role}"><span class="cwho">${
+          m.role === 'user' ? 'YOU' : 'TONECOMMAND'}</span>${esc(m.content)}</div>`
   ).join('')
   // Where the reader is already looking. A spinner on a button at the far
   // side of the panel is not an answer to "did that send?" when your eyes are
   // on the last thing said.
-  + (chatBusy ? '<div class="cthinking">thinking...</div>' : '')
+  + (chatWorking ? `<div class="cthinking">${esc(chatWorking)}</div>`
+                 : (chatBusy ? '<div class="cthinking">thinking...</div>' : ''))
   // The agreed sentence, when there is one, and then ONE button row. Built
   // once rather than per branch: an id written twice in a template is how a
   // handler ends up bound to whichever copy rendered last.
@@ -4597,7 +4615,8 @@ async function talk() {
   try {
     const r = await fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({messages: chatLog})});
+      body: JSON.stringify({messages: chatLog.filter(
+        m => m.role === 'user' || m.role === 'assistant')})});
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     chatLog.push({role: 'assistant', content: d.reply});
@@ -4628,6 +4647,11 @@ async function engage(prompt) {
   b.disabled = true;
   const was = b.textContent;
   b.innerHTML = '<span class="spin">◍</span> BUILDING';
+  // Said in the transcript, where the reader is. Working this out takes tens
+  // of seconds and the answer lands in a panel further down the page, so
+  // without this the button was the only sign anything was happening at all.
+  chatWorking = 'working out the changes...';
+  renderChat();
   log(`interpreting: "${prompt}"`);
   try {
     const r = await fetch('/api/plan', {
@@ -4642,15 +4666,29 @@ async function engage(prompt) {
       // conversation, where there is a box to answer it in.
       chatLog.push({role: 'assistant', content: plan.clarification});
       chatReady = false;
+      chatWorking = '';
       renderChat();
       $('planbox').style.display = 'none';
       clearAffected();
       return;
     }
     showPlan(plan);
+    // Say what happened, and take them to it. A plan that renders in a panel
+    // below the fold, while the reader is looking at the conversation, is
+    // indistinguishable from nothing happening.
+    const n = (plan.actions || []).length;
+    chatWorking = '';
+    chatNote(n
+      ? `Proposed ${n} change${n === 1 ? '' : 's'}, below. Nothing has been `
+        + `sent yet: review them and press TRANSMIT.`
+      : 'That produced no changes to make.');
+    if (n) $('planbox').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (e) {
     log(`plan failed: ${e.message}`, 'err');
+    chatWorking = '';
+    chatNote(`I could not build that: ${e.message}`);
   } finally {
+    chatWorking = '';
     b.disabled = false;
     b.textContent = was;
   }
@@ -5103,6 +5141,11 @@ async function apply() {
   }
   $('apply').disabled = true; $('discard').disabled = true;
   log('transmitting to FM9...');
+  // The transcript is where somebody who has been talking for five turns is
+  // looking. Transmitting reported itself only into the LOG, which is two
+  // panels further down the page.
+  chatWorking = 'sending to the FM9...';
+  renderChat();
   try {
     const r = await fetch('/api/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -5128,6 +5171,20 @@ async function apply() {
       log(`${describe(res.action)}: ${res.detail}${extra}`,
           res.ok ? 'ok' : (res.action ? 'err' : 'warn'));
     });
+    // And say so in the transcript, counting what actually landed rather than
+    // what was asked for. A partial failure that reports "sent" is worse than
+    // no report at all.
+    const acted = out.results.filter(
+      r => r.action && r.action.kind && r.action.kind !== 'snapshot');
+    const good = acted.filter(r => r.ok).length;
+    const bad = acted.length - good;
+    chatWorking = '';
+    chatNote(bad
+      ? `Sent ${good} of ${acted.length} change${acted.length === 1 ? '' : 's'} `
+        + `to the FM9. ${bad} did not apply; the log below says which.`
+      : `Sent ${good} change${good === 1 ? '' : 's'} to the FM9. It is in the `
+        + `edit buffer, so play it. Nothing is saved to the preset until you `
+        + `press SAVE.`);
     // Transmits, not downloads. This is the moment a recipe actually reached
     // somebody's rig, which is a far better signal than a fetch and much
     // harder to inflate by refreshing a page. Queued locally, so a gig with
@@ -5147,7 +5204,10 @@ async function apply() {
                        if (rescan) scanPreset(); }, 1500);
   } catch (e) {
     log(`transmit failed: ${e.message}`, 'err');
+    chatWorking = '';
+    chatNote(`Nothing was sent: ${e.message}`);
   } finally {
+    chatWorking = '';
     $('apply').disabled = false; $('discard').disabled = false;
     currentPlan = null;
     clearAffected();

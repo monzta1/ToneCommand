@@ -371,3 +371,80 @@ def test_the_explaining_shrank_to_one_line():
     hint = ui.split('class="hint composerhint">')[1].split("</div>")[0]
     assert len(hint) < 130, "the composer hint is a line, not a paragraph"
     assert "Enter sends" in hint and "until you confirm" in hint
+
+
+# --- saying what it is doing ----------------------------------------------
+#
+# Somebody asked for a build after a long conversation and got no sign it was
+# working, finished, or transmitting. The plan renders in a panel below the
+# fold while the reader is still looking at the conversation, so "done" and
+# "nothing happened" looked identical.
+
+def test_building_says_so_where_the_reader_is_looking():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "chatWorking = 'working out the changes...'" in fn
+
+
+def test_a_finished_plan_announces_itself_and_scrolls_into_view():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "Proposed ${n} change" in fn
+    assert "Nothing has been " in fn and "press TRANSMIT" in fn
+    assert "$('planbox').scrollIntoView" in fn
+
+
+def test_a_plan_with_no_actions_still_says_something():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "That produced no changes to make." in fn
+
+
+def test_a_failed_build_is_not_silence():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "I could not build that:" in fn
+
+
+def test_transmitting_reports_into_the_conversation_too():
+    """It reported itself only into the LOG, which is two panels further down
+    the page from where somebody five turns into a conversation is looking."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "chatWorking = 'sending to the FM9...'" in fn
+    assert "Sent ${good} change" in fn
+    assert "Nothing was sent:" in fn
+
+
+def test_the_count_is_what_landed_not_what_was_asked_for():
+    """A partial failure that reports "sent" is worse than no report."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "acted.filter(r => r.ok).length" in fn
+    assert "did not apply" in fn
+
+
+def test_a_note_is_never_fed_back_to_the_model():
+    """"I proposed 3 changes" is our bookkeeping. Sending it back as though
+    the model had said it would have it answering its own status notes."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function talk()")[1].split("\n}\n")[0]
+    assert "m.role === 'user' || m.role === 'assistant'" in fn
+    assert "chatLog.push({role: 'note'" in ui
+
+
+def test_notes_look_different_from_what_either_party_said():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "m.role === 'note'" in fn
+    assert 'class="cnote"' in fn
+    assert "#chat .cnote {" in ui
+
+
+def test_the_working_line_is_always_cleared():
+    """A spinner that outlives its request is a hang that never resolves."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    for name in ("async function engage(prompt)", "async function apply()"):
+        fn = ui.split(name)[1].split("\n}\n")[0]
+        tail = fn.split("finally {")[-1]
+        assert "chatWorking = ''" in tail, name
