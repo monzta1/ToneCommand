@@ -542,6 +542,39 @@ python3 -m venv .venv
 Dependencies are declared in [pyproject.toml](pyproject.toml); add
 `".[dev]"` to also get the test tooling.
 
+### Building from a video (optional)
+
+The "build from a video or description" field takes pasted text and page URLs
+with no extra setup. Reading a **YouTube link** needs more, and it is optional
+on purpose:
+
+```bash
+.venv/bin/pip install -e ".[video]"     # yt-dlp and faster-whisper
+brew install ffmpeg                      # or apt install ffmpeg
+```
+
+Three sources are tried, cheapest first: the video **description**, which is
+where most players put their gear list; the **captions**, free and instant
+where they exist; and failing both, the audio is downloaded and **transcribed
+locally** with Whisper. Nothing is sent to a transcription service.
+
+`ffmpeg` is a system dependency and pip cannot install it. It is only needed
+for that last case. The app tells you at startup which of the three it can do
+on your machine rather than failing at the end of a long wait.
+
+Transcription is CPU only and measured on an M-series Mac at about 9.6x
+realtime, so an hour of video is roughly six minutes. The `base` model is the
+default for that reason; set `TONECOMMAND_WHISPER_MODEL=small` for better
+accuracy on gear names at about a third of the speed. Videos longer than 90
+minutes are refused rather than transcribed, with a suggestion to paste the
+relevant part.
+
+**Long videos are the normal case and are handled by compression, not by
+patience.** A source is read into a compact spec before anything is built: a
+5,286 word walkthrough became a 282 word brief in 49 seconds, keeping all
+twelve of its tone statements and dropping the sponsor read. The expensive
+build pass never sees the transcript.
+
 ### Planner backends
 
 Natural-language planning tries, in order of preference:

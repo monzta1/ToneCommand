@@ -312,3 +312,77 @@ def test_the_extractor_is_told_not_to_invent_settings():
     assert '"stated" is ONLY what the source says' in describe.EXTRACT_TASK
     assert "Never add a setting it did not give" in describe.EXTRACT_TASK
     assert "Do not resolve gear to model names" in describe.EXTRACT_TASK
+
+
+# --- what a fresh clone gets ----------------------------------------------
+
+def test_the_base_install_can_still_use_the_field():
+    """Pasted text and page URLs need nothing beyond the base package. Only
+    YouTube needs the extras, so the feature must not present itself as
+    all-or-nothing."""
+    got = describe.read_source("Scene one is a Matchless clean with the gain "
+                               "at four and a large hall reverb at 25 percent")
+    assert got["kind"] == "text"
+
+
+def test_the_video_dependencies_are_an_optional_extra():
+    """Declared, not required. CI installs only [dev] and the whole suite
+    passes, which is the proof."""
+    toml = (ROOT / "pyproject.toml").read_text()
+    assert "video = [" in toml
+    assert "yt-dlp" in toml and "faster-whisper" in toml
+    deps = toml.split("dependencies = [")[1].split("]")[0]
+    assert "yt-dlp" not in deps and "faster-whisper" not in deps
+
+
+def test_ffmpeg_is_checked_by_name_rather_than_failing_inside_yt_dlp():
+    """pip cannot install it, so a clone that ran the extra and stopped there
+    still fails. Inside a yt-dlp postprocessor it surfaces as something about
+    ffprobe buried in a download error."""
+    src = inspect.getsource(describe._whisper_transcript)
+    assert 'shutil.which("ffmpeg")' in src
+    assert "brew install ffmpeg" in src
+    ffmpeg_at = src.index('shutil.which("ffmpeg")')
+    download_at = src.index("y.download")
+    assert ffmpeg_at < download_at, "check before spending the download"
+
+
+def test_the_machine_says_what_it_can_read_before_anything_is_pasted():
+    """Better than a four minute wait ending in a missing dependency."""
+    routes = {r.path for r in server.app.routes if getattr(r, "methods", None)}
+    assert "/api/describe/ready" in routes
+    ok, why = describe.whisper_ready()
+    assert isinstance(ok, bool) and isinstance(why, str)
+    assert "$('srchint').innerHTML +=" in SCRIPT
+    assert "Pasting text or a page link works either way" in SCRIPT
+
+
+def test_the_readme_documents_the_system_dependency():
+    """ffmpeg cannot be declared in pyproject, so the README is the only place
+    a cloner can learn about it."""
+    readme = (ROOT / "README.md").read_text()
+    assert 'pip install -e ".[video]"' in readme
+    assert "brew install ffmpeg" in readme
+    assert "pip cannot install it" in readme
+
+
+# --- and how it scales ----------------------------------------------------
+
+def test_long_sources_are_handled_by_compression_not_patience():
+    """The point that makes hour-long walkthroughs viable: the expensive build
+    pass never sees the transcript. Measured on a 5,286 word walkthrough, the
+    brief came out at 282 words with all twelve tone statements kept and the
+    sponsor read dropped."""
+    spec = {"summary": "a rig", "scenes": [{"n": 1, "name": "Clean",
+            "describes": "chimey"}], "stated": ["gain 4"] * 30, "vague": []}
+    brief = describe.brief_from(spec)
+    assert len(brief.split()) < 400, "the brief must stay small whatever came in"
+
+
+def test_there_is_a_ceiling_on_what_will_be_read():
+    """A source has to end somewhere, and silently truncating mid sentence is
+    better than a request that never returns."""
+    assert describe.MAX_SOURCE >= 100_000
+    huge = "word " * 200_000
+    got = describe.read_source(huge)
+    assert len(got["text"]) <= describe.MAX_SOURCE

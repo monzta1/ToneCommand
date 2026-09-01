@@ -555,6 +555,25 @@ class BuildBody(BaseModel):
     spec: dict
 
 
+@app.get("/api/describe/ready")
+def api_describe_ready():
+    """What this machine can and cannot read, before anybody pastes anything.
+
+    A clone that installed the base package can still use the field: pasted
+    text and page URLs need nothing extra. YouTube needs yt-dlp, and a video
+    with no captions additionally needs ffmpeg and faster-whisper. Saying so
+    up front beats a four minute wait ending in a missing dependency.
+    """
+    try:
+        import yt_dlp  # noqa: F401
+        video = True
+    except ImportError:
+        video = False
+    can_transcribe, why = describe.whisper_ready()
+    return {"youtube": video, "transcribe": can_transcribe, "note": why,
+            "model": describe.whisper_model_name()}
+
+
 @app.post("/api/describe/read")
 def api_describe_read(body: DescribeBody):
     """Pass one: a link or pasted text becomes a compact tone spec.

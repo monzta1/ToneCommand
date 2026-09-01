@@ -3683,6 +3683,21 @@ async function analyzeSource() {
   }
 }
 
+// What this machine can read, said once at startup rather than discovered
+// after a four minute wait. A clone that installed nothing extra can still
+// paste text and page URLs, which is most of the value.
+(async () => {
+  try {
+    const d = await (await fetch('/api/describe/ready')).json();
+    const bits = [];
+    if (!d.youtube) bits.push('YouTube links need yt-dlp (pip install -e ".[video]")');
+    else if (!d.transcribe) bits.push(`videos without captions cannot be transcribed here: ${d.note}`);
+    else if (d.note) bits.push(d.note);
+    if (bits.length) $('srchint').innerHTML += `<br><b>${esc(bits.join('. '))}.</b> `
+      + `Pasting text or a page link works either way.`;
+  } catch (e) { /* the field still works; this is only a heads up */ }
+})();
+
 $('analyze').onclick = analyzeSource;
 $('srcinput').addEventListener('keydown', e => {
   if (e.key === 'Enter') analyzeSource();

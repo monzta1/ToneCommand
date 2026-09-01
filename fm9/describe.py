@@ -247,6 +247,26 @@ def _subtitle_text(workdir: str) -> str:
     return re.sub(r"\s+", " ", " ".join(out)).strip()
 
 
+def whisper_ready() -> tuple[bool, str]:
+    """Whether transcribing can happen at all, and what is missing if not.
+
+    Called before the slow path starts so the UI can say "this will take a few
+    minutes and download a model the first time" rather than going quiet.
+    """
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError:
+        return False, "faster-whisper is not installed"
+    if not shutil.which("ffmpeg"):
+        return False, "ffmpeg is not installed"
+    import pathlib as _pl
+    cached = list((_pl.Path.home() / ".cache/huggingface/hub").glob(
+        f"models--*whisper-{whisper_model_name()}"))
+    if not cached:
+        return True, ("first run will download the whisper model, about 150MB")
+    return True, ""
+
+
 def _whisper_transcript(yt_dlp, url: str, workdir: str,
                         duration: int) -> tuple[str, str]:
     """Download the audio and transcribe it locally. The last resort.
@@ -260,6 +280,16 @@ def _whisper_transcript(yt_dlp, url: str, workdir: str,
         return "", ("this video has no captions and faster-whisper is not "
                     "installed, so only the description was read. Either pip "
                     "install faster-whisper, or open the video, use Show "
+                    "transcript, and paste the text here.")
+    # ffmpeg is a SYSTEM dependency and pip cannot install it, so a clone that
+    # ran `pip install -e ".[video]"` and stopped there still fails here. It
+    # fails inside a yt-dlp postprocessor too, which surfaces as something
+    # about "ffprobe/ffmpeg not found" buried in a download error. Checked up
+    # front so the message names the actual missing thing.
+    if not shutil.which("ffmpeg"):
+        return "", ("this video has no captions, and transcribing needs ffmpeg, "
+                    "which is not installed. Install it (brew install ffmpeg, "
+                    "or apt install ffmpeg), or open the video, use Show "
                     "transcript, and paste the text here.")
     if duration and duration > WHISPER_MAX_SECONDS:
         return "", (f"this video has no captions and runs "
@@ -281,6 +311,9 @@ def _whisper_transcript(yt_dlp, url: str, workdir: str,
     if not os.path.exists(audio):
         return "", "could not extract audio from this video to transcribe"
     try:
+        # First run downloads the model, about 150MB for base, with no output
+        # of its own. Silence for two minutes on a fresh clone reads as a
+        # hang, so the caller is told before it starts rather than after.
         model = WhisperModel(whisper_model_name(), device="cpu",
                              compute_type="int8")
         # NO vad_filter. It silently returned zero segments for a whole video
