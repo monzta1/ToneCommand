@@ -326,6 +326,30 @@ and contributes corrections back (see Protocol Contributions below).
   documented command set: scenes, bypass, channels, names, tempo, and the
   effect ID table.
 
+### Contributors
+
+Everything above is prior art this project builds on. These people built the
+project itself.
+
+- **[@bschmalz81401](https://github.com/bschmalz81401)** (Brian Schmalz).
+  Thirteen merged pull requests and the largest single body of work here after
+  the maintainer's. The "bring your own AI" backends, so the planner runs on
+  Grok, any OpenAI-compatible endpoint, or a model on your own laptop.
+  Building a preset from scratch into an empty slot. Selective cable removal,
+  decoded and hardware verified, and the block splice it makes possible, which
+  is what lets a block go into a chain with no room in it. The cab roster
+  mapped to the real cabinets. He tests his own changes against real hardware,
+  files the bugs he finds in his own pull requests out loud, and on one
+  occasion closed a PR of his own in favour of a fix he thought was worse than
+  it was, then caught the maintainer merging the wrong one anyway. That last
+  part is rarer than it sounds and it is why this project's simulator is
+  honest about the hardware.
+- **[@Triumph1701](https://github.com/Triumph1701)**. Designed the planner
+  backend fall-through contract (#7): how the app degrades cleanly across
+  wildly different AI backends, which of them can constrain output and which
+  cannot, and why validation stays load-bearing regardless. Implemented as
+  specified.
+
 Full license reproductions and file-level provenance:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
