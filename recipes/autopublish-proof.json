@@ -1,0 +1,16 @@
+{
+  "recipe_version": 1,
+  "name": "autopublish-proof",
+  "title": "Auto-publish proof",
+  "author": "tonecommand-share",
+  "device": "FM9",
+  "tested_firmware": "12.00",
+  "assumes": "a test recipe, safe to delete",
+  "steps": [
+    {
+      "kind": "set_scene",
+      "value": 1,
+      "reason": "prove the path end to end"
+    }
+  ]
+}
