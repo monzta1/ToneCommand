@@ -627,6 +627,12 @@ preset fiddling, you can [buy the maintainer a coffee](https://buymeacoffee.com/
 under his stage name, Shieldbearer - the same rig this tool preps for
 real gigs.
 
+Or wear the thing. The emblem is on a
+[tee](https://shop.shieldbearerusa.com/products/tonecommand-emblem-tee) and a
+[performance jersey](https://shop.shieldbearerusa.com/products/tonecommand-performance-jersey),
+both carrying the line at the top of this page, which was written for the
+shirt before it described the software.
+
 ## License
 
 Apache License 2.0 for this project's code. Vendored and derived content
