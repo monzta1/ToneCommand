@@ -224,3 +224,56 @@ def test_an_example_loads_but_does_not_send():
     assert "$('prompt').value = EXAMPLES" in fn
     assert "fetch(" not in fn
     assert "$('engage').click" not in fn and "planPrompt" not in fn
+
+
+# --- the chain, big enough to actually read -------------------------------
+
+def test_the_enlarged_view_is_a_clone_not_a_second_renderer():
+    """One drawing means the enlarged view cannot disagree with the small one,
+    which is the entire point of opening it."""
+    fn = SCRIPT.split("function openGrid()")[1].split("\n}\n")[0]
+    assert "svg.cloneNode(true)" in fn
+    assert "renderGrid" not in fn
+
+
+def test_it_cannot_change_the_rig():
+    """Inert by construction rather than by care: the cell click handler is
+    bound to #blocks, so a copy living anywhere else cannot bypass a block or
+    cycle a channel however hard it is clicked."""
+    fn = SCRIPT.split("function openGrid()")[1].split("\n}\n")[0]
+    assert "blockAction" not in fn and "fetch(" not in fn
+    assert "read-only copy" in UI
+
+
+def test_opening_it_does_not_cost_the_existing_clicks():
+    """Bypass and channel switching are what the panel is FOR. The background
+    was already ignored by the cell handler, so this takes nothing away."""
+    fn = SCRIPT.split("$('blocks').addEventListener('click', e => {\n  if (!e.target.closest('.cell'))")[1].split("\n});")[0]
+    assert "openGrid()" in fn
+    # and the original handler still guards on .cell
+    assert "const btn = e.target.closest('.cell');" in SCRIPT
+
+
+def test_it_scales_to_the_screen_rather_than_to_the_box():
+    """Fitting the box gained about ten percent, because the panel is already
+    nearly as wide as the drawing. Scaled deliberately instead, capped at 2x:
+    past that it is merely big, and a chain running off the edge is worse for
+    reviewing than a slightly smaller one you can see all of."""
+    fn = SCRIPT.split("function openGrid()")[1].split("\n}\n")[0]
+    assert "Math.min(2, room / naturalW)" in fn
+    assert "Math.max(1," in fn, "never smaller than the panel it came from"
+    assert fn.index("hidden = false") < fn.index("clientWidth"), \
+        "the width to fill is not known until the modal is laid out"
+
+
+def test_there_are_three_ways_out():
+    assert "$('gridclose').onclick = closeGrid;" in SCRIPT
+    assert "e.target === $('gridmodal')" in SCRIPT     # the backdrop
+    assert "e.key === 'Escape'" in SCRIPT
+
+
+def test_closing_does_not_leave_a_stale_rig_behind():
+    """A clone is a photograph. Kept around, it shows a preset that may since
+    have changed."""
+    fn = SCRIPT.split("function closeGrid()")[1].split("\n}\n")[0]
+    assert "$('gridbig').innerHTML = '';" in fn

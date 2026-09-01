@@ -1073,6 +1073,20 @@
     background: rgba(0,0,0,0.72); backdrop-filter: blur(2px); overflow-y: auto;
   }
   .modal[hidden] { display: none; }
+  /* The chain drawn large. It is an SVG with a viewBox, so lifting the
+     max-width the panel puts on it scales it up perfectly sharp rather than
+     enlarging pixels: the panel is cramped because the drawing is capped at
+     its natural size, not because it lacks detail. */
+  .modal.gridmodal .console { width: min(1500px, 96vw); }
+  #gridbig { overflow-x: auto; }
+  #gridbig svg.grid { height: auto; }
+  .gridzoom {
+    font: inherit; font-size: inherit; color: var(--cyan-dim);
+    background: none; border: none; border-bottom: 1px dotted var(--cyan-dim);
+    padding: 0; cursor: pointer;
+  }
+  .gridzoom:hover { color: var(--cyan); }
+  .gridwrap { cursor: zoom-in; }
   .modal .console { width: min(760px, 100%); margin: 0;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.7); }
   .modal .airow { flex-direction: column; align-items: stretch; }
@@ -1150,6 +1164,7 @@
       <span class="k"><span class="sw" style="background:#3b5262"></span>not reached</span>
       <span class="k">dashed = bypassed</span>
       <span class="k">click a block to bypass it, its letter to change channel</span>
+      <button class="k gridzoom" id="gridzoom">enlarge for review</button>
       <span class="k" id="gridwhy"></span>
     </div>
   </div>
@@ -1367,6 +1382,16 @@
   <div class="audlist" id="audlist"></div>
   <div class="audfoot"><span id="audcount"></span>
     <span>each step loads on the unit, UNDO covers it</span></div>
+</div>
+
+<div class="modal gridmodal" id="gridmodal" hidden>
+  <div class="console" data-label="SIGNAL CHAIN">
+    <button class="mclose" id="gridclose" title="close">&#10005;</button>
+    <div id="gridbig"></div>
+    <div class="hint">A read-only copy, drawn large. Bypassing and channel
+      changes stay on the panel behind this, so nothing here can change your
+      rig by accident.</div>
+  </div>
 </div>
 
 <div class="modal" id="aimodal" hidden>
@@ -3800,6 +3825,65 @@ $('egs').addEventListener('click', e => {
   // sentence first is half of what the examples are teaching.
   $('prompt').value = EXAMPLES[Number(b.dataset.eg)][1];
   $('prompt').focus();
+});
+
+// The chain, drawn large enough to read.
+//
+// A CLONE of the panel's own SVG rather than a second renderer. One drawing
+// means the enlarged view cannot disagree with the small one, which is the
+// entire point of looking at it. It is also inert by construction: the cell
+// click handler is bound to #blocks, so a copy living anywhere else cannot
+// bypass a block or cycle a channel however hard it is clicked.
+function openGrid() {
+  const svg = $('blocks').querySelector('svg.grid');
+  if (!svg) return;
+  const big = svg.cloneNode(true);
+  // Scaled deliberately, not fitted to the box. Fitting gained about ten
+  // percent, because the panel is already nearly as wide as the drawing: the
+  // chain is hard to read at 74px cells and 6.5px labels whatever container
+  // it sits in. At 2x those become 148px and 13px, which is legible, and the
+  // width it needs is the width it gets. #gridbig scrolls if that overflows,
+  // which beats shrinking it back down to unreadable.
+  $('gridbig').innerHTML = '';
+  $('gridbig').appendChild(big);
+  $('gridmodal').hidden = false;
+
+  // Scale AFTER showing, because the width to fill is not known until the
+  // modal is laid out. As much as the screen allows, capped at 2x: past that
+  // it is just big, and a chain that runs off the edge is worse for reviewing
+  // than a slightly smaller one you can see all of. Twelve blocks on a laptop
+  // lands around 1.3x, which is the difference between squinting and reading.
+  const vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
+  const naturalW = Number(vb[2]) || 0;
+  if (naturalW) {
+    const room = $('gridbig').clientWidth || naturalW;
+    const scale = Math.max(1, Math.min(2, room / naturalW));
+    big.style.width = Math.round(naturalW * scale) + 'px';
+    big.style.maxWidth = 'none';
+  }
+}
+
+function closeGrid() {
+  $('gridmodal').hidden = true;
+  $('gridbig').innerHTML = '';        // not left holding a stale rig
+}
+
+$('gridzoom').onclick = openGrid;
+$('gridclose').onclick = closeGrid;
+
+// Clicking the empty space around the blocks opens it too. The cell handler
+// already ignores background clicks, so this takes nothing away from bypass
+// or channel switching.
+$('blocks').addEventListener('click', e => {
+  if (!e.target.closest('.cell')) openGrid();
+});
+
+$('gridmodal').addEventListener('click', e => {
+  if (e.target === $('gridmodal')) closeGrid();     // click the backdrop
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('gridmodal').hidden) closeGrid();
 });
 
 $('analyze').onclick = analyzeSource;
