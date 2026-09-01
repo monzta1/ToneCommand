@@ -149,3 +149,78 @@ def test_the_sections_between_them_show_every_block(client):
     fams = {m["family"] for m in meta.values()}
     placed = {f for _, _, fams_ in _sections() for f in fams_} | {"GEQ"}
     assert fams <= placed, fams - placed
+
+
+# --- the signal chain says what is loaded, not just what kind of block ----
+
+def test_a_block_cell_shows_the_model_in_it():
+    """"Amp 1" tells you nothing you could not read off the unit. "JP IIC+
+    Red" is the thing you opened the page to check."""
+    assert "function blockModel(family)" in SCRIPT
+    fn = SCRIPT.split("function blockModel(family)")[1].split("\n}\n")[0]
+    assert "v.AMP_MODEL" in fn and "v.cab" in fn
+    assert "_TYPE_NAME" in fn
+    assert 'class="sub"' in SCRIPT
+
+
+def test_an_unresolved_ordinal_is_never_shown_as_a_name():
+    """values.cab is a description when the cabinet is in the roster and a
+    bare number when it is not. "6" under a Cab block looks like a setting and
+    means nothing, which is the same rule this project follows everywhere: an
+    unresolved ordinal is not a name. Observed live on preset 511."""
+    fn = SCRIPT.split("function blockModel(family)")[1].split("\n}\n")[0]
+    assert "test(text)" in fn and "\\d+" in fn
+    assert "ordinal " in fn
+
+
+def test_the_cab_sentence_is_cut_at_its_own_name():
+    """A cab description is a sentence: "2x12 SANTIAGO EJ1250 = 12in Eminence
+    ... in a Fender closed-back cabinet". The half before the equals sign is
+    the cab's name, and that is what fits on a 74px cell."""
+    fn = SCRIPT.split("function blockModel(family)")[1].split("\n}\n")[0]
+    assert "split(' = ')[0]" in fn
+
+
+def test_the_model_fits_the_cell_rather_than_overflowing_it():
+    """The channel badge starts at x + CW - 19, so the text has 45px. Measured
+    rather than guessed."""
+    fn = SCRIPT.split("function fitCell(text)")[1].split("\n}\n")[0]
+    assert "CELL_CHARS" in fn
+    assert "USA|UK" in fn, "the marque is not the identifying part"
+
+
+def test_the_tooltip_carries_the_full_name():
+    """The cell is truncated; hovering should give the whole thing."""
+    assert "${model ? ': ' + esc(model) : ''}" in SCRIPT
+
+
+# --- the command box is the product and should look like it ---------------
+
+def test_the_command_panel_is_set_apart():
+    """Every other panel reports on the rig or acts on one block. This is the
+    one that does the thing the tool exists for, and it was styled identically
+    to the log."""
+    assert '<div class="console command" data-label="COMMAND">' in BODY
+    style = UI.split("<style>")[1]
+    assert re.search(r"^\s*\.console\.command \{", style, re.M)
+    assert re.search(r"^\s*#engage \{", style, re.M)
+
+
+def test_it_shows_what_it_can_do_rather_than_claiming_it():
+    """Placeholder text teaches one example. Six loadable ones teach the
+    vocabulary, and are the fastest way for somebody who just cloned this to
+    see it work."""
+    assert "const EXAMPLES = [" in SCRIPT
+    block = SCRIPT.split("const EXAMPLES = [")[1].split("\n];")[0]
+    assert block.count("['") >= 6
+    for phrase in ("drop C", "JCM800", "expression pedal", "scene 2"):
+        assert phrase in block, phrase
+
+
+def test_an_example_loads_but_does_not_send():
+    """Seeing the sentence is half of what the examples teach, and pressing
+    ENGAGE stays the player's move."""
+    fn = SCRIPT.split("$('egs').addEventListener('click'")[1].split("\n});")[0]
+    assert "$('prompt').value = EXAMPLES" in fn
+    assert "fetch(" not in fn
+    assert "$('engage').click" not in fn and "planPrompt" not in fn

@@ -427,6 +427,36 @@
     margin: 4px 0 0 18px; font-size: var(--fs-label); color: var(--muted);
     border-left: 2px solid var(--line); padding-left: 10px;
   }
+  /* The command box is the product. Every other panel reports on the rig or
+     acts on one block; this is the one that does the thing the tool exists
+     for, and it was styled identically to the log. Given weight rather than
+     decoration: a brighter frame, a lit prompt, and room to breathe. */
+  .console.command {
+    border-color: rgba(47,230,255,0.34);
+    box-shadow: 0 0 34px rgba(47,230,255,0.07), inset 0 0 60px rgba(47,230,255,0.02);
+  }
+  .console.command > .phead { color: var(--cyan); }
+  .console.command .promptrow { align-items: center; }
+  .console.command #prompt { font-size: var(--fs-lead); }
+  .console.command .prompt-prefix { font-size: var(--fs-lead); }
+  #engage {
+    border-color: var(--cyan); color: var(--cyan); font-weight: 600;
+    letter-spacing: 0.1em; padding: 9px 22px;
+  }
+  #engage:hover:not(:disabled) { background: rgba(47,230,255,0.13); }
+
+  /* Examples that load themselves. They demonstrate the vocabulary, which no
+     amount of placeholder text does, and they are the fastest way for
+     somebody who just cloned this to see it work. */
+  .egs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .egs button {
+    font: inherit; font-size: var(--fs-label); letter-spacing: 0.02em;
+    color: var(--cyan-dim); background: rgba(47,230,255,0.05);
+    border: 1px solid rgba(47,230,255,0.2); border-radius: 3px;
+    padding: 5px 11px; cursor: pointer; text-align: left;
+  }
+  .egs button:hover { color: var(--cyan); border-color: var(--cyan-dim);
+                      background: rgba(47,230,255,0.12); }
   .knobs { columns: 340px; column-gap: 30px; }
   /* What is driving this parameter, when it is not you. Amber rather than
      cyan: cyan is "you can move this", and this is the one row you cannot. */
@@ -651,6 +681,11 @@
   svg.grid .nm { fill: var(--text); font-size: 12.5px; letter-spacing: 0.01em;
                  pointer-events: none; }
   svg.grid .cell.byp .nm { fill: var(--dim); }
+  /* The loaded model, under the block name. Dim on purpose: the block name and
+     the live path are what you scan for, this is what you check. */
+  svg.grid .cell .sub { font-size: 6.5px; fill: var(--muted); }
+  svg.grid .cell.live .sub { fill: var(--cyan-dim); }
+  svg.grid .cell.byp .sub { fill: var(--dim); opacity: 0.6; }
   svg.grid .ch { fill: var(--cyan-dim); font-size: 10.5px; letter-spacing: .06em; }
   svg.grid .chbox { fill: rgba(47,230,255,0.10); stroke: rgba(47,230,255,0.30);
                     stroke-width: 1; rx: 2; }
@@ -1119,13 +1154,19 @@
     </div>
   </div>
 
-  <div class="console" data-label="COMMAND">
+  <div class="console command" data-label="COMMAND">
     <div class="promptrow">
       <span class="prompt-prefix">&gt;</span>
       <input id="prompt" autocomplete="off" spellcheck="false"
              placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly">
       <button id="engage">ENGAGE</button>
     </div>
+    <!-- What it can do, said by showing rather than claiming. These are real
+         requests the planner resolves; clicking one loads it so the first
+         thing a new player does is a working command rather than a guess at
+         the vocabulary. -->
+    <div class="egs" id="egs"></div>
+
     <div class="hint">Changes are proposed first and only sent to the FM9 after you confirm. Edit buffer only, nothing is saved to your presets.</div>
 
     <!-- One field, one button. Paste a link and the work of watching the video
@@ -1902,6 +1943,37 @@ eachBox(box => box.addEventListener('click', e => {
 // packed. Live cells and live cables are lit; everything the signal does not
 // reach stays grey, which is the whole point of drawing it at all.
 const CW = 74, CH = 40, HGAP = 18, VGAP = 10, PAD = 3;
+
+// The model loaded in a block, where we have a real NAME for it.
+//
+// Never an ordinal. `values.cab` is a description when the cabinet is in the
+// roster and a bare number when it is not, and "6" under a Cab block is worse
+// than nothing: it looks like a setting and means nothing to anybody. Same
+// rule as everywhere else here, an unresolved ordinal is not a name.
+function blockModel(family) {
+  const v = (lastState && lastState.values) || {};
+  const raw = family === 'DISTORT' ? v.AMP_MODEL
+            : family === 'CABINET' ? v.cab
+            : v[`${family}_TYPE_NAME`];
+  if (!raw) return '';
+  const text = String(raw).trim();
+  if (!text || /^\d+$/.test(text) || /^ordinal /i.test(text)) return '';
+  // Cab descriptions are a sentence: "2x12 SANTIAGO EJ1250 = 12in Eminence
+  // ... in a Fender closed-back cabinet". The half before the equals sign is
+  // the cab's own name, which is what belongs on a 74px cell.
+  return text.split(' = ')[0].trim();
+}
+
+// 45px of cell, between the left padding and the channel badge. Measured
+// rather than guessed: the badge starts at x + CW - 19.
+const CELL_CHARS = 11;
+
+function fitCell(text) {
+  // "USA JP IIC+ Red" is the roster's name and the USA is not the part that
+  // identifies it. Dropping the leading marque buys four characters.
+  const t = text.replace(/^(USA|UK|EURO|JPN) /i, '');
+  return t.length > CELL_CHARS ? t.slice(0, CELL_CHARS - 1) + '\u2026' : t;
+}
 const cx = c => PAD + c * (CW + HGAP);
 
 function renderGrid(g) {
@@ -1946,15 +2018,21 @@ function renderGrid(g) {
     if (c.shunt) continue;
     const x = cx(c.col), y = cy(c.row);
     const cls = ['cell', c.live ? 'live' : '', c.bypassed ? 'byp' : ''].join(' ');
+    // What is actually LOADED in this block, not just which kind of block it
+    // is. "Amp 1" tells you nothing you could not see on the unit; "JP IIC+
+    // Red" is the thing you came to check.
+    const model = blockModel(c.family);
+    const sub = model ? `
+      <text class="sub" x="${x + 7}" y="${y + 30}">${esc(fitCell(model))}</text>` : '';
     const ch = c.channel ? `
       <rect class="chbox" x="${x + CW - 19}" y="${y + CH - 16}" width="14" height="12.5"/>
       <text class="ch" x="${x + CW - 15.5}" y="${y + CH - 7}" data-cyc="1">${c.channel}</text>` : '';
     parts.push(`<g class="${cls}" data-fam="${c.family}" data-inst="${c.instance}"
         data-chi="${'ABCD'.indexOf(c.channel || 'A')}" data-chn="4">
-      <title>${esc(c.label)}${c.bypassed ? ' (bypassed)' : ''}${c.live ? '' : ' - not reached by the signal'}</title>
+      <title>${esc(c.label)}${model ? ': ' + esc(model) : ''}${c.bypassed ? ' (bypassed)' : ''}${c.live ? '' : ' - not reached by the signal'}</title>
       <rect x="${x}" y="${y}" width="${CW}" height="${CH}"/>
       <text class="nm" x="${x + 7}" y="${y + 17}">${esc(shortLabel(c.label))}</text>
-      ${ch}</g>`);
+      ${sub}${ch}</g>`);
   }
 
   $('blocks').innerHTML =
@@ -3697,6 +3775,32 @@ async function analyzeSource() {
       + `Pasting text or a page link works either way.`;
   } catch (e) { /* the field still works; this is only a heads up */ }
 })();
+
+// Real requests, each resolving to concrete parameter changes. The short
+// label is what fits on a chip; the sentence is what actually gets planned,
+// because the vocabulary is the thing being demonstrated.
+const EXAMPLES = [
+  ['Drop C tighten',   'tighten the gate for drop C and bump the presence slightly'],
+  ['Klon into a JCM800', 'a Klon into a JCM800 with a greenback 4x12'],
+  ['Van Halen',        'give me a Van Halen Balance era tone with the flanger on the expression pedal'],
+  ['Wets in scene 2',  'make scene 1 a dry crunch rhythm and keep the wets in scene 2'],
+  ['Swell on pedal 2', 'put the delay and reverb mix on pedal 2 so I can swell into the chorus'],
+  ['Octave under lead', 'add a subtle octave-down layer like a POG under the lead'],
+];
+
+$('egs').innerHTML = EXAMPLES
+  .map(([label, prompt], i) =>
+    `<button data-eg="${i}" title="${esc(prompt)}">${esc(label)}</button>`)
+  .join('');
+
+$('egs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-eg]');
+  if (!b) return;
+  // Loaded, not sent. Pressing ENGAGE stays the player's move, and seeing the
+  // sentence first is half of what the examples are teaching.
+  $('prompt').value = EXAMPLES[Number(b.dataset.eg)][1];
+  $('prompt').focus();
+});
 
 $('analyze').onclick = analyzeSource;
 $('srcinput').addEventListener('keydown', e => {
