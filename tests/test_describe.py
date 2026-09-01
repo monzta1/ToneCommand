@@ -236,12 +236,37 @@ def test_a_source_that_cannot_be_read_says_so_plainly(client, monkeypatch):
     assert "paste it here instead" in r.json()["error"]
 
 
-def test_a_video_with_no_captions_still_uses_the_description():
-    """Creators put the gear list in the description as often as they say it
-    out loud, so a missing transcript is a note rather than a failure."""
+def test_the_description_is_the_half_that_actually_works():
+    """Verified against a real video: the description comes back, the captions
+    do not. YouTube gates caption fetching behind signals a server-side
+    request does not carry, and the signed baseUrls in the page's own
+    captionTracks return zero bytes in every format tried.
+
+    Creators list gear in the description in a tidy block anyway, where the
+    spoken version is scattered through forty minutes, so a description alone
+    is frequently enough to build from.
+    """
     src = inspect.getsource(describe.read_youtube)
     assert "VIDEO DESCRIPTION" in src and "SPOKEN TRANSCRIPT" in src
-    assert "has no captions" in src
+
+
+def test_a_missing_transcript_does_not_blame_the_video():
+    """"This video has no captions" is a false statement about most videos and
+    points the player at the wrong problem. It has to say whose limitation it
+    is, and what to do about it."""
+    src = inspect.getsource(describe.read_youtube)
+    assert "will not serve this" in src and "Show" in src and "transcript" in src
+    assert "has no captions" not in src
+
+
+def test_the_page_fetch_is_not_capped_at_the_source_limit():
+    """The watch page is about 1.3MB and shortDescription sits at roughly
+    offset 745,000. Capping the fetch at MAX_SOURCE truncated the page before
+    the only part worth reading, which looked exactly like a video with no
+    description."""
+    assert describe.MAX_FETCH > 1_300_000
+    assert describe.MAX_FETCH > describe.MAX_SOURCE
+    assert "raw = r.read(cap)" in inspect.getsource(describe._get)
 
 
 def test_the_extractor_is_told_not_to_invent_settings():

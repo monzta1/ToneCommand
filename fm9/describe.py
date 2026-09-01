@@ -80,7 +80,14 @@ def looks_like_url(text: str) -> bool:
     return t.startswith(("http://", "https://")) and " " not in t.split("\n")[0]
 
 
-def _get(url: str, timeout: int = 25) -> str:
+#: A YouTube watch page is about 1.3MB and the description sits two thirds of
+#: the way through it. Capping the FETCH at MAX_SOURCE truncated the page
+#: before the part worth reading, which looked exactly like "this video has no
+#: description". The cap belongs on the text kept, not on the bytes read.
+MAX_FETCH = 3_000_000
+
+
+def _get(url: str, timeout: int = 25, cap: int = MAX_FETCH) -> str:
     req = urllib.request.Request(url, headers={
         # Some sites serve a stub or a consent wall to anything that does not
         # look like a browser, and a stub is worse than an error: it extracts
@@ -90,7 +97,7 @@ def _get(url: str, timeout: int = 25) -> str:
         "Accept-Language": "en-US,en;q=0.9",
     })
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read(MAX_SOURCE)
+        raw = r.read(cap)
     return raw.decode("utf-8", "replace")
 
 
@@ -112,11 +119,16 @@ def youtube_id(url: str) -> str | None:
 
 
 def read_youtube(url: str) -> dict:
-    """Transcript AND description, because creators put the gear list in
-    either one and often only in the description.
+    """Description first, captions if the platform will part with them.
 
-    Neither is guaranteed. A video with captions off still has a description
-    worth reading, so a missing transcript is a note rather than a failure.
+    The description is the reliable half and, usefully, often the better half:
+    creators list gear and settings there in a tidy block, where the spoken
+    version is scattered through forty minutes of talking.
+
+    Captions are attempted and usually refused (see _fetch_transcript). That
+    is a note on the result rather than a failure, because a description alone
+    is frequently enough to build from, and the note tells the player how to
+    get the transcript themselves in two clicks.
     """
     vid = youtube_id(url)
     if not vid:
@@ -124,12 +136,13 @@ def read_youtube(url: str) -> dict:
     notes, parts = [], []
 
     title = description = ""
+    page = ""
     try:
         page = _get(f"https://www.youtube.com/watch?v={vid}")
         m = re.search(r'"shortDescription":"(.*?)","', page, re.S)
         if m:
             description = json.loads(f'"{m.group(1)}"')
-        t = re.search(r'"title":\{"simpleText":"(.*?)"\}', page)
+        t = re.search(r'"title":"([^"]{3,160})"', page)
         if t:
             title = json.loads(f'"{t.group(1)}"')
     except (urllib.error.URLError, OSError, ValueError) as exc:
@@ -141,12 +154,18 @@ def read_youtube(url: str) -> dict:
         notes.append("this video has no description text")
 
     try:
-        text = _fetch_transcript(vid)
+        text = _fetch_transcript(page)
         if text:
             parts.append(f"SPOKEN TRANSCRIPT:\n{text}")
         else:
-            notes.append("this video has no captions, so only the description "
-                         "was read")
+            # Accurate about whose limitation this is. "No captions" would be a
+            # false statement about most videos, and it points the player at
+            # the wrong problem.
+            notes.append(
+                "only the description was read: YouTube will not serve this "
+                "video's captions to anything but a browser. For the spoken "
+                "detail, open the video, click the three dots then Show "
+                "transcript, copy it, and paste it here instead.")
     except SourceError as exc:
         notes.append(str(exc))
 
@@ -159,15 +178,46 @@ def read_youtube(url: str) -> dict:
             "kind": "youtube", "url": url}
 
 
-def _fetch_transcript(vid: str) -> str:
-    """Captions via the timedtext endpoint. Best effort by design."""
-    try:
-        raw = _get(f"https://www.youtube.com/api/timedtext?lang=en&v={vid}")
-    except (urllib.error.URLError, OSError) as exc:
-        raise SourceError(f"could not reach the caption service ({exc})")
-    if not raw.strip():
+def _fetch_transcript(page: str) -> str:
+    """Captions from the track list embedded in the watch page.
+
+    Verified against a real video on 2026-09-01, and the honest state of it is
+    that this rarely returns anything.
+
+    The bare timedtext endpoint answers an unsigned request with zero bytes.
+    The signed baseUrls carried in the page's own captionTracks do too, in
+    every format tried (bare, fmt=json3, fmt=srv3), on a video whose captions
+    are plainly there in a browser. YouTube now gates caption fetching behind
+    signals a server-side request does not carry.
+
+    It is kept because it costs one request off a page already fetched, it
+    works where a track is served, and it will start working again if that
+    changes. What it must never do is imply the video had no captions when the
+    truth is that we could not get them, so the caller says which.
+    """
+    if not page:
         return ""
+    m = re.search(r'"captionTracks":(\[.*?\])', page, re.S)
+    if not m:
+        return ""
+    try:
+        tracks = json.loads(m.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return ""
+    # English if it is there, otherwise whatever the creator published: a
+    # gear list in Spanish still names the same pedals.
+    pick = next((t for t in tracks
+                 if str(t.get("languageCode", "")).startswith("en")), None)
+    pick = pick or (tracks[0] if tracks else None)
+    if not pick or not pick.get("baseUrl"):
+        return ""
+    try:
+        raw = _get(pick["baseUrl"])
+    except (urllib.error.URLError, OSError) as exc:
+        raise SourceError(f"could not fetch this video's captions ({exc})")
     lines = re.findall(r"(?s)<text[^>]*>(.*?)</text>", raw)
+    if not lines:
+        lines = re.findall(r'"utf8":"(.*?)"', raw)
     text = " ".join(_strip_html(x) for x in lines)
     return re.sub(r"\s+", " ", text).strip()
 
