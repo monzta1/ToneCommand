@@ -414,6 +414,41 @@
   .srcprog .found { margin-top: 8px; color: var(--fg); }
   /* What the source said, versus what this tool chose. The whole honesty of
      the feature is in keeping these two visually separate. */
+  .srcask {
+    margin-top: 14px; padding: 16px 18px; border-radius: 4px;
+    background: rgba(255,180,84,0.05);
+    border: 1px solid rgba(255,180,84,0.3);
+  }
+  .srcask h4 {
+    margin: 0 0 4px; font-size: var(--fs-label); letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--amber); font-weight: 500;
+  }
+  .srcask p { font-size: var(--fs-hint); color: var(--dim); margin: 0 0 12px; line-height: 1.6; }
+  .srcask .q { margin-bottom: 16px; }
+  .srcask .q > label {
+    display: block; font-size: var(--fs-hint); color: var(--fg); margin-bottom: 7px;
+  }
+  .srcask .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .srcask .opts button {
+    font: inherit; font-size: var(--fs-label); padding: 6px 12px;
+    border-radius: 3px; cursor: pointer;
+    color: var(--dim); background: transparent; border: 1px solid var(--line);
+  }
+  .srcask .opts button.on {
+    color: var(--amber); border-color: var(--amber);
+    background: rgba(255,180,84,0.12);
+  }
+  .srcask input[type=text] {
+    width: 100%; background: #0d0f0d; border: 1px solid var(--line);
+    color: var(--fg); font: inherit; font-size: var(--fs-hint);
+    padding: 7px 9px; border-radius: 3px;
+  }
+  .srcask .go { margin-top: 4px; border-color: var(--amber); color: var(--amber); }
+  .srcask .go:hover { background: rgba(255,180,84,0.14); }
+  /* What the build will NOT touch. Amber, like every other thing here that
+     is true and easy to miss. */
+  .inherits { margin: 10px 0 2px; font-size: var(--fs-hint); color: var(--dim); }
+  .inherits b { color: var(--amber); font-weight: 600; }
   .srcsplit { margin: 14px 0 4px; }
   .srcsplit h5 {
     margin: 12px 0 5px; font-size: var(--fs-label); letter-spacing: 0.16em;
@@ -1209,6 +1244,11 @@
       captions, and transcribe the audio here if the video has none, which
       takes a few minutes on a long one.</div>
     <div id="srcprogress" class="srcprog" hidden></div>
+
+    <!-- Between reading and building. Two questions whose answers change the
+         work, asked once, at the point where they are decisions rather than
+         discoveries. -->
+    <div id="srcask" class="srcask" hidden></div>
   </div>
 
   <div class="console" data-label="PROPOSED CHANGES" id="planbox" style="display:none">
@@ -2969,8 +3009,16 @@ async function saveToSlot() {
   const slot = saveSlots.find(s => s.number === n);
   if (!slot) return;
   const holds = slot.name ? `"${slot.name}"` : (slot.empty === true ? 'nothing' : 'an unread preset');
+  // The name it will be SAVED UNDER, not just the slot it lands in. The buffer
+  // carries the name of whatever preset was loaded until something renames it,
+  // so a build can be saved under a completely unrelated preset's name and
+  // read as correct afterwards. Once it is in flash, the name is the only
+  // label anyone has for it.
+  const asName = ((lastState.preset || {}).name || '').trim();
   if (!window.confirm(
         `Save the current edit buffer to slot ${slot.label}?\n\n` +
+        `It will be saved under the name ${asName ? `"${asName}"` : '(unnamed)'}.` +
+        ` If that is not what this preset is, cancel and rename it first.\n\n` +
         `That slot currently holds ${holds}, and it will be overwritten ` +
         `permanently. UNDO does not cover this.`)) {
     log('save cancelled', 'warn');
@@ -3569,6 +3617,22 @@ function bypassBadge(fam, inst, title) {
     >BYPASSED</button>`;
 }
 
+// What the build leaves alone, said before it is confirmed.
+//
+// A store writes the whole edit buffer rather than the changes, so every
+// block a plan does not touch is silently adopted from the preset underneath.
+// A build off a video changed three blocks of thirteen and was saved under a
+// name claiming the whole rig; the cab, which shapes the sound as much as the
+// head, came from the preset below and nobody was told until it was already
+// stored. This is that, made visible while it is still a decision.
+function inheritsHtml(plan) {
+  const keep = plan.inherits || [];
+  if (!keep.length) return '';
+  return `<div class="inherits">Not changed by this build, so it keeps whatever
+    the loaded preset has: <b>${keep.map(esc).join(', ')}</b>. If you save this,
+    those come with it.</div>`;
+}
+
 // Which parameters a pedal can drive. A selector is a list of names, not a
 // range, so sweeping one with a foot is meaningless and the server refuses
 // it; asking here as well keeps the button off rows where it could only fail.
@@ -3784,26 +3848,13 @@ async function analyzeSource() {
           + (spec.scenes || []).map(x => esc(x.name)).join(', ') : '')
       + `<br>${(spec.stated || []).length} settings stated in the source, `
       + `${(spec.vague || []).length} left to interpret.`;
-    srcProgress('build', note);
+    srcProgress('found', note);
     for (const n of ((spec.source || {}).notes || [])) log(`source: ${n}`, 'warn');
     log(`read ${spec.words} words: ${spec.summary}`, 'ok');
-
-    btn.textContent = 'BUILDING...';
-    const b = await fetch('/api/describe/build', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({spec})});
-    const plan = await b.json();
-    if (plan.error) throw new Error(plan.error);
-
-    srcProgress(null, note);
-    $('srcprogress').hidden = true;
-    showPlan(plan);
-    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
-    log(`"${plan.summary}" proposed from that source. Review it, then TRANSMIT.`, 'ok');
-    if (plan.dropped && plan.dropped.length) {
-      log(`dropped ${plan.dropped.join(', ')}: a build from someone else's `
-          + `source may not write to a preset slot`, 'warn');
-    }
+    // Stop here and ask. The source describes what the PLAYER IN IT has; how
+    // much of it you want is yours to say, and building the wrong shape and
+    // calling it an interpretation is not the same as asking.
+    askAboutBuild(spec, note);
   } catch (e) {
     $('srcprogress').hidden = true;
     log(`could not build from that: ${e.message}`, 'err');
@@ -3910,6 +3961,100 @@ $('gridmodal').addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('gridmodal').hidden) closeGrid();
 });
+
+// The two questions whose answers change the work. Modelled on how a careful
+// person takes a brief: confirm the shape and the name, then go.
+let srcAnswers = {scenes: null, name: ''};
+
+function askAboutBuild(spec, note) {
+  const found = (spec.scenes || []).length || 1;
+  const loaded = (lastState.preset || {}).name;
+  srcAnswers = {scenes: found, name: suggestName(spec)};
+
+  const counts = [...new Set([1, found])].sort((a, b) => a - b);
+  $('srcask').innerHTML = `
+    <h4>Before I build it</h4>
+    <p>This source describes ${found} scene${found === 1 ? '' : 's'}, which is
+       what the player in it happens to run. How much of it do you want?</p>
+    <div class="q">
+      <label>Scenes to build</label>
+      <div class="opts" id="qscenes">${counts.map(n =>
+        `<button data-n="${n}" class="${n === found ? 'on' : ''}">${
+          n === 1 ? 'Just one scene' : `All ${n} scenes`}</button>`).join('')}</div>
+    </div>
+    <div class="q">
+      <label>Name it</label>
+      <input type="text" id="qname" maxlength="32" value="${esc(srcAnswers.name)}">
+    </div>
+    <p>Building on top of <b>${esc(loaded || 'the loaded preset')}</b>. Anything
+       the build does not change stays exactly as it is there, and a save would
+       keep it. I will list what that covers before you transmit.</p>
+    <button class="go" id="qgo">BUILD IT</button>`;
+  $('srcask').hidden = false;
+
+  $('qscenes').onclick = e => {
+    const b = e.target.closest('button[data-n]');
+    if (!b) return;
+    srcAnswers.scenes = Number(b.dataset.n);
+    [...$('qscenes').children].forEach(x => x.classList.toggle('on', x === b));
+  };
+  $('qgo').onclick = () => {
+    srcAnswers.name = $('qname').value.trim();
+    $('srcask').hidden = true;
+    runBuild(spec, note);
+  };
+}
+
+// A name from the source, so the field starts with something true rather than
+// with the previous preset's name, which is how "Devs Gift Of Tone" ended up
+// stored as a Petrucci build.
+function suggestName(spec) {
+  // A starting point, not a decision: the field is editable and this only has
+  // to be better than the previous preset's name, which is how "Devs Gift Of
+  // Tone" ended up saved as a Petrucci build.
+  const stop = /^(a|an|the|his|her|their|my|with|into|and|for|plus|through)$/i;
+  const words = String(spec.summary || '')
+    .split(/[,.:;(]/)[0]
+    .split(/\s+/)
+    .filter(Boolean);
+  while (words.length && stop.test(words[0])) words.shift();   // no leading "A"
+  const out = [];
+  for (const w of words) {
+    if (out.length >= 4) break;
+    out.push(w);
+  }
+  while (out.length && stop.test(out[out.length - 1])) out.pop();  // no trailing "into"
+  return out.join(' ').slice(0, 32);
+}
+
+async function runBuild(spec, note) {
+  const btn = $('analyze');
+  btn.disabled = true;
+  btn.textContent = 'BUILDING...';
+  srcProgress('build', note);
+  try {
+    const b = await fetch('/api/describe/build', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({spec, scenes: srcAnswers.scenes,
+                            name: srcAnswers.name})});
+    const plan = await b.json();
+    if (plan.error) throw new Error(plan.error);
+    $('srcprogress').hidden = true;
+    showPlan(plan);
+    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
+    log(`"${plan.summary}" proposed from that source. Review it, then TRANSMIT.`, 'ok');
+    if (plan.dropped && plan.dropped.length) {
+      log(`dropped ${plan.dropped.join(', ')}: a build from someone else's `
+          + `source may not write to a preset slot`, 'warn');
+    }
+  } catch (e) {
+    $('srcprogress').hidden = true;
+    log(`could not build from that: ${e.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'ANALYZE';
+  }
+}
 
 $('analyze').onclick = analyzeSource;
 $('srcinput').addEventListener('keydown', e => {
@@ -4018,6 +4163,7 @@ function showPlan(plan) {
     note.innerHTML = `This is my interpretation of what ${where} describes, `
       + `built for your rig. It gets you in the ballpark: review and tweak `
       + `before sending, and check anything marked below as interpreted.`
+      + inheritsHtml(plan)
       + srcSplitHtml(plan.from_source);
     // BEFORE the summary, not after. The summary runs to hundreds of words
     // on a multi-scene build, and provenance read at the end of that is

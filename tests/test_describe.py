@@ -44,10 +44,28 @@ def test_it_runs_the_same_validation_as_every_other_plan():
     assert 'a["validation_warnings"] = warns' in src
 
 
+def _code_only(src: str) -> str:
+    """`src` with its comments removed, everything else byte for byte."""
+    import io
+    import tokenize
+    out, prev = [], (1, 0)
+    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+        if tok.start[0] != prev[0]:
+            prev = (tok.start[0], 0)
+        if tok.type != tokenize.COMMENT:
+            out.append(" " * max(0, tok.start[1] - prev[1]) + tok.string)
+        prev = tok.end
+    return "".join(out)
+
 def test_it_cannot_transmit(client):
     """It proposes. The confirm panel and /api/apply are unchanged and are
     still the only way anything reaches hardware."""
-    src = inspect.getsource(server.api_describe_build)
+    # Comments stripped first. A scan of raw text calls a comment EXPLAINING
+    # that this path cannot reach run_action a violation, which pushes the
+    # next person to delete the comment rather than keep the guard honest.
+    # Strings are left intact, because "/api/apply" would only ever appear as
+    # one.
+    src = _code_only(inspect.getsource(server.api_describe_build))
     for forbidden in ("run_action", "/api/apply", "fm9.set_", "store_preset"):
         assert forbidden not in src, forbidden
 
@@ -180,10 +198,19 @@ def test_the_wait_has_a_shape():
 
 def test_it_says_what_it_found_before_the_slow_part():
     """The whole reason for two calls: the player learns the source was
-    understood in about twenty seconds, rather than after four minutes."""
+    understood in about twenty seconds, rather than after four minutes.
+
+    The slow half now sits behind the questions, in runBuild, so the gap is
+    wider still: reading, then what was found, then the questions, and only
+    then the wait.
+    """
     fn = SCRIPT.split("async function analyzeSource()")[1].split("\n}\n")[0]
-    assert fn.index("srcProgress('build', note)") < fn.index("/api/describe/build")
+    assert "srcProgress('found', note)" in fn
     assert "settings stated in the source" in fn
+    assert "/api/describe/build" not in fn
+    build = SCRIPT.split("async function runBuild(spec, note)")[1].split("\n}\n")[0]
+    assert build.index("srcProgress('build', note)") < build.index(
+        "/api/describe/build")
 
 
 # --- reading sources ------------------------------------------------------
@@ -386,3 +413,144 @@ def test_there_is_a_ceiling_on_what_will_be_read():
     huge = "word " * 200_000
     got = describe.read_source(huge)
     assert len(got["text"]) <= describe.MAX_SOURCE
+
+
+# --- asking, rather than going ahead --------------------------------------
+
+def test_the_scene_count_is_the_owners_call_not_the_sources():
+    """A rig tour describes four scenes because the player in it runs four.
+    Somebody who wants one lead sound should get one, and building the wrong
+    shape and calling it an interpretation is not the same as asking."""
+    spec = {"summary": "a clean and a lead", "stated": [], "vague": [],
+            "scenes": [{"n": 1, "name": "Clean", "describes": "chimey"},
+                       {"n": 2, "name": "Lead", "describes": "pushed"},
+                       {"n": 3, "name": "Ambient", "describes": "washy"}]}
+    assert "across 3 scenes" in describe.brief_from(spec)
+    one = describe.brief_from(spec, scenes=1)
+    assert "SINGLE scene" in one and "do not set up any other scene" in one
+    assert "Scene 2" not in one and "Scene 3" not in one
+
+
+def test_a_name_reaches_the_builder_and_names_the_scenes_too():
+    """Scene names were inherited from the preset underneath and nobody was
+    told, so a Petrucci build shipped with scenes called Cron-chay."""
+    b = describe.brief_from({"summary": "x", "scenes": [], "stated": [],
+                             "vague": []}, name="Lukather Lead")
+    assert "Name the preset 'Lukather Lead'" in b
+    assert "name each scene you set up after what it is for" in b
+
+
+def test_the_build_endpoint_takes_the_answers(client, monkeypatch):
+    captured = {}
+
+    def fake(prompt, *a, **k):
+        captured["p"] = prompt
+        return {"summary": "s", "actions": []}
+
+    monkeypatch.setattr(planner, "plan", fake)
+    client.post("/api/describe/build",
+                json={"spec": {"summary": "a rig", "scenes": [{"n": 1, "name": "Clean"}]},
+                      "scenes": 1, "name": "My Tone"})
+    assert "SINGLE scene" in captured["p"]
+    assert "My Tone" in captured["p"]
+
+
+# --- and saying what it will NOT touch ------------------------------------
+
+def test_the_plan_names_what_it_leaves_alone(client, monkeypatch):
+    """The failure this exists to stop. A store writes the whole edit buffer
+    rather than the changes, so a build that touched three blocks of thirteen
+    was saved under a name claiming the whole rig, with the cabinet, which
+    shapes the sound as much as the head does, coming from the preset
+    underneath.
+    """
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": [
+        {"kind": "set_param", "block": "amp", "instance": 1,
+         "param": "DISTORT_MID", "value": 6}]})
+    r = client.post("/api/describe/build", json={"spec": {"summary": "x"}}).json()
+    assert "Cab 1" in r["inherits"], r["inherits"]
+    assert not any(x.startswith("Amp") for x in r["inherits"]), \
+        "a block the build changed is not inherited"
+
+
+def test_the_browser_shows_that_before_the_transmit_button():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "function inheritsHtml(plan)" in ui
+    fn = ui.split("function inheritsHtml(plan)")[1].split("\n}\n")[0]
+    assert "keeps whatever" in fn and "If you save this" in fn
+    assert ui.count("inheritsHtml(plan)") >= 2, "computed but never rendered"
+
+
+def test_the_questions_come_between_reading_and_building():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    script = ui.split("<script>")[1]
+    fn = script.split("async function analyzeSource()")[1].split("\n}\n")[0]
+    assert "askAboutBuild(spec, note)" in fn
+    assert "/api/describe/build" not in fn, "building must wait for the answers"
+    ask = script.split("function askAboutBuild(spec, note)")[1].split("\n}\n")[0]
+    assert "Scenes to build" in ask and "Name it" in ask
+    assert "Building on top of" in ask
+
+
+def test_the_suggested_name_does_not_trail_off():
+    """"A Matchless clean into" is worse than no suggestion: it reads as a
+    mistake and invites being accepted unread."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function suggestName(spec)")[1].split("\n}\n")[0]
+    assert "stop.test(words[0])" in fn, "no leading article"
+    assert "stop.test(out[out.length - 1])" in fn, "no trailing preposition"
+
+
+# --- and naming what it stores --------------------------------------------
+
+def test_the_name_you_gave_is_applied_not_merely_requested(client, monkeypatch):
+    """Asking the planner to rename is not the same as renaming. The buffer
+    keeps the loaded preset's name until something changes it, and a store
+    writes that name into flash where it becomes the only label anyone has."""
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": [
+        {"kind": "set_param", "block": "amp", "instance": 1,
+         "param": "DISTORT_MID", "value": 6}]})
+    r = client.post("/api/describe/build",
+                    json={"spec": {"summary": "x"}, "name": "Lukather Lead"}).json()
+    first = r["actions"][0]
+    assert first["kind"] == "rename_preset"
+    assert first["type_name"] == "Lukather Lead"
+    assert not first["validation_errors"], first["validation_errors"]
+
+
+def test_it_does_not_fight_the_planner_over_the_name(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": [
+        {"kind": "rename_preset", "block": "PRESET", "instance": 1,
+         "type_name": "Its Own Idea"}]})
+    r = client.post("/api/describe/build",
+                    json={"spec": {"summary": "x"}, "name": "Mine"}).json()
+    assert len([a for a in r["actions"] if a["kind"] == "rename_preset"]) == 1
+
+
+def test_no_name_means_no_rename(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": []})
+    for body in ({"spec": {"summary": "x"}}, {"spec": {"summary": "x"}, "name": "  "}):
+        r = client.post("/api/describe/build", json=body).json()
+        assert not any(a["kind"] == "rename_preset" for a in r["actions"])
+
+
+def test_a_long_name_survives_the_fm9ai_prefix(client, monkeypatch):
+    """run_action prepends "FM9AI-" and truncates at 32, so a name accepted
+    here can still arrive at the device cut in half."""
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": []})
+    r = client.post("/api/describe/build",
+                    json={"spec": {"summary": "x"},
+                          "name": "A" * 60}).json()
+    name = r["actions"][0]["type_name"]
+    assert len(("FM9AI-" + name)) <= 32, name
+
+
+def test_saving_says_the_name_it_saves_under():
+    """It said which slot it would overwrite but never what the preset would
+    be called afterwards, which is how a Petrucci build went into flash under
+    the previous preset's name."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function saveToSlot")[1].split("\n}\n")[0]
+    assert "It will be saved under the name" in fn
+    assert "lastState.preset" in fn
+    assert "cancel and rename it first" in fn

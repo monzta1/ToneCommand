@@ -553,6 +553,8 @@ class DescribeBody(BaseModel):
 
 class BuildBody(BaseModel):
     spec: dict
+    scenes: int | None = None
+    name: str | None = None
 
 
 @app.get("/api/describe/ready")
@@ -609,7 +611,7 @@ def api_describe_build(body: BuildBody):
     adds no write path and cannot reach hardware.
     """
     spec = body.spec or {}
-    brief = describe.brief_from(spec)
+    brief = describe.brief_from(spec, scenes=body.scenes, name=body.name)
 
     offline = False
     with _lock:
@@ -656,6 +658,47 @@ def api_describe_build(body: BuildBody):
     result["anchored_at"] = _last_snapshot["at"] if offline else None
     result["no_state"] = snap is None
     result["values"] = snap.get("values", {}) if snap else {}
+    # What this build does NOT touch, which is the thing that bit us.
+    #
+    # A store writes the whole edit buffer, not the changes, so every block a
+    # plan leaves alone is silently adopted from whatever preset was loaded.
+    # A build off a video changed three blocks of thirteen and was stored under
+    # a name claiming the whole rig; the cab, which shapes the sound as much as
+    # the head does, came from the preset underneath and nobody was told.
+    #
+    # Named here, before the plan is confirmed, so it is a decision rather
+    # than a discovery.
+    touched = set()
+    for a in result.get("actions", []):
+        if a.get("block"):
+            try:
+                touched.add(reg.resolve_block(a["block"],
+                                              int(a.get("instance") or 1))[1])
+            except Exception:
+                pass
+    inherits = []
+    for b in (snap or {}).get("blocks", []):
+        if b.get("effect_id") not in touched:
+            inherits.append(b.get("label") or b.get("family"))
+    result["inherits"] = sorted(inherits)
+    # The name is not left to the planner. It was asked for, so it is applied.
+    #
+    # A store writes the buffer's CURRENT name, and the buffer inherits the
+    # name of whatever preset was loaded. That is how a build off a Petrucci
+    # video came to be saved as "Devs Gift Of Tone", with the scene names of
+    # the preset underneath still on it. An LLM that is merely asked to emit a
+    # rename will sometimes not, and "sometimes" is how it happened once.
+    #
+    # Prepended, so the buffer carries the right name from the first action on,
+    # and validated below with everything else rather than around it.
+    if (body.name or "").strip():
+        want = (body.name or "").strip()[:26]   # run_action prefixes "FM9AI-"
+        if not any(a.get("kind") == "rename_preset"
+                   for a in result.get("actions", [])):
+            result["actions"].insert(0, {"kind": "rename_preset",
+                                         "block": "PRESET", "instance": 1,
+                                         "type_name": want,
+                                         "why": "the name you gave this build"})
     result["from_source"] = {
         "summary": spec.get("summary"),
         "stated": spec.get("stated") or [],

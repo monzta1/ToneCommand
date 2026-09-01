@@ -436,7 +436,8 @@ def extract(source_text: str) -> dict:
     return spec
 
 
-def brief_from(spec: dict) -> str:
+def brief_from(spec: dict, scenes: int | None = None,
+               name: str | None = None) -> str:
     """The spec, as ONE instruction in prose.
 
     This shape is load-bearing and it is not a style preference. Handed the
@@ -453,17 +454,32 @@ def brief_from(spec: dict) -> str:
 
     So: do not "tidy" this into bullet points.
     """
-    scenes = spec.get("scenes") or []
+    found = spec.get("scenes") or []
+    # How many scenes is the OWNER's call, not the source's. A rig tour
+    # describes four because the player has four; somebody who wants one lead
+    # sound should get one, and asking is cheaper than building the wrong
+    # shape and calling it an interpretation.
+    want = len(found) if scenes is None else max(1, int(scenes))
+    use = found[:want]
     parts = []
-    if scenes:
-        parts.append(f"Build this rig across {len(scenes)} "
-                     f"{'scene' if len(scenes) == 1 else 'scenes'}: "
+    if want == 1:
+        one = use[0] if use else {}
+        focus = one.get("describes") or spec.get("summary") or ""
+        parts.append(f"Build this as a SINGLE scene, scene 1, and do not set up "
+                     f"any other scene: {spec.get('summary') or ''}"
+                     + (f" Scene 1 should be the {str(one.get('name') or '').lower()}: "
+                        f"{focus}" if one else ""))
+    elif use:
+        parts.append(f"Build this rig across {len(use)} scenes: "
                      f"{spec.get('summary') or 'a tone described by a player'}")
-        for s in scenes:
+        for s in use:
             label = str(s.get("name") or f"scene {s.get('n')}").lower()
             parts.append(f"Scene {s.get('n')} is the {label}: {s.get('describes')}")
     else:
         parts.append(f"Build this rig: {spec.get('summary') or ''}")
+    if name:
+        parts.append(f"Name the preset {name!r}, and name each scene you set up "
+                     f"after what it is for.")
 
     stated = [x for x in spec.get("stated") or [] if str(x).strip()]
     if stated:
