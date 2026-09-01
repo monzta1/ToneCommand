@@ -439,6 +439,10 @@ class PromptBody(BaseModel):
     #: What the conversation decided this preset should be called, when it
     #: decided anything. Empty for an adjustment to what is already loaded.
     name: str | None = None
+    #: And what each scene it sets up should be called. Scenes keep the
+    #: previous preset's names unless something changes them, so a Van Halen
+    #: build under scene names from an unrelated preset is confusing to play.
+    scenes: list[dict] | None = None
 
 
 class Action(BaseModel):
@@ -725,7 +729,8 @@ def api_describe_build(body: BuildBody):
     return result
 
 
-def _name_the_build(result: dict, name: str | None) -> None:
+def _name_the_build(result: dict, name: str | None,
+                    scenes: list[dict] | None = None) -> None:
     """Give a built tone its own name, when the conversation decided on one.
 
     A store writes the buffer's CURRENT name, and the buffer keeps the name of
@@ -743,16 +748,32 @@ def _name_the_build(result: dict, name: str | None) -> None:
     An adjustment to the loaded preset gets no name and no rename: that is the
     same preset with a change, and renaming it would be wrong.
     """
-    want = (name or "").strip()[:26]        # run_action prefixes "FM9AI-"
-    if not want:
-        return
     actions = result.get("actions") or []
-    if any(a.get("kind") == "rename_preset" for a in actions):
-        return                               # the planner already named it
-    actions.insert(0, {"kind": "rename_preset", "block": "PRESET",
-                       "instance": 1, "type_name": want,
-                       "reason": "naming what this preset is for"})
-    result["actions"] = actions
+    add = []
+    want = (name or "").strip()[:26]        # run_action prefixes "FM9AI-"
+    if want and not any(a.get("kind") == "rename_preset" for a in actions):
+        add.append({"kind": "rename_preset", "block": "PRESET", "instance": 1,
+                    "type_name": want,
+                    "reason": "naming what this preset is for"})
+    # Same rule for the scenes, and for the same reason: a build that sets up
+    # four scenes and leaves them called whatever the previous preset called
+    # them is confusing to play, and the scene name is all you can see on a
+    # dark stage.
+    already = {int(a.get("value") or 0) for a in actions
+               if a.get("kind") == "rename_scene"}
+    for entry in (scenes or []):
+        try:
+            n = int(entry.get("n"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        label = str(entry.get("name") or "").strip()[:32]
+        if not (1 <= n <= 8) or not label or n in already:
+            continue
+        add.append({"kind": "rename_scene", "block": "SCENE", "instance": 1,
+                    "value": n, "type_name": label,
+                    "reason": "naming the scene after what it is for"})
+    if add:
+        result["actions"] = add + actions
 
 
 @app.post("/api/plan")
@@ -862,7 +883,7 @@ def _plan_for(body: PromptBody, on_count=None):
         result["anchored_at"] = _last_snapshot["at"] if offline else None
         result["no_state"] = snap is None
         result["values"] = snap.get("values", {}) if snap else {}
-        _name_the_build(result, body.name)
+        _name_the_build(result, body.name, body.scenes)
         for a in result.get("actions", []):
             errs, warns = validate_action(Action(**a))
             a["validation_errors"] = errs

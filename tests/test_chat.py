@@ -51,7 +51,7 @@ def test_the_endpoint_only_talks(client, monkeypatch):
 
 def test_the_chat_schema_cannot_express_an_action():
     assert set(planner.CHAT_SCHEMA["properties"]) == {
-        "reply", "ready", "request", "name"}
+        "reply", "ready", "request", "name", "scenes"}
     assert planner.CHAT_SCHEMA["additionalProperties"] is False
 
 
@@ -180,8 +180,8 @@ def test_building_takes_the_sentence_rather_than_the_input_box():
     """Pasting a long agreed sentence into a one-line box showed the reader
     the middle of their own request, scrolled sideways, and nothing else."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "$('cbuild').onclick = () => engage(chatRequest, chatName);" in ui
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    assert "engage(chatRequest, chatName, chatScenes)" in ui
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "$('prompt').value" not in fn, "building must not touch the input"
     assert "/api/plan" in fn, "and it still goes through the ordinary planner"
 
@@ -191,7 +191,7 @@ def test_a_planner_question_lands_in_the_conversation_not_in_red():
     The UI printed the question as an error and hid the panel, leaving it
     nowhere to be answered. The conversation is where a question belongs."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "chatLog.push({role: 'assistant', content: plan.clarification})" in fn
     assert "needs clarification" not in fn, "no longer logged as an error"
 
@@ -389,7 +389,7 @@ def test_building_says_so_where_the_reader_is_looking():
     a dead button. It is a counting line now, via the same waitLine the
     conversation uses."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "chatBuilding = true;" in fn
     assert "setInterval(renderChat, 1000)" in fn
     wait = ui.split("function waitLine()")[1].split("\n}\n")[0]
@@ -399,7 +399,7 @@ def test_building_says_so_where_the_reader_is_looking():
 
 def test_a_finished_plan_announces_itself_and_scrolls_into_view():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "Proposed ${n} change" in fn
     assert "Nothing has been " in fn and "press TRANSMIT" in fn
     assert "$('planbox').scrollIntoView" in fn
@@ -407,13 +407,13 @@ def test_a_finished_plan_announces_itself_and_scrolls_into_view():
 
 def test_a_plan_with_no_actions_still_says_something():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "That produced no changes to make." in fn
 
 
 def test_a_failed_build_is_not_silence():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "I could not build that:" in fn
 
 
@@ -455,7 +455,7 @@ def test_notes_look_different_from_what_either_party_said():
 def test_the_working_line_is_always_cleared():
     """A spinner that outlives its request is a hang that never resolves."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    for name in ("async function engage(prompt, name)", "async function apply()"):
+    for name in ("async function engage(prompt, name, scenes)", "async function apply()"):
         fn = ui.split(name)[1].split("\n}\n")[0]
         tail = fn.split("finally {")[-1]
         assert "chatWorking = ''" in tail, name
@@ -657,7 +657,7 @@ def test_the_browser_says_what_it_will_be_called_before_you_build():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
     assert "FM9AI-${esc(chatName)}" in fn
-    assert "$('cbuild').onclick = () => engage(chatRequest, chatName);" in ui
+    assert "engage(chatRequest, chatName, chatScenes)" in ui
 
 
 def test_the_name_survives_a_reload_with_the_rest():
@@ -707,7 +707,7 @@ def test_a_planner_failure_still_reaches_the_old_route_as_502(client, monkeypatc
 
 def test_a_long_build_can_be_left():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "chatAbort = new AbortController()" in fn
     assert "signal: chatAbort.signal" in fn
     assert "e.name === 'AbortError'" in fn
@@ -716,7 +716,7 @@ def test_a_long_build_can_be_left():
 
 def test_stopping_a_build_leaves_nothing_running():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     tail = fn.split("finally {")[-1]
     for cleared in ("clearInterval(tick)", "chatBusy = false",
                     "chatBuilding = false", "chatAbort = null"):
@@ -727,7 +727,7 @@ def test_the_button_is_not_touched_after_it_is_gone():
     """renderChat rewrites the transcript, so the BUILD THIS element the
     handler started with is detached by the time it finishes."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "document.body.contains(b)" in fn
 
 
@@ -820,7 +820,7 @@ def test_the_banner_says_when_it_has_stopped_hearing_anything():
 
 def test_the_count_resets_between_builds():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "chatCount = 0;" in fn
 
 
@@ -888,3 +888,96 @@ def test_the_button_gets_its_own_label_back():
     assert 'id="apply">TRANSMIT TO FM9<' in ui
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
     assert "'TRANSMIT TO FM9'" in fn, "restoring a shorter label renames the button"
+
+
+# --- naming the scenes too ------------------------------------------------
+#
+# A build set up four scenes and left them called whatever the previous preset
+# called them. Scene names are all you can read on a dark stage, so a Van
+# Halen build sitting under someone else's scene names is confusing to play.
+
+def test_the_conversation_names_the_scenes():
+    assert "scenes" in planner.CHAT_SCHEMA["properties"]
+    assert "Jump Clean" in planner.CHAT_SYSTEM
+    assert "dark stage" in planner.CHAT_SYSTEM
+    assert "Leave `scenes` EMPTY" in planner.CHAT_SYSTEM
+    assert "scenes" in planner.chat_shape_line()
+
+
+def test_reply_is_still_first_after_the_second_new_field():
+    assert list(planner.CHAT_SCHEMA["properties"])[0] == "reply"
+
+
+@pytest.mark.parametrize("bad", [
+    None, "rubbish", [{"bad": 1}], [{"n": 9, "name": "off the end"}],
+    [{"n": 0, "name": "zero"}], [{"n": 1, "name": "  "}], [{"n": "x", "name": "y"}],
+])
+def test_unusable_scene_entries_are_dropped_not_passed_on(bad):
+    """A scene outside 1..8 does not exist on an FM9 and a nameless entry
+    would rename a scene to nothing. Neither should survive to become a
+    validation error on a card somebody has to read."""
+    assert planner._scene_names(bad) == []
+
+
+def test_scene_names_come_back_in_order_without_duplicates():
+    got = planner._scene_names([{"n": 2, "name": "Brown"}, {"n": 1, "name": "Clean"},
+                                {"n": 1, "name": "dupe"}])
+    assert got == [{"n": 1, "name": "Clean"}, {"n": 2, "name": "Brown"}]
+
+
+def test_the_renames_are_applied_not_merely_asked_for(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None,
+        "actions": [{"kind": "set_param", "block": "amp", "instance": 1,
+                     "param": "DISTORT_MID", "value": 6, "reason": "x"}]})
+    r = client.post("/api/plan", json={
+        "prompt": "van halen", "name": "Van Halen Brown",
+        "scenes": [{"n": 1, "name": "Jump Clean"}, {"n": 2, "name": "Brown Rhythm"},
+                   {"n": 9, "name": "off the end"}, {"n": 3, "name": ""}]}).json()
+    kinds = [(a["kind"], a.get("value"), a.get("type_name")) for a in r["actions"]]
+    assert ("rename_preset", None, "Van Halen Brown") in kinds
+    assert ("rename_scene", 1, "Jump Clean") in kinds
+    assert ("rename_scene", 2, "Brown Rhythm") in kinds
+    assert len([k for k in kinds if k[0] == "rename_scene"]) == 2
+    assert not any(a["validation_errors"] for a in r["actions"])
+
+
+def test_a_scene_the_planner_already_named_is_left_alone(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None,
+        "actions": [{"kind": "rename_scene", "block": "SCENE", "instance": 1,
+                     "value": 1, "type_name": "Its Own Idea", "reason": "x"}]})
+    r = client.post("/api/plan", json={
+        "prompt": "x", "scenes": [{"n": 1, "name": "Mine"},
+                                  {"n": 2, "name": "Also Mine"}]}).json()
+    ones = [a for a in r["actions"]
+            if a["kind"] == "rename_scene" and a["value"] == 1]
+    assert len(ones) == 1 and ones[0]["type_name"] == "Its Own Idea"
+    assert any(a["kind"] == "rename_scene" and a["value"] == 2
+               for a in r["actions"]), "the ones it skipped are still named"
+
+
+def test_an_adjustment_renames_no_scenes(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None, "actions": []})
+    for body in ({"prompt": "more presence"},
+                 {"prompt": "more presence", "scenes": []},
+                 {"prompt": "more presence", "scenes": None}):
+        r = client.post("/api/plan", json=body).json()
+        assert not any(a["kind"] == "rename_scene" for a in r["actions"]), body
+
+
+def test_the_panel_says_exactly_what_each_scene_will_be_called():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "Scenes renamed to" in fn
+    assert "Preset renamed to" in fn
+    assert "chatScenes.map" in fn
+    assert "engage(chatRequest, chatName, chatScenes)" in ui
+
+
+def test_the_scene_names_survive_a_reload():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "scenes: chatScenes" in ui
+    load = ui.split("function loadChat()")[1].split("\n}\n")[0]
+    assert "chatScenes = Array.isArray(d.scenes)" in load

@@ -504,7 +504,9 @@ How to be useful:
 
 Set `ready` true only when you could write a concrete plan right now without guessing at anything that matters. Put in `request` a single clear sentence describing the agreed tone change, written as an instruction, capturing everything decided in the conversation.
 
-Put in `name` what this preset should be CALLED, when the conversation is about a tone with an identity: a player, a band, a song, or a distinctive style. Two or three words, the identity itself and not a description of it ("Marco Sfogli", "Van Halen Brown", "Comfortably Numb"). Name the player or the song, never the amp you chose to get there. Leave `name` EMPTY when the conversation is about adjusting the preset already loaded, because that is the same preset with a change, not a new one."""
+Put in `name` what this preset should be CALLED, when the conversation is about a tone with an identity: a player, a band, a song, or a distinctive style. Two or three words, the identity itself and not a description of it ("Marco Sfogli", "Van Halen Brown", "Comfortably Numb"). Name the player or the song, never the amp you chose to get there. Leave `name` EMPTY when the conversation is about adjusting the preset already loaded, because that is the same preset with a change, not a new one.
+
+Put in `scenes` every scene the build will set up, with its number and what it should be CALLED: [{"n": 1, "name": "Jump Clean"}, {"n": 2, "name": "Brown Rhythm"}]. Name each one after what it is FOR, in two or three words a player would recognise on a dark stage. Scenes keep the previous preset's names unless something changes them, so a Van Halen build left sitting under scene names from an unrelated preset is genuinely confusing to play. Leave `scenes` EMPTY when the conversation sets up no scenes: an adjustment to the tone already loaded changes no scene names."""
 
 CHAT_SCHEMA = {
     "type": "object",
@@ -513,8 +515,20 @@ CHAT_SCHEMA = {
         "ready": {"type": "boolean"},
         "request": {"type": "string"},
         "name": {"type": "string"},
+        "scenes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "n": {"type": "integer"},
+                    "name": {"type": "string"},
+                },
+                "required": ["n", "name"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["reply", "ready", "request", "name"],
+    "required": ["reply", "ready", "request", "name", "scenes"],
     "additionalProperties": False,
 }
 
@@ -597,7 +611,7 @@ class ReplyStreamer:
 
 def chat_shape_line() -> str:
     return ('{"reply": string, "ready": boolean, "request": string, '
-            '"name": string}')
+            '"name": string, "scenes": [{"n": int, "name": string}]}')
 
 
 def _full_prompt(prompt: str, device_state: str, param_reference: str,
@@ -1015,6 +1029,29 @@ def _plan_quality(plan_obj: dict) -> str:
     return "empty"
 
 
+def _scene_names(raw) -> list[dict]:
+    """Scene names out of a model reply, keeping only what is usable.
+
+    A scene number outside 1..8 does not exist on an FM9, and a nameless entry
+    would rename a scene to nothing. Both are dropped here rather than
+    surviving to become a validation error on a card somebody has to read.
+    """
+    out, seen = [], set()
+    for item in (raw or [])[:8]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            n = int(item.get("n"))
+        except (TypeError, ValueError):
+            continue
+        name = str(item.get("name") or "").strip()[:32]
+        if not (1 <= n <= 8) or not name or n in seen:
+            continue
+        seen.add(n)
+        out.append({"n": n, "name": name})
+    return sorted(out, key=lambda x: x["n"])
+
+
 def _chat_prompt(messages: list[dict]) -> str:
     """The conversation so far, as one prompt. Shared by both paths."""
     turns = []
@@ -1233,6 +1270,7 @@ def converse_stream(messages: list[dict], device_state: str,
         "ready": bool(raw.get("ready")),
         "request": str(raw.get("request") or "").strip(),
         "name": str(raw.get("name") or "").strip()[:26],
+        "scenes": _scene_names(raw.get("scenes")),
         "backend": "openai", "model": model,
         "attempts": [Attempt("openai", base, model).as_dict()],
     })
@@ -1262,6 +1300,7 @@ def converse(messages: list[dict], device_state: str,
             "ready": bool(raw.get("ready")),
             "request": str(raw.get("request") or "").strip(),
             "name": str(raw.get("name") or "").strip()[:26],
+            "scenes": _scene_names(raw.get("scenes")),
             "backend": name, "model": model,
             "attempts": [a.as_dict() for a in attempts]}
 
