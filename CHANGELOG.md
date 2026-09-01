@@ -2,6 +2,58 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## 0.7.0 (2026-09-01)
+
+Recipe sharing stops being code and starts being a thing that exists. The
+worker and schema had been written and tested since 0.4.x and never deployed,
+so the tone database existed as source and as nothing else: every recipe
+anybody wrote went into the local outbox and stayed there.
+
+### Added
+- **The sharing service is live**, on Cloudflare Workers and D1. It holds an
+  inbox and a counter and never content: recipes live in this repository's
+  `recipes/` folder. That split decides the failure mode. If the worker is
+  down, browsing and using recipes still work, only submission and ranking
+  pause, and the client holds both until it returns. Nothing anybody writes
+  depends on it being up.
+- **`AUTO_PUBLISH`**, off by default. On, a submission is committed straight
+  into `recipes/` and is live immediately, with no human step. Every
+  submission is recorded in D1 either way, so it is one flag to undo with
+  nothing lost. Be clear-eyed about what it means: `/submit` is
+  unauthenticated, so with it on, anyone who can reach the worker can write a
+  file into a public repository. That is a deliberate choice while there are
+  no users rather than an oversight.
+- **A note when a recipe was made on different firmware.** Recipes name models
+  rather than numbering them, so a step resolves through the loading rig's own
+  roster and a model that does not exist there is refused rather than becoming
+  its neighbour. That covers the structural risk and not the audible one:
+  Fractal revises voicings between releases, and `tested_firmware` was being
+  recorded and shown to nobody. The plan now says so before you transmit.
+- `service/wrangler.toml`, which did not exist, so there was nothing to deploy
+  with.
+
+### Fixed
+- **The app could not find the service the docs told you to configure.**
+  `share.endpoint()` read only `os.environ`, while the planner and the store
+  whitelist both fall back to `.env`. So the documented setup left sharing
+  silently dark: no endpoint, recipes queueing forever, nothing anywhere
+  saying why. A configuration that fails closed AND says nothing is the worst
+  of both.
+- **A submitted recipe could carry anything.** The validator checked the
+  envelope and never looked inside a step, so `steps: [1,2,3]` passed, and
+  publishing writes the whole body, so any invented top-level key was
+  preserved verbatim into the repository. On an unauthenticated endpoint with
+  auto-publish on, that is "anyone may write arbitrary JSON into a public
+  repo". Now: known keys only, every step an object whose kind is a real
+  action, no invented keys inside steps, text bounded. `store` is refused
+  outright, being the one action that writes to flash.
+- Publishing refuses to overwrite. Not moderation, integrity: without it
+  anyone could post a recipe named after a curated tone and silently replace
+  it.
+- The suite no longer reads the developer's real `.env` when testing sharing.
+  The `.env` fallback leaked within a minute of being added, into a test
+  asserting sharing was local only.
+
 ## 0.6.1 (2026-08-31)
 
 ### Fixed
