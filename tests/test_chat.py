@@ -195,8 +195,14 @@ def test_a_planner_question_lands_in_the_conversation_not_in_red():
 
 
 def test_the_examples_step_aside_once_a_conversation_starts():
+    """They teach the vocabulary to somebody staring at an empty panel. Once
+    there is an exchange to read they are clutter under it. They now live
+    INSIDE the empty state, so they leave with it rather than needing their
+    own rule to remember."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "$('egs').hidden = !!chatLog.length;" in ui
+    empty = ui.split('id="cempty"')[1].split("</div>\n      <div")[0]
+    assert 'id="egs"' in empty
+    assert "$('cempty').hidden = !!chatLog.length;" in ui
 
 
 def test_a_working_button_keeps_its_word():
@@ -280,7 +286,7 @@ def test_enter_sends_and_shift_enter_writes_a_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
     assert "e.shiftKey" in fn and "e.preventDefault();" in fn
-    assert "Enter sends, Shift+Enter starts a new line" in ui, \
+    assert "Enter sends, Shift+Enter for a new line" in ui, \
         "a box that grows implies Enter breaks a line; say which it is"
 
 
@@ -313,5 +319,55 @@ def test_reading_back_is_not_interrupted_by_a_new_message():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
     assert "wasAtBottom" in fn
-    assert fn.index("const wasAtBottom") < fn.index("box.innerHTML ="), \
+    assert fn.index("const wasAtBottom") < fn.index("feed.innerHTML ="), \
         "measure before the rewrite, or scrollTop means nothing"
+
+
+# --- shaped like a conversation, not like a form --------------------------
+#
+# The input sat at the TOP with suggestions and two paragraphs of explanation
+# stacked underneath, and a SECOND text box with its own button below that. So
+# the first thing on screen was chrome, and it read as a form.
+
+def test_the_transcript_comes_before_the_box_you_type_into():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    panel = ui.split('data-label="COMMAND"')[1].split('data-label="PROPOSED')[0]
+    assert panel.index('id="chat"') < panel.index('class="composer"')
+    assert panel.index('class="composer"') < panel.index('id="prompt"')
+
+
+def test_the_transcript_area_does_not_come_and_go():
+    """It is the shape of the panel, not something that appears once you have
+    used it. Only its contents swap."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<div id="chat">' in ui, "no longer hidden when empty"
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "$('cempty').hidden = !!chatLog.length;" in fn
+
+
+def test_the_empty_state_asks_and_suggests_in_the_middle():
+    """Most people's first sight of this panel. A question and six real
+    requests beat any amount of describing what the box accepts."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    empty = ui.split('id="cempty"')[1].split("</div>\n      <div")[0]
+    assert "What do you want it to sound like?" in empty
+    assert 'id="egs"' in empty, "the suggestions belong in the empty state"
+    css = ui.split(".cempty {")[1].split("}")[0]
+    assert "align-items: center" in css and "justify-content: center" in css
+
+
+def test_the_second_text_box_is_folded_away():
+    """Two text boxes and two buttons stacked in one panel is a form. Building
+    from a video is real and rare, so it is one line until wanted."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<details class="srcfold">' in ui
+    fold = ui.split('<details class="srcfold">')[1].split("</details>")[0]
+    assert 'id="srcinput"' in fold and 'id="analyze"' in fold
+    assert "<summary>" in fold
+
+
+def test_the_explaining_shrank_to_one_line():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    hint = ui.split('class="hint composerhint">')[1].split("</div>")[0]
+    assert len(hint) < 130, "the composer hint is a line, not a paragraph"
+    assert "Enter sends" in hint and "until you confirm" in hint

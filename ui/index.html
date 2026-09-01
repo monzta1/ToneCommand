@@ -1139,6 +1139,38 @@
   scroll-behavior: smooth;
 }
 #chat .cthinking { font-size: 13px; opacity: .5; }
+
+/* The empty state: a question and six real requests, centred in the space the
+   conversation will fill. It is most people's first sight of this panel, and
+   what it showed before was an input box with paragraphs stacked under it. */
+#chat { justify-content: flex-end; }        /* newest sits above the composer */
+#cscroll { display: flex; flex-direction: column; gap: 14px; }
+.cempty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 18px; flex: 1; text-align: center;
+  padding: 20px 0;
+}
+.cempty .cask {
+  margin: 0; font-size: var(--fs-lead); color: var(--text); opacity: .8;
+}
+.cempty .egs { justify-content: center; margin: 0; }
+
+/* The composer, pinned under the transcript. */
+.composer { border-top: 1px solid var(--line); padding-top: 14px; }
+.composerhint { margin-top: 8px; opacity: .55; }
+
+/* Building from a video is real and rare. Two text boxes and two buttons in
+   one panel made the page read as a form. */
+.srcfold { margin-top: 18px; }
+.srcfold > summary {
+  cursor: pointer; font-size: var(--fs-label); color: var(--cyan-dim);
+  letter-spacing: 0.06em; list-style: none;
+}
+.srcfold > summary::-webkit-details-marker { display: none; }
+.srcfold > summary::before { content: "+ "; }
+.srcfold[open] > summary::before { content: "\2212 "; }
+.srcfold > summary:hover { color: var(--cyan); }
+.srcfold .srcrow { margin-top: 14px; }
 #chat .cmsg { font-size: 13px; line-height: 1.6; }
 #chat .cwho {
   display: block; font-size: 10px; letter-spacing: .12em; opacity: .45;
@@ -1371,52 +1403,67 @@
        records what both halves did. -->
   <div class="tabs" role="tablist">
     <button class="tab on" id="tab-ai-btn" role="tab" aria-selected="true"
-            aria-controls="tab-ai">DESIGN BY ASKING</button>
+            aria-controls="tab-ai">DESIGN WITH AI</button>
     <button class="tab" id="tab-manual-btn" role="tab" aria-selected="false"
-            aria-controls="tab-manual">TONE CONTROLS</button>
+            aria-controls="tab-manual">MANUAL</button>
   </div>
 
   <div id="tab-ai" role="tabpanel" aria-labelledby="tab-ai-btn">
 
   <div class="console command" data-label="COMMAND">
-    <!-- Talk it through first, if you want to. A tone is an opinion, and the
-         first sentence somebody types is rarely the one they mean. Empty and
-         out of the way until used, so typing and pressing ENGAGE still works
-         exactly as it always has. -->
-    <div id="chat" hidden></div>
-    <div class="promptrow">
-      <span class="prompt-prefix">&gt;</span>
-      <!-- A textarea, not an input. People describe tones in sentences, and a
-           one-line box shows them the middle of their own thought. It grows
-           with what is typed and stops at a few lines. Enter sends; the hint
-           below says so, because a box that grows implies Enter makes a
-           newline and that has to be answered where it is asked. -->
-      <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
-                placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly"></textarea>
-      <button id="engage">SEND</button>
+    <!-- Shaped like the conversation it is: what was said fills the space,
+         and the box you type into is pinned under it. It read as a form
+         before, because the input sat at the TOP with suggestions and two
+         paragraphs of explanation stacked underneath, so the first thing on
+         screen was chrome rather than the exchange. -->
+    <div id="chat">
+      <!-- The empty state, which is most people's first sight of this. A
+           question and six real requests beat any amount of describing what
+           the box accepts. -->
+      <div class="cempty" id="cempty">
+        <p class="cask">What do you want it to sound like?</p>
+        <!-- Real requests the planner resolves; clicking one loads it, so the
+             first thing a new player does is a working command rather than a
+             guess at the vocabulary. -->
+        <div class="egs" id="egs"></div>
+      </div>
+      <div id="cscroll"></div>
     </div>
-    <!-- What it can do, said by showing rather than claiming. These are real
-         requests the planner resolves; clicking one loads it so the first
-         thing a new player does is a working command rather than a guess at
-         the vocabulary. -->
-    <div class="egs" id="egs"></div>
 
-    <div class="hint">Enter sends, Shift+Enter starts a new line. Changes are proposed first and only sent to the FM9 after you confirm. Edit buffer only, nothing is saved to your presets.</div>
-
-    <!-- One field, one button. Paste a link and the work of watching the video
-         and typing the settings out is the part being removed. -->
-    <div class="promptrow srcrow">
-      <span class="prompt-prefix">&#9834;</span>
-      <input id="srcinput" autocomplete="off" spellcheck="false"
-             placeholder="or build from a video or description... paste a YouTube link, a page, or the transcript itself">
-      <button id="analyze">ANALYZE</button>
+    <div class="composer">
+      <div class="promptrow">
+        <span class="prompt-prefix">&gt;</span>
+        <!-- A textarea, not an input. People describe tones in sentences, and
+             a one-line box shows them the middle of their own thought. It
+             grows with what is typed and stops at a few lines. -->
+        <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
+                  placeholder="describe the tone you want..."></textarea>
+        <button id="engage">SEND</button>
+      </div>
+      <div class="hint composerhint">Enter sends, Shift+Enter for a new line. Nothing reaches the FM9 until you confirm it.</div>
     </div>
-    <div class="hint" id="srchint">Reads what the source actually says and
-      proposes a build for <em>your</em> rig. An interpretation to review and
-      tweak, not a copy: sources rarely state everything, and what it had to
-      guess is marked separately. YouTube links read the description and the
-      captions, and transcribe the audio here if the video has none, which
-      takes a few minutes on a long one.</div>
+
+    <!-- Folded away. It is a real feature and a rare one: two text boxes and
+         two buttons stacked in the same panel made the page read as a form,
+         and the second field competed with the one almost everybody wants.
+         One line, opened by the people who came for it. -->
+    <details class="srcfold">
+      <summary>Build from a video or a description instead</summary>
+      <!-- One field, one button. Paste a link and the work of watching the
+           video and typing the settings out is the part being removed. -->
+      <div class="promptrow srcrow">
+        <span class="prompt-prefix">&#9834;</span>
+        <input id="srcinput" autocomplete="off" spellcheck="false"
+               placeholder="paste a YouTube link, a page, or the transcript itself">
+        <button id="analyze">ANALYZE</button>
+      </div>
+      <div class="hint" id="srchint">Reads what the source actually says and
+        proposes a build for <em>your</em> rig. An interpretation to review and
+        tweak, not a copy: sources rarely state everything, and what it had to
+        guess is marked separately. YouTube links read the description and the
+        captions, and transcribe the audio here if the video has none, which
+        takes a few minutes on a long one.</div>
+    </details>
     <div id="srcprogress" class="srcprog" hidden></div>
 
     <!-- Between reading and building. Two questions whose answers change the
@@ -4468,9 +4515,13 @@ function renderChat() {
   const box = $('chat');
   // Measured BEFORE the rewrite, because after it scrollTop is meaningless.
   const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  box.hidden = !chatLog.length;
-  if (box.hidden) { box.innerHTML = ''; saveChat(); return; }
-  box.innerHTML = chatLog.map(m =>
+  // The transcript area stays: it is the shape of the panel, not a thing that
+  // appears once you have used it. Only its contents swap between the empty
+  // state and the exchange.
+  const feed = $('cscroll');
+  $('cempty').hidden = !!chatLog.length;
+  if (!chatLog.length) { feed.innerHTML = ''; saveChat(); return; }
+  feed.innerHTML = chatLog.map(m =>
     `<div class="cmsg ${m.role}"><span class="cwho">${
       m.role === 'user' ? 'YOU' : 'TONECOMMAND'}</span>${esc(m.content)}</div>`
   ).join('')
@@ -4492,9 +4543,6 @@ function renderChat() {
   // somebody back down while they are reading something further up is worse
   // than making them scroll.
   if (wasAtBottom) box.scrollTop = box.scrollHeight;
-  // The examples teach the vocabulary to somebody staring at an empty box.
-  // Once there is a conversation on screen they are just clutter under it.
-  $('egs').hidden = !!chatLog.length;
   if ($('cbuild')) $('cbuild').onclick = () => engage(chatRequest);
   $('cclear').onclick = () => {
     // Four turns is real work, so this asks once rather than making CLEAR a

@@ -166,7 +166,11 @@ def test_the_browser_keeps_them_visually_apart():
 def test_the_copy_calls_it_an_interpretation_not_a_copy():
     assert "This is my interpretation of what" in SCRIPT
     assert "gets you in the ballpark: review and tweak" in SCRIPT
-    assert "An interpretation to review and\n      tweak, not a copy" in UI
+    # Whitespace-insensitive: the copy is wrapped for readability and its
+    # indentation moved when the panel was folded into a <details>. Pinning
+    # the line breaks pins the layout, which is not the claim being made.
+    assert "An interpretation to review and tweak, not a copy" in \
+        " ".join(UI.split())
 
 
 def test_the_framing_comes_before_the_summary():
