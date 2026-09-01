@@ -1874,9 +1874,19 @@ def api_recipe_plan(body: RecipeBody):
             item["slot_label"] = proto.slot_label(int(a["value"]))
         actions.append(item)
     blocked = sum(1 for a in actions if a["validation_errors"])
+    # A recipe made on different firmware is worth a word. Validation catches
+    # everything structural, because steps name models rather than numbering
+    # them, but Fractal revises voicings between releases and no read can see
+    # that. Best effort: a rig that does not answer just means no note.
+    try:
+        rig_fw = get_fm9().firmware_label()
+    except Exception:
+        rig_fw = ""
     return {"summary": body.recipe.get("title") or body.recipe.get("name"),
             "actions": actions, "blocked": blocked,
             "assumes": body.recipe.get("assumes"),
+            "firmware_note": recipebook.firmware_note(
+                body.recipe.get("tested_firmware"), rig_fw),
             "ear_checklist": body.recipe.get("ear_checklist") or []}
 
 

@@ -281,6 +281,18 @@ class FM9:
         return self._request(p.build_get_firmware(),
                              lambda d: d[5:7] if p.is_fractal(d, p.FN_FIRMWARE) else None)
 
+    def firmware_label(self) -> str:
+        """The firmware as the unit writes it, e.g. "12.00".
+
+        Two bytes, major and minor, and the minor is shown zero padded to two
+        digits because that is how Fractal writes it everywhere and how the
+        recipes in this repository record it.
+        """
+        got = self.firmware()
+        if not got or len(got) < 2:
+            return ""
+        return f"{got[0]}.{got[1]:02d}"
+
     def current_preset(self) -> tuple[int, str] | None:
         return self._request(p.build_get_patch_name(), p.parse_patch_name)
 

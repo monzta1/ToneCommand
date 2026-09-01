@@ -149,3 +149,28 @@ def pr_url(recipe: dict) -> str:
                        if not k.startswith("_")}, indent=1)
     return (f"https://github.com/{REPO}/new/{BRANCH}"
             f"?filename=recipes/{name}.json&value={quote(body)}")
+
+
+def firmware_note(tested: str, rig: str) -> str:
+    """What to say when a recipe was made on different firmware.
+
+    Names, not ordinals, are what make a recipe portable: a step says
+    `type_name: "Brit 800 2204 High"` and resolves through THIS rig's roster,
+    so a model that moved position between releases still lands correctly, and
+    one that does not exist here is refused rather than silently becoming its
+    neighbour.
+
+    That covers the structural risk and not the audible one. Fractal revises
+    model voicings between firmware versions, so the same name can be a
+    slightly different amp on a different release. No amount of validation can
+    see that, and the recipe's own `tested_firmware` is the only signal there
+    is. It was being recorded and never shown to anybody.
+    """
+    tested = (tested or "").strip()
+    rig = (rig or "").strip()
+    if not tested or not rig or tested == rig:
+        return ""
+    return (f"made on firmware {tested}, and this rig is on {rig}. Model names "
+            f"resolve against your own rosters, so nothing will load the wrong "
+            f"block, but Fractal revises voicings between releases and the "
+            f"same model can sound different. Trust your ears over the recipe.")

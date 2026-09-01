@@ -2291,6 +2291,9 @@ async function useRecipe(i) {
               device: lastState.preset ? {preset: lastState.preset} : null});
     $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
     if (d.assumes) log(`"${d.summary}" assumes: ${d.assumes}`, 'warn');
+    // Shown before TRANSMIT, because that is the moment it matters and the
+    // only thing validation cannot check for you.
+    if (d.firmware_note) log(`"${d.summary}" was ${d.firmware_note}`, 'warn');
     if (d.blocked) {
       log(`${d.blocked} step(s) will not run on this preset; they are marked `
           + `BLOCKED and will not be transmitted`, 'err');

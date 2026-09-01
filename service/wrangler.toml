@@ -23,5 +23,25 @@ binding = "DB"                 # env.DB in worker.js
 database_name = "tonecommand"
 database_id = "22e0e38f-ea37-4333-bf45-6452d5e435c9"
 
+[vars]
+# Off: a submission is queued and a human moves it into recipes/.
+# "true": a submission is committed straight into recipes/ and is live for
+# everyone immediately.
+#
+# Be clear-eyed about the second one. /submit is unauthenticated, so with
+# auto-publish on, anyone who can reach this worker can write a file into a
+# public repository under the owner's account. That is a deliberate choice
+# while there are no users rather than an oversight, and it is one flag to
+# undo: set it to "false" and redeploy, and the queue is back with nothing
+# lost, because every submission is recorded in D1 either way.
+AUTO_PUBLISH = "true"
+RECIPE_REPO = "monzta1/ToneCommand"
+RECIPE_BRANCH = "main"
+
+# GITHUB_TOKEN is a SECRET, never a var, and never in this file:
+#   npx wrangler secret put GITHUB_TOKEN
+# A fine-grained token scoped to this one repository with Contents: write and
+# nothing else. Without it, auto-publish falls back to queuing and says so.
+
 [observability]
 enabled = true
