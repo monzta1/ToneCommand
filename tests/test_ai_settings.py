@@ -866,7 +866,7 @@ def test_the_guide_covers_the_whole_journey_in_order():
 
 
 def test_every_step_has_a_command_and_a_way_out():
-    for step in ai_settings.SETUP_GUIDE["steps"]:
+    for step in ai_settings.setup_guide_state()["steps"]:
         assert step["run"].strip(), step
         assert len(step["say"]) > 40, step        # a title is not guidance
         assert step["fix"].strip(), step          # what to do when it fails
@@ -874,12 +874,13 @@ def test_every_step_has_a_command_and_a_way_out():
 
 def test_the_commands_are_the_real_ones():
     """Verified against homebrew-core's cliproxyapi formula and the project's
-    own flag definitions in cmd/server/main.go. An invented flag would strand
-    somebody at a terminal with no way to tell it was our mistake."""
-    runs = [s["run"] for s in ai_settings.SETUP_GUIDE["steps"]]
+    own flag definitions in cmd/server/main.go, then run on a real machine
+    end to end. An invented flag would strand somebody at a terminal with no
+    way to tell it was our mistake."""
+    runs = [s["run"] for s in ai_settings.setup_guide_state()["steps"]]
     assert "brew install cliproxyapi" in runs
     assert "cliproxyapi --codex-login" in runs
-    assert "brew services start cliproxyapi" in runs
+    assert any("brew services restart cliproxyapi" in r for r in runs)
 
 
 def test_the_guide_does_not_lead_with_the_jargon():
@@ -921,15 +922,81 @@ def test_an_install_off_PATH_still_counts(monkeypatch):
     assert done is True and "cliproxyapi" in why
 
 
+def _probe_returning(status=None, body="", payload=None):
+    """Stand in for the connector, answering however the test needs."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return _json.dumps(payload or {}).encode()
+
+    def fake(req, timeout=0):
+        if status:
+            raise urllib.error.HTTPError("u", status, "no", {},
+                                         __import__("io").BytesIO(body.encode()))
+        return Resp()
+
+    return urllib.request, fake
+
+
+def test_placeholder_passwords_are_not_blamed_on_the_sign_in(monkeypatch):
+    """The failure that shipped. A connector that is running and correctly
+    signed in still refuses every call until its template api-keys are
+    replaced, and the guide told the user their sign-in had failed. It sent
+    them to redo the one part that was working."""
+    mod, fake = _probe_returning(
+        403, '{"error":"unsafe_example_api_key","message":"template values"}')
+    monkeypatch.setattr(mod, "urlopen", fake)
+    done, why = ai_settings.setup_step_state("listening")
+    assert done is False
+    assert "placeholder passwords" in why
+    assert "sign-in" not in why
+
+
 def test_running_with_no_account_is_not_finished(monkeypatch):
     """A proxy running with nobody signed in answers and offers no models.
     Calling that done defers the failure to the only moment it costs
     anything, which is mid-prompt."""
-    monkeypatch.setattr(ai_settings, "_endpoint_models", lambda u="": ([], "none"))
-    monkeypatch.setattr(ai_settings, "endpoint_reachable", lambda u: "")
+    mod, fake = _probe_returning(payload={"data": []})
+    monkeypatch.setattr(mod, "urlopen", fake)
     done, why = ai_settings.setup_step_state("listening")
     assert done is False
-    assert "sign-in step did not finish" in why
+    assert "sign-in did not finish" in why
+
+
+def test_a_model_listing_is_what_finished_means(monkeypatch):
+    mod, fake = _probe_returning(payload={"data": [{"id": "gpt-5.5"}]})
+    monkeypatch.setattr(mod, "urlopen", fake)
+    done, why = ai_settings.setup_step_state("listening")
+    assert done is True and "1 model" in why
+
+
+def test_the_password_is_stable_across_calls():
+    """The setup command bakes it into a config file and ToneCommand sends it
+    on every request afterwards. A fresh one per page load would leave those
+    two disagreeing with no sign of why."""
+    assert ai_settings.cliproxy_key() == ai_settings.cliproxy_key()
+    assert len(ai_settings.cliproxy_key()) == 32
+
+
+def test_the_setup_command_edits_the_real_config_and_restarts():
+    cmd = ai_settings.cliproxy_setup_command()
+    if ai_settings.cliproxy_config_path():
+        assert ai_settings.cliproxy_key() in cmd
+        assert "your-api-key-1" in cmd
+        assert "brew services restart cliproxyapi" in cmd
+
+
+def test_the_browser_fills_the_password_in(monkeypatch):
+    """Making somebody carry a 32 character string between two boxes is a
+    step that exists only because we put it there."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderSetup()")[1].split("\n}\n\n")[0]
+    assert "$('aikey').value = g.key;" in fn
+    assert "g.keyFor" in fn, "only for the service it belongs to"
 
 
 def test_the_guide_reports_the_next_undone_step(monkeypatch):

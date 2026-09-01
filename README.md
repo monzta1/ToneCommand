@@ -629,9 +629,13 @@ happened rather than at the next prompt.
 
 It installs [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), a
 separate MIT-licensed service (`brew install cliproxyapi`), signs it into your
-ChatGPT account over the normal OAuth flow, and starts it as a background
-service. The app never runs any of that itself: it shows you the command and
-verifies the result.
+ChatGPT account over the normal OAuth flow, replaces the placeholder passwords
+it ships with, and starts it as a background service. The app never runs any of
+that itself: it shows you the command and verifies the result. The password is
+derived from your machine and filled into the panel for you.
+
+Proven end to end on a ChatGPT Plus account: a plan came back in 8.5s through
+`gpt-5.5` with three valid actions and no validation errors.
 
 Two things worth knowing. OpenAI sells Codex for use through their own
 clients, and routing it into another app is not something they bless, so it

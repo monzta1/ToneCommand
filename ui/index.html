@@ -4417,11 +4417,19 @@ function renderSetup() {
   if (box.hidden) return;
   const g = setupGuide;
   if (g.complete) {
+    // Fill the password in rather than showing it and asking for a copy. It
+    // authenticates this laptop to a proxy on this laptop, it is derived
+    // rather than chosen, and making somebody carry a 32 character string
+    // between two boxes is a step that exists only because we put it there.
+    if (g.key && $('aibaseurl').value.trim().replace(/\/+$/, '')
+                 === String(g.keyFor || '').replace(/\/+$/, '')) {
+      $('aikey').value = g.key;
+    }
     box.innerHTML = `<div class="swrap">
       <h4>YOU ARE SET UP</h4>
       <p class="sintro">${esc(g.steps[g.steps.length - 1].detail)}
-        Save these settings and send a prompt. Nothing else to do, and it
-        starts itself whenever you log in.</p>
+        The password is filled in for you. Press SAVE and send a prompt.
+        Nothing else to do, and it starts itself whenever you log in.</p>
       <div class="sbtns"><button class="go" id="sclose">CLOSE</button></div>
     </div>`;
     $('sclose').onclick = () => { setupOpen = false; renderSetup(); };

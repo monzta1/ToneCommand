@@ -147,11 +147,17 @@ SETUP_GUIDE = {
         },
         {
             "id": "listening",
-            "title": "Start it, and keep it running",
-            "say": "This starts the connector now and again whenever you log "
-                   "in, so it is simply there when you need it.",
-            "run": "brew services start cliproxyapi",
-            "fix": "Give it a few seconds to come up, then check again.",
+            "title": "Set its password and start it",
+            "say": "The connector ships with placeholder passwords and "
+                   "refuses to answer anything until a real one is set, which "
+                   "is a sensible thing for it to do. This sets one, then "
+                   "starts it now and again whenever you log in. ToneCommand "
+                   "fills the password in for you, so you never need to see "
+                   "it or type it anywhere.",
+            "run": "",       # built per machine: see setup_guide_state
+            "fix": "Give it a few seconds to come up, then check again. If it "
+                   "says permission denied, put sudo in front of the sed part "
+                   "only.",
         },
     ],
 }
@@ -755,17 +761,10 @@ def setup_step_state(step_id: str) -> tuple[bool, str]:
             f"Signed in: {len(files)} account file(s) in {home}." if files else
             "No signed-in account found yet.")
     if step_id == "listening":
-        # The strongest check available, and the one that matters: not "is a
-        # port open" but "does it list a model". A proxy that is running with
-        # no account signed in answers and offers nothing, which would fail
-        # later at the only moment it costs anything.
-        models, why = _endpoint_models(CLIPROXY_DEFAULT_URL)
-        if models:
-            return True, f"Running, and offering {len(models)} model(s)."
-        if not endpoint_reachable(CLIPROXY_DEFAULT_URL):
-            return False, ("It is running but offering no models, which "
-                           "usually means the sign-in step did not finish.")
-        return False, f"Not running yet ({why})."
+        # Not "is a port open" but "does it list a model, to us, with our
+        # password". Everything short of that fails later at the only moment
+        # it costs anything, which is mid-prompt.
+        return cliproxy_probe()
     return False, f"unknown step {step_id!r}"
 
 
@@ -776,5 +775,87 @@ def setup_guide_state() -> dict:
         done, detail = setup_step_state(step["id"])
         steps.append({**step, "done": done, "detail": detail})
     nxt = next((s["id"] for s in steps if not s["done"]), "")
+    # Built here rather than in the table: the config path and the password
+    # are both properties of this machine.
+    for s in steps:
+        if s["id"] == "listening":
+            s["run"] = cliproxy_setup_command()
     return {**SETUP_GUIDE, "steps": steps, "next": nxt,
-            "complete": not nxt}
+            "complete": not nxt,
+            # So the browser can fill it in and nobody has to see it.
+            "key": cliproxy_key(), "keyFor": CLIPROXY_DEFAULT_URL}
+
+
+def cliproxy_config_path() -> str:
+    """Where homebrew puts the connector's config, or "" if it is not there."""
+    import os
+    for guess in ("/opt/homebrew/etc/cliproxyapi.conf",
+                  "/usr/local/etc/cliproxyapi.conf"):
+        if os.path.exists(guess):
+            return guess
+    return ""
+
+
+def cliproxy_key() -> str:
+    """A stable local password for the connector, derived rather than stored.
+
+    It has to be the same value every time: the setup command bakes it into a
+    config file, and ToneCommand sends it on every request afterwards. A fresh
+    random one per page load would leave those two disagreeing with no sign of
+    why. Derived from the machine, so it is not a shared secret from a repo
+    either, and never written down by us.
+
+    Local only. It authenticates a browser on this laptop to a proxy on this
+    laptop; it is not a credential for any upstream service.
+    """
+    import hashlib
+    import os
+    seed = f"tonecommand-cliproxy{cliproxy_config_path()}{os.getuid()}"
+    return hashlib.sha256(seed.encode()).hexdigest()[:32]
+
+
+def cliproxy_setup_command() -> str:
+    """The one line that replaces the template passwords and restarts it."""
+    cfg = cliproxy_config_path()
+    if not cfg:
+        return "brew services start cliproxyapi"
+    key = cliproxy_key()
+    return (f"sed -i '' 's/\"your-api-key-1\"/\"{key}\"/; "
+            f"/\"your-api-key-2\"/d; /\"your-api-key-3\"/d' {cfg} "
+            f"&& brew services restart cliproxyapi")
+
+
+def cliproxy_probe() -> tuple[bool, str]:
+    """Is the connector actually usable, and if not, which step is to blame?
+
+    Worth its own function because the failures look alike from a distance and
+    point at completely different steps. Saying "the sign-in did not finish"
+    to somebody whose sign-in plainly succeeded sends them to redo the one
+    part that was working.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+    url = CLIPROXY_DEFAULT_URL.rstrip("/") + "/models"
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("authorization", f"Bearer {cliproxy_key()}")
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = _json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:400]
+        if "unsafe_example_api_key" in body or "template values" in body:
+            return False, ("It is running and signed in, but still has its "
+                           "placeholder passwords. Run the line above.")
+        if exc.code in (401, 403):
+            return False, ("It is running but rejected our password. Run the "
+                           "line above again, then check.")
+        return False, f"It answered {exc.code}. {body[:120]}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return False, f"Not running yet ({getattr(exc, 'reason', exc)})."
+    models = usable_models([e["id"] for e in (data.get("data") or [])
+                            if isinstance(e, dict) and isinstance(e.get("id"), str)])
+    if not models:
+        return False, ("It is running and answering, but offering no models, "
+                       "which means the sign-in did not finish.")
+    return True, f"Running and offering {len(models)} model(s)."
