@@ -617,8 +617,26 @@ blank the planner sends `local`, which a hosted service answers with a 404 for
 a model nobody asked for.
 
 Note that an OpenAI API key is a separate, pay-per-request account from a
-ChatGPT Plus subscription. To use a subscription you already pay for instead,
-click **A subscription you already pay for** and see the router route below.
+ChatGPT Plus subscription.
+
+### Using the ChatGPT subscription you already pay for
+
+Choose **A subscription you already pay for** and click **SHOW ME HOW**. The
+panel walks through it one step at a time, shows the exact line to paste into
+a terminal, and checks your machine before offering the next step. It will not
+advance on your say-so, so a step that silently failed is caught where it
+happened rather than at the next prompt.
+
+It installs [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), a
+separate MIT-licensed service (`brew install cliproxyapi`), signs it into your
+ChatGPT account over the normal OAuth flow, and starts it as a background
+service. The app never runs any of that itself: it shows you the command and
+verifies the result.
+
+Two things worth knowing. OpenAI sells Codex for use through their own
+clients, and routing it into another app is not something they bless, so it
+could change without notice. And the same setup also covers Gemini, Grok and
+Kimi on their own logins.
 
 ### Using Grok, Codex, Gemini or a local model
 

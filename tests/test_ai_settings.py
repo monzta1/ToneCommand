@@ -18,6 +18,21 @@ from fm9 import ai_settings, planner
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _code_only(src: str) -> str:
+    """`src` with its comments removed, everything else byte for byte."""
+    import io
+    import tokenize
+    out, prev = [], (1, 0)
+    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+        if tok.start[0] != prev[0]:
+            prev = (tok.start[0], 0)
+        if tok.type != tokenize.COMMENT:
+            out.append(" " * max(0, tok.start[1] - prev[1]) + tok.string)
+        prev = tok.end
+    return "".join(out)
+
+
+
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     """Point the settings file at a tmp path, and start from a clean env.
@@ -836,3 +851,126 @@ def test_the_warning_reaches_the_log_not_just_the_response():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function saveAiSettings(extra)")[1].split("\n}\n")[0]
     assert "if (d.warning) log(d.warning, 'warn');" in fn
+
+
+# --- guided setup ---------------------------------------------------------
+#
+# "Run CLIProxyAPI" is a fine instruction for someone who has heard of
+# CLIProxyAPI. Nobody has. A guitarist who wants to use the ChatGPT
+# subscription they already pay for should not have to learn the name of the
+# thing in the middle.
+
+def test_the_guide_covers_the_whole_journey_in_order():
+    ids = [s["id"] for s in ai_settings.SETUP_GUIDE["steps"]]
+    assert ids == ["brew", "installed", "signed_in", "listening"]
+
+
+def test_every_step_has_a_command_and_a_way_out():
+    for step in ai_settings.SETUP_GUIDE["steps"]:
+        assert step["run"].strip(), step
+        assert len(step["say"]) > 40, step        # a title is not guidance
+        assert step["fix"].strip(), step          # what to do when it fails
+
+
+def test_the_commands_are_the_real_ones():
+    """Verified against homebrew-core's cliproxyapi formula and the project's
+    own flag definitions in cmd/server/main.go. An invented flag would strand
+    somebody at a terminal with no way to tell it was our mistake."""
+    runs = [s["run"] for s in ai_settings.SETUP_GUIDE["steps"]]
+    assert "brew install cliproxyapi" in runs
+    assert "cliproxyapi --codex-login" in runs
+    assert "brew services start cliproxyapi" in runs
+
+
+def test_the_guide_does_not_lead_with_the_jargon():
+    """The chip has to sell the idea. The wizard names the program at the one
+    moment it helps, which is while installing it."""
+    sub = next(p for p in ai_settings.ENDPOINT_PRESETS
+               if p["url"] == ai_settings.CLIPROXY_DEFAULT_URL)
+    assert "CLIProxyAPI" not in sub["help"]
+    assert "SHOW ME HOW" in sub["help"]
+    named = [s for s in ai_settings.SETUP_GUIDE["steps"]
+             if "CLIProxyAPI" in s["say"]]
+    assert len(named) == 1 and named[0]["id"] == "installed"
+
+
+def test_a_step_is_checked_never_assumed(monkeypatch):
+    """A wizard that advances because somebody clicked Next teaches nothing
+    and fails at the end with no clue which step went wrong."""
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda n: None)
+    done, why = ai_settings.setup_step_state("brew")
+    assert done is False and "not installed" in why
+    monkeypatch.setattr(shutil, "which", lambda n: "/opt/homebrew/bin/brew")
+    done, why = ai_settings.setup_step_state("brew")
+    assert done is True and "/opt/homebrew/bin/brew" in why
+
+
+def test_an_install_off_PATH_still_counts(monkeypatch):
+    """brew does not put every formula on PATH for a GUI-launched process,
+    and telling somebody their working install is missing is worse than
+    looking where the formula puts it."""
+    import os
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda n: None)
+    real = os.path.exists
+    monkeypatch.setattr(
+        os.path, "exists",
+        lambda p: p == "/opt/homebrew/opt/cliproxyapi/bin/cliproxyapi" or real(p))
+    done, why = ai_settings.setup_step_state("installed")
+    assert done is True and "cliproxyapi" in why
+
+
+def test_running_with_no_account_is_not_finished(monkeypatch):
+    """A proxy running with nobody signed in answers and offers no models.
+    Calling that done defers the failure to the only moment it costs
+    anything, which is mid-prompt."""
+    monkeypatch.setattr(ai_settings, "_endpoint_models", lambda u="": ([], "none"))
+    monkeypatch.setattr(ai_settings, "endpoint_reachable", lambda u: "")
+    done, why = ai_settings.setup_step_state("listening")
+    assert done is False
+    assert "sign-in step did not finish" in why
+
+
+def test_the_guide_reports_the_next_undone_step(monkeypatch):
+    monkeypatch.setattr(ai_settings, "setup_step_state",
+                        lambda i: (i in ("brew", "installed"), i))
+    state = ai_settings.setup_guide_state()
+    assert state["next"] == "signed_in"
+    assert state["complete"] is False
+
+
+def test_all_done_reports_complete(monkeypatch):
+    monkeypatch.setattr(ai_settings, "setup_step_state", lambda i: (True, i))
+    assert ai_settings.setup_guide_state()["complete"] is True
+
+
+def test_the_endpoint_serves_the_guide(client):
+    d = client.get("/api/ai-settings/setup").json()
+    assert [s["id"] for s in d["steps"]] == \
+        [s["id"] for s in ai_settings.SETUP_GUIDE["steps"]]
+    assert all("done" in s and "detail" in s for s in d["steps"])
+
+
+def test_the_app_never_runs_the_setup_commands_itself():
+    """It shows them. Installing software on somebody's machine from a web
+    request is not a thing this program should do, and being shown the line
+    is also how they learn what happened."""
+    import inspect
+    src = _code_only(inspect.getsource(ai_settings.setup_step_state))
+    for forbidden in ("subprocess", "os.system", "popen", "check_output"):
+        assert forbidden not in src.lower(), forbidden
+
+
+def test_the_browser_advances_only_on_proof():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderSetup()")[1].split("\n}\n\n")[0]
+    assert "if (now.done)" in fn, "advancing must depend on the check"
+    assert "setupAt = Math.min(i + 1" in fn
+    assert "'Not yet. '" in fn, "a refusal has to say what is still missing"
+
+
+def test_only_the_service_that_needs_setup_is_offered_it():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
+    assert "current.url === setupGuide.url" in fn

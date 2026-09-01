@@ -2276,6 +2276,18 @@ def api_ai_models(backend: str = "", base_url: str = ""):
     return ai_settings.list_models(backend, base_url)
 
 
+@app.get("/api/ai-settings/setup")
+def api_ai_setup():
+    """The guided setup, with every step checked against this machine.
+
+    Read only, and it runs nothing: each step is verified by looking for a
+    binary, a file or an answering port. The commands are shown so the person
+    runs them, which is both safer than a web request installing software and
+    how they find out what happened.
+    """
+    return ai_settings.setup_guide_state()
+
+
 @app.post("/api/ai-settings")
 def api_ai_settings(body: dict):
     """Save the choice and make it effective for the next prompt.

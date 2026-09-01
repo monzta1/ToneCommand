@@ -1076,7 +1076,45 @@
 #aipresets button[aria-pressed="true"] {
   border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
 }
+#aipresets #ashowme {
+  border-style: dashed; border-color: var(--accent, #6ea8fe);
+  color: var(--accent, #6ea8fe); margin-left: auto; font-weight: 600;
+}
 #aipresethelp:empty { display: none; }
+/* The guided setup. One step visible at a time, and it does not advance on a
+   click: it advances when the step is actually verified. A wizard that takes
+   your word for it fails at the end with no clue which step went wrong. */
+#aisetup { flex: 1 1 100%; margin: 12px 0 0; }
+#aisetup .swrap {
+  border: 1px solid var(--line, #333a45); border-radius: 8px; padding: 14px;
+  background: var(--panel, #16181d);
+}
+#aisetup h4 { margin: 0 0 4px; font-size: 13px; letter-spacing: .06em; }
+#aisetup .sintro, #aisetup .ssay, #aisetup .sfix {
+  font-size: 12px; line-height: 1.55; opacity: .85; margin: 0 0 9px;
+}
+#aisetup .sfix { opacity: .6; }
+#aisetup .scount { font-size: 11px; opacity: .55; letter-spacing: .08em; }
+#aisetup .scmd {
+  display: flex; gap: 8px; align-items: stretch; margin: 0 0 10px;
+}
+#aisetup code {
+  flex: 1 1 auto; padding: 9px 11px; border-radius: 6px; font-size: 13px;
+  background: #0c0e12; border: 1px solid var(--line, #333a45);
+  overflow-x: auto; white-space: pre;
+}
+#aisetup .sbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+#aisetup button { font: inherit; font-size: 12px; padding: 7px 14px;
+  cursor: pointer; border-radius: 6px;
+  border: 1px solid var(--line, #333a45);
+  background: transparent; color: var(--fg, #d8dde5); }
+#aisetup button.go { border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe); }
+#aisetup .sdone { font-size: 12px; margin: 8px 0 0; }
+#aisetup .sdone.ok { color: #5ad18a; }
+#aisetup .sdone.no { color: #e0a34a; }
+#aisetup ol.strack { margin: 10px 0 0; padding-left: 18px;
+  font-size: 11px; line-height: 1.7; opacity: .5; }
+#aisetup ol.strack li.at { opacity: 1; font-weight: 600; }
 .airow select, .airow button { flex: 0 0 auto; }
 .answered { color: var(--dim); font-size: 11px; letter-spacing: .04em; margin-top: 6px; }
 
@@ -1469,6 +1507,7 @@
              placeholder="http://127.0.0.1:8317/v1">
       <div id="aipresets" hidden></div>
       <div class="hint" id="aipresethelp"></div>
+      <div id="aisetup" hidden></div>
       <input id="aimodel" autocomplete="off" spellcheck="false"
              list="aimodels" placeholder="model (optional)">
       <datalist id="aimodels"></datalist>
@@ -4312,6 +4351,25 @@ function renderAiPresets() {
     };
     box.appendChild(b);
   }
+  // Only this service needs software installed, and only it gets an offer to
+  // walk through it. A SET IT UP button beside a service that needs no setup
+  // would be a question mark where there was none.
+  const guided = current && setupGuide && current.url === setupGuide.url;
+  if (!guided && setupOpen) { setupOpen = false; }
+  if (guided && !setupOpen) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    // Not a service. It sits in the same row for lack of anywhere better, so
+    // it has to stop reading as a fifth thing to choose between.
+    b.id = 'ashowme';
+    b.textContent = setupGuide.complete ? 'ALREADY SET UP' : 'SHOW ME HOW';
+    b.onclick = async () => {
+      setupOpen = true;
+      await loadSetup(true);       // open on the first step not yet done
+    };
+    box.appendChild(b);
+  }
+  renderSetup();
   if (current) {
     $('aipresethelp').textContent = current.key === 'required'
       ? `${current.help} A key is required.`
@@ -4331,6 +4389,106 @@ function renderAiPresets() {
       $('aikey').placeholder = 'no key needed for this service';
     }
   }
+}
+
+// --- guided setup ---------------------------------------------------------
+//
+// "Run CLIProxyAPI" is a fine instruction for someone who has heard of
+// CLIProxyAPI. Nobody has. This walks a guitarist through it one step at a
+// time, shows the exact line to paste, and checks the machine before offering
+// the next one. It never runs anything itself.
+let setupGuide = null;
+let setupAt = 0;          // which step is on screen
+let setupOpen = false;
+
+async function loadSetup(jumpToNext) {
+  const d = await (await fetch('/api/ai-settings/setup')).json();
+  setupGuide = d;
+  if (jumpToNext) {
+    const i = d.steps.findIndex(s => !s.done);
+    setupAt = i < 0 ? d.steps.length - 1 : i;
+  }
+  renderSetup();
+}
+
+function renderSetup() {
+  const box = $('aisetup');
+  box.hidden = !setupOpen || !setupGuide;
+  if (box.hidden) return;
+  const g = setupGuide;
+  if (g.complete) {
+    box.innerHTML = `<div class="swrap">
+      <h4>YOU ARE SET UP</h4>
+      <p class="sintro">${esc(g.steps[g.steps.length - 1].detail)}
+        Save these settings and send a prompt. Nothing else to do, and it
+        starts itself whenever you log in.</p>
+      <div class="sbtns"><button class="go" id="sclose">CLOSE</button></div>
+    </div>`;
+    $('sclose').onclick = () => { setupOpen = false; renderSetup(); };
+    return;
+  }
+  const i = Math.max(0, Math.min(setupAt, g.steps.length - 1));
+  const step = g.steps[i];
+  box.innerHTML = `<div class="swrap">
+    ${i === 0 ? `<p class="sintro">${esc(g.intro)}</p>` : ''}
+    <div class="scount">STEP ${i + 1} OF ${g.steps.length}</div>
+    <h4>${esc(step.title).toUpperCase()}</h4>
+    <p class="ssay">${esc(step.say)}</p>
+    <div class="scmd">
+      <code>${esc(step.run)}</code>
+      <button id="scopy">COPY</button>
+    </div>
+    <p class="sfix">${esc(step.fix)}</p>
+    <div class="sbtns">
+      <button class="go" id="scheck">I HAVE DONE THIS, CHECK IT</button>
+      ${i > 0 ? '<button id="sback">BACK</button>' : ''}
+      <button id="squit">CLOSE</button>
+    </div>
+    <p class="sdone ${step.done ? 'ok' : 'no'}" id="sstate">${
+      step.done ? 'Done. ' + esc(step.detail) : ''}</p>
+    <ol class="strack">${g.steps.map((x, n) =>
+      `<li class="${n === i ? 'at' : ''}">${x.done ? '\u2713 ' : ''}${
+        esc(x.title)}</li>`).join('')}</ol>
+  </div>`;
+
+  $('scopy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(step.run);
+      $('scopy').textContent = 'COPIED';
+      setTimeout(() => { $('scopy').textContent = 'COPY'; }, 1400);
+    } catch (e) {
+      // a browser that refuses the clipboard still leaves the line selectable
+      $('scopy').textContent = 'SELECT IT';
+    }
+  };
+  $('scheck').onclick = async () => {
+    $('scheck').disabled = true;
+    $('scheck').textContent = 'CHECKING...';
+    try {
+      const d = await (await fetch('/api/ai-settings/setup')).json();
+      setupGuide = d;
+      const now = d.steps[i];
+      if (now.done) {
+        // Advance only on proof. Taking somebody's word for it is how a
+        // wizard ends up failing on the last step with nothing to point at.
+        setupAt = Math.min(i + 1, d.steps.length - 1);
+        log(`setup: ${now.title} \u2713`, 'ok');
+        renderSetup();
+        if (d.complete) log('setup complete: ' + d.steps[d.steps.length - 1].detail, 'ok');
+      } else {
+        $('sstate').className = 'sdone no';
+        $('sstate').textContent = 'Not yet. ' + now.detail;
+        $('scheck').disabled = false;
+        $('scheck').textContent = 'I HAVE DONE THIS, CHECK IT';
+      }
+    } catch (e) {
+      $('scheck').disabled = false;
+      $('scheck').textContent = 'I HAVE DONE THIS, CHECK IT';
+      log(`could not check setup: ${e.message}`, 'err');
+    }
+  };
+  if ($('sback')) $('sback').onclick = () => { setupAt = i - 1; renderSetup(); };
+  $('squit').onclick = () => { setupOpen = false; renderSetup(); };
 }
 
 function aiFields() {
@@ -4393,6 +4551,8 @@ async function loadAiSettings() {
     const d = await r.json();
     aiDefaults = d.defaults || {};
     aiEndpoints = d.endpoints || [];
+    // cheap and local: three file checks and one loopback probe
+    loadSetup(false).catch(() => {});
     aiBackends = d.backends || [];
     // options come from the server, auto included, so labels and the fields
     // each backend honours are described in exactly one place

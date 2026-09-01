@@ -69,9 +69,10 @@ ENDPOINT_PRESETS = [
         "url": CLIPROXY_DEFAULT_URL,
         "key": "no",
         "help": "Use the ChatGPT subscription you already have, at no extra "
-                "cost per request. Needs CLIProxyAPI running and signed in "
-                "the normal way; it also covers Gemini, Grok and Kimi. Start "
-                "it before you send a prompt.",
+                "cost per request. It needs a small free helper program "
+                "installed once, which takes about five minutes: click SHOW "
+                "ME HOW and it walks you through it a step at a time. The "
+                "same setup also covers Gemini, Grok and Kimi.",
     },
     {
         "name": "A model on this laptop",
@@ -87,6 +88,74 @@ ENDPOINT_PRESETS = [
         "help": "One key, many providers, billed per request.",
     },
 ]
+
+#: A walkthrough for a service that needs software installed first.
+#:
+#: "Run CLIProxyAPI" is a fine instruction for somebody who has heard of
+#: CLIProxyAPI. Nobody has. A guitarist who wants to use the ChatGPT
+#: subscription they already pay for should never have to learn the name of
+#: the thing in the middle, so the panel walks them through it one step at a
+#: time and CHECKS each step before offering the next.
+#:
+#: The app never runs these itself. It shows the command, the person runs it,
+#: and the app verifies the result: installing software on someone's machine
+#: from a web request is not a thing this program should do, and being shown
+#: the command is also how they learn what happened.
+#:
+#: Commands verified against homebrew-core's cliproxyapi formula and the
+#: project's own flag definitions in cmd/server/main.go.
+SETUP_GUIDE = {
+    "url": CLIPROXY_DEFAULT_URL,
+    "title": "Use the ChatGPT subscription you already pay for",
+    "intro": "This connects ToneCommand to the ChatGPT account you already "
+             "have, so there is nothing extra to pay per request. It needs a "
+             "small free program in the middle, which you install once. "
+             "Three steps, about five minutes. Open the Terminal app and "
+             "keep it beside this window.",
+    "steps": [
+        {
+            "id": "brew",
+            "title": "Check you have Homebrew",
+            "say": "Homebrew is the standard way to install developer tools "
+                   "on a Mac. You may already have it. Paste this and press "
+                   "return: if it prints a version number you are done with "
+                   "this step.",
+            "run": "brew --version",
+            "fix": "If it says command not found, install Homebrew first by "
+                   "pasting the line at https://brew.sh and following its "
+                   "prompts, then check again.",
+        },
+        {
+            "id": "installed",
+            "title": "Install the connector",
+            "say": "This is the free program that lets ToneCommand talk to "
+                   "your ChatGPT account. It is called CLIProxyAPI. You will "
+                   "not have to think about it again after today.",
+            "run": "brew install cliproxyapi",
+            "fix": "This downloads a few files and can take a minute or two. "
+                   "Wait for your prompt to come back before checking.",
+        },
+        {
+            "id": "signed_in",
+            "title": "Sign in to ChatGPT",
+            "say": "This opens your web browser and asks you to sign in to "
+                   "ChatGPT, the same way any app does. Sign in, approve it, "
+                   "and come back here. It is a one time thing.",
+            "run": "cliproxyapi --codex-login",
+            "fix": "If no browser opened, the terminal will have printed a "
+                   "link. Copy that link into your browser instead.",
+        },
+        {
+            "id": "listening",
+            "title": "Start it, and keep it running",
+            "say": "This starts the connector now and again whenever you log "
+                   "in, so it is simply there when you need it.",
+            "run": "brew services start cliproxyapi",
+            "fix": "Give it a few seconds to come up, then check again.",
+        },
+    ],
+}
+
 
 BACKEND_LABELS = {
     "": "auto (let the planner choose)",
@@ -650,3 +719,62 @@ def available_backends() -> list[dict]:
             "hasKey": bool(settings.keys.get(name or "openai")),
         })
     return out
+
+
+def setup_step_state(step_id: str) -> tuple[bool, str]:
+    """Has this setup step actually been done? Checked, never assumed.
+
+    A wizard that advances because somebody clicked Next teaches nothing and
+    fails at the end with no clue which step went wrong. Every step here is
+    verifiable from outside, so it is verified.
+    """
+    import glob
+    import os
+    import shutil
+    if step_id == "brew":
+        found = shutil.which("brew")
+        return bool(found), (f"Homebrew is installed at {found}." if found else
+                             "Homebrew is not installed yet.")
+    if step_id == "installed":
+        found = shutil.which("cliproxyapi")
+        if not found:
+            # brew does not put every formula on PATH for a GUI-launched
+            # process, so look where the formula actually installs it before
+            # telling somebody their working install is missing.
+            for guess in ("/opt/homebrew/opt/cliproxyapi/bin/cliproxyapi",
+                          "/usr/local/opt/cliproxyapi/bin/cliproxyapi"):
+                if os.path.exists(guess):
+                    found = guess
+                    break
+        return bool(found), (f"The connector is installed at {found}."
+                             if found else "The connector is not installed yet.")
+    if step_id == "signed_in":
+        home = os.path.expanduser("~/.cli-proxy-api")
+        files = glob.glob(os.path.join(home, "*.json"))
+        return bool(files), (
+            f"Signed in: {len(files)} account file(s) in {home}." if files else
+            "No signed-in account found yet.")
+    if step_id == "listening":
+        # The strongest check available, and the one that matters: not "is a
+        # port open" but "does it list a model". A proxy that is running with
+        # no account signed in answers and offers nothing, which would fail
+        # later at the only moment it costs anything.
+        models, why = _endpoint_models(CLIPROXY_DEFAULT_URL)
+        if models:
+            return True, f"Running, and offering {len(models)} model(s)."
+        if not endpoint_reachable(CLIPROXY_DEFAULT_URL):
+            return False, ("It is running but offering no models, which "
+                           "usually means the sign-in step did not finish.")
+        return False, f"Not running yet ({why})."
+    return False, f"unknown step {step_id!r}"
+
+
+def setup_guide_state() -> dict:
+    """The guide, with each step marked done or not, and what is next."""
+    steps = []
+    for step in SETUP_GUIDE["steps"]:
+        done, detail = setup_step_state(step["id"])
+        steps.append({**step, "done": done, "detail": detail})
+    nxt = next((s["id"] for s in steps if not s["done"]), "")
+    return {**SETUP_GUIDE, "steps": steps, "next": nxt,
+            "complete": not nxt}
