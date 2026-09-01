@@ -1029,6 +1029,119 @@ def _chat_prompt(messages: list[dict]) -> str:
             + "\n\nReply to the guitarist's latest message.")
 
 
+#: Every action carries exactly one of these, so occurrences of it in the
+#: raw text are actions written so far.
+_ACTION_MARK = '"kind"'
+
+
+def plan_stream(prompt: str, device_state: str, param_reference: str):
+    """Plan, counting the changes as the model writes them.
+
+    Yields ("count", n) as actions appear and finally ("done", plan). A plan
+    is one call that either answers or does not, so there is no partial result
+    to act on, but there IS honest progress to show: a four-scene build takes
+    283 seconds and writes 71 actions, and watching that number climb is the
+    difference between a wait and a hang.
+
+    The count comes from the text itself. Every action carries exactly one
+    `"kind":`, so occurrences of it are actions written so far. That is a real
+    measurement rather than a percentage invented from elapsed time, which
+    would be a guess dressed as information and would still be at 40% when the
+    thing finished.
+
+    There is no total, so there is no percentage. Saying "31 changes so far"
+    is worth more than a bar that lies about how much is left.
+
+    Only the OpenAI-compatible backend can do this. Everything else falls
+    through to the ordinary blocking plan, which is why this yields the same
+    ("done", plan) either way.
+    """
+    import urllib.error
+    import urllib.request
+
+    base = _openai_base_url()
+    if not base or (_env("PLANNER_BACKEND").lower() not in ("", "openai")):
+        yield ("done", plan(prompt, device_state, param_reference))
+        return
+
+    model = _env("PLANNER_MODEL", "local")
+    payload = json.dumps({
+        "model": model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": f"{SYSTEM}\n\n{JSON_ONLY}"},
+            {"role": "user",
+             "content": _full_prompt(prompt, device_state, param_reference)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": int(_env("PLANNER_MAX_TOKENS", "8192")),
+    }).encode()
+    headers = {"content-type": "application/json"}
+    key = _env("PLANNER_API_KEY")
+    if key:
+        headers["authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(f"{base}/chat/completions", data=payload,
+                                 headers=headers, method="POST")
+    limit = timeout_s()
+    deadline = time.monotonic() + limit
+    whole, seen, tail = [], 0, ""
+    try:
+        with urllib.request.urlopen(req, timeout=limit) as resp:
+            for line in resp:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"no complete plan within {limit}s")
+                line = line.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                body = line[5:].strip()
+                if body == "[DONE]":
+                    break
+                try:
+                    parsed = json.loads(body)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                choices = parsed.get("choices") or []
+                delta = (choices[0].get("delta") or {}) if choices else {}
+                piece = delta.get("content")
+                if not isinstance(piece, str) or not piece:
+                    continue
+                whole.append(piece)
+                # Counted over a small overlap, because `"kind"` can be split
+                # across two chunks and a marker on the seam would otherwise
+                # never be counted at all.
+                #
+                # The carry is one character SHORT of the marker, deliberately.
+                # Carrying eight characters of a six-character marker meant a
+                # complete match sat in the next window too and every action
+                # was counted twice: five actions reported as ten.
+                window = tail + piece
+                found = window.count(_ACTION_MARK)
+                if found:
+                    seen += found
+                    yield ("count", seen)
+                tail = window[-(len(_ACTION_MARK) - 1):]
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace").strip()[:300]
+        raise BackendFailure("openai", "http_status",
+                             f"{exc.code} {detail or exc.reason}", base, model)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise BackendFailure("openai", "transport",
+                             f"{getattr(exc, 'reason', exc)}", base, model)
+
+    text = "".join(whole)
+    try:
+        raw = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        raise BackendFailure("openai", "unreadable_output",
+                             text.strip()[:200] or "empty body", base, model)
+    plan_obj = _validate(raw)
+    plan_obj["backend"] = "openai"
+    plan_obj["model"] = model
+    plan_obj["plan_quality"] = _plan_quality(plan_obj)
+    plan_obj["attempts"] = [Attempt("openai", base, model).as_dict()]
+    yield ("done", plan_obj)
+
+
 def converse_stream(messages: list[dict], device_state: str,
                     param_reference: str):
     """Converse, yielding words as they arrive.

@@ -298,7 +298,9 @@ def test_it_says_it_is_thinking_where_you_are_looking():
     """A spinner on a button at the far side of the panel is not an answer to
     "did that send?" when your eyes are on the last thing said."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "chatBusy ? `<div class=\"cthinking\">${waitLine()}</div>`" in ui
+    assert "chatBusy && !chatBuilding" in ui, \
+        "a build has its own banner; the grey line is for a conversation turn"
+    assert "waitLine()" in ui
 
 
 def test_only_one_turn_at_a_time():
@@ -685,7 +687,7 @@ def test_one_body_two_deliveries():
     splice consequences and the blast-radius maths is exactly the duplication
     that goes subtly wrong on one path only."""
     assert "_plan_for(body)" in inspect.getsource(server.api_plan)
-    assert "_plan_for(body)" in inspect.getsource(server.api_plan_stream)
+    assert "_plan_for(body, on_count=" in inspect.getsource(server.api_plan_stream)
 
 
 def test_the_shared_body_returns_data_not_http():
@@ -727,3 +729,96 @@ def test_the_button_is_not_touched_after_it_is_gone():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "document.body.contains(b)" in fn
+
+
+# --- BUILDING, and a number that is actually measured ---------------------
+
+def test_actions_are_counted_from_the_text_not_guessed():
+    """Every action carries exactly one `"kind"`, so occurrences of it are
+    actions written so far. A percentage invented from elapsed time would be
+    a guess dressed as information, and would still read 40% at the end."""
+    assert planner._ACTION_MARK == '"kind"'
+
+
+def test_the_carry_is_one_short_of_the_marker():
+    """Carrying eight characters of a six-character marker left a complete
+    match in the next window too, and every action was counted twice: five
+    reported as ten."""
+    src = inspect.getsource(planner.plan_stream)
+    assert "tail = window[-(len(_ACTION_MARK) - 1):]" in src
+
+
+def test_a_split_marker_is_still_counted(monkeypatch):
+    """A chunk boundary inside `"kind"` must not lose an action."""
+    pieces = ['{"actions":[{"ki', 'nd":"set_param"},{"kin', 'd":"set_scene"}]}']
+    seen, tail = 0, ""
+    for piece in pieces:
+        window = tail + piece
+        seen += window.count(planner._ACTION_MARK)
+        tail = window[-(len(planner._ACTION_MARK) - 1):]
+    assert seen == 2
+
+
+def test_a_backend_that_cannot_stream_still_plans(monkeypatch):
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "plan",
+                        lambda *a, **k: {"summary": "s", "actions": [],
+                                         "clarification": None})
+    out = list(planner.plan_stream("x", "s", "r"))
+    assert [k for k, _ in out] == ["done"]
+
+
+def test_counting_is_a_courtesy_and_the_plan_is_the_point(monkeypatch):
+    """A count that fails must not take the plan down with it."""
+    monkeypatch.setattr(planner, "plan_stream", lambda *a, **k: iter([
+        ("count", 1), ("done", {"summary": "s", "actions": []})]))
+
+    def explode(_n):
+        raise RuntimeError("the browser went away")
+
+    out = server._plan_counting("x", "ctx", explode)
+    assert out == {"summary": "s", "actions": []}
+
+
+def test_nobody_watching_means_the_ordinary_call(monkeypatch):
+    called = {}
+    monkeypatch.setattr(planner, "plan",
+                        lambda *a, **k: called.setdefault("plain", True) or {})
+    monkeypatch.setattr(planner, "plan_stream",
+                        lambda *a, **k: called.setdefault("stream", True) or iter([]))
+    server._plan_counting("x", "ctx", None)
+    assert called == {"plain": True}
+
+
+def test_the_build_gets_a_banner_not_a_line_of_grey_text():
+    """A build runs for minutes. A line in the same weight as everything else
+    is exactly what got read as "nothing is happening"."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert 'class="cbuilding"' in fn
+    assert 'class="cblink">BUILDING' in fn
+    assert "change${chatCount === 1 ? '' : 's'} written" in fn
+    assert "#chat .cblink {" in ui and "@keyframes cbpulse" in ui
+
+
+def test_the_bar_does_not_pretend_to_know_how_far_along_it_is():
+    """There is no total, so there is no percentage. A bar filling against a
+    guessed total is a lie with a progress bar drawn on it."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    bar = ui.split("#chat .cbbar i {")[1].split("}")[0]
+    assert "animation: cbslide" in bar
+    assert "%" not in ui.split("function buildNote()")[1].split("\n}\n")[0]
+
+
+def test_the_banner_says_when_it_has_stopped_hearing_anything():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function buildNote()")[1].split("\n}\n")[0]
+    assert "It may be stuck" in fn
+    assert "chatAlive" in fn
+    assert "takes a few minutes" in fn
+
+
+def test_the_count_resets_between_builds():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    assert "chatCount = 0;" in fn

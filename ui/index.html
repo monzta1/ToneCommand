@@ -1148,6 +1148,39 @@
 }
 @keyframes cblink { to { visibility: hidden; } }
 /* What this tool did, as opposed to what either party said. */
+/* The build banner. It runs for minutes, so it gets weight, motion and a
+   number that is actually measured. */
+#chat .cbuilding {
+  display: grid; gap: 7px 14px; align-items: center;
+  grid-template-columns: auto 1fr auto;
+  border: 1px solid var(--cyan-dim, #1a7f96); border-radius: 8px;
+  padding: 13px 15px; background: rgba(47,230,255,0.05);
+}
+#chat .cblink {
+  font-size: 12px; letter-spacing: .2em; font-weight: 600;
+  color: var(--cyan, #2fe6ff); animation: cbpulse 1.3s ease-in-out infinite;
+}
+@keyframes cbpulse { 50% { opacity: .28; } }
+#chat .cbcount { font-size: 13px; color: var(--text, #d8dde5); }
+#chat .cbtime {
+  font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums;
+}
+/* Indeterminate on purpose. A bar that fills against a guessed total is a
+   lie with a progress bar drawn on it. */
+#chat .cbbar {
+  grid-column: 1 / -1; height: 3px; border-radius: 2px; overflow: hidden;
+  background: rgba(47,230,255,0.12);
+}
+#chat .cbbar i {
+  display: block; height: 100%; width: 34%; border-radius: 2px;
+  background: var(--cyan, #2fe6ff); opacity: .75;
+  animation: cbslide 1.6s ease-in-out infinite;
+}
+@keyframes cbslide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(295%); }
+}
+#chat .cbnote { grid-column: 1 / -1; font-size: 11.5px; opacity: .6; }
 #chat .cnote {
   font-size: 12px; color: var(--cyan-dim); border-left: 2px solid var(--line);
   padding-left: 11px; line-height: 1.6;
@@ -4502,6 +4535,7 @@ let chatLastByte = 0;          // when a word last arrived
 let chatAlive = 0;             // when the server last said it is still there
 let chatAbort = null;          // lets you stop waiting
 let chatBuilding = false;      // a build, not a conversation turn
+let chatCount = 0;             // changes written so far, counted for real
 
 // A line in the transcript that this tool wrote about itself, rather than
 // something either party said. Rendered, and NEVER sent back to the model:
@@ -4552,6 +4586,23 @@ function loadChat() {
 //   working    words are arriving, or the turn just started
 //   slow       nothing for a while, but the server is answering pings
 //   stuck      no words AND no pings: the connection is gone, say so
+// What to say under the bar. There is no total, so there is no percentage:
+// "31 changes written" is worth more than a bar claiming 40% that is still
+// claiming 40% when the thing finishes.
+function buildNote() {
+  const secs = Math.max(0, Math.round((Date.now() - chatStarted) / 1000));
+  const heard = Date.now() - Math.max(chatAlive, chatStarted);
+  if (heard > 25000) {
+    return `No word from the server for ${Math.round(heard / 1000)}s. `
+         + `It may be stuck; press STOP and try again.`;
+  }
+  if (secs > 45) {
+    return 'A build with several scenes takes a few minutes. '
+         + 'It is still going.';
+  }
+  return 'Nothing is sent until you confirm the plan.';
+}
+
 function waitLine() {
   const now = Date.now();
   const secs = Math.max(0, Math.round((now - chatStarted) / 1000));
@@ -4602,8 +4653,24 @@ function renderChat() {
       ? `<div class="cmsg assistant"><span class="cwho">TONECOMMAND</span>${
           esc(chatStream)}<span class="ccaret"></span></div>`
       : '')
+  + (chatBusy && chatBuilding
+      // Its own banner. A build runs for minutes, and a line of grey text in
+      // the same weight as everything else is exactly what got read as
+      // "nothing is happening".
+      ? `<div class="cbuilding">
+           <span class="cblink">BUILDING</span>
+           <span class="cbcount">${chatCount
+             ? `${chatCount} change${chatCount === 1 ? '' : 's'} written`
+             : 'working out the changes'}</span>
+           <span class="cbtime">${Math.max(0, Math.round(
+             (Date.now() - chatStarted) / 1000))}s</span>
+           <span class="cbbar"><i></i></span>
+           <span class="cbnote">${esc(buildNote())}</span>
+         </div>`
+      : '')
   + (chatWorking ? `<div class="cthinking">${esc(chatWorking)}</div>`
-                 : (chatBusy ? `<div class="cthinking">${waitLine()}</div>` : ''))
+                 : (chatBusy && !chatBuilding
+                      ? `<div class="cthinking">${waitLine()}</div>` : ''))
   // The agreed sentence, when there is one, and then ONE button row. Built
   // once rather than per branch: an id written twice in a template is how a
   // handler ends up bound to whichever copy rendered last.
@@ -4783,6 +4850,7 @@ async function engage(prompt, name) {
   chatLastByte = 0;
   chatStream = '';
   chatBuilding = true;
+  chatCount = 0;
   chatAbort = new AbortController();
   renderChat();
   const tick = setInterval(renderChat, 1000);
@@ -4796,6 +4864,10 @@ async function engage(prompt, name) {
     let plan = null;
     for await (const [ev, d] of sseFrom(r)) {
       if (ev === 'ping') { chatAlive = Date.now(); renderChat(); }
+      else if (ev === 'count') {
+        // A real measurement, not a percentage invented from elapsed time.
+        chatCount = d; chatAlive = Date.now(); renderChat();
+      }
       else if (ev === 'error') throw new Error(d);
       else if (ev === 'plan') { plan = d; break; }
     }

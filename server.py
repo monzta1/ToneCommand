@@ -764,7 +764,32 @@ def api_plan(body: PromptBody):
     return result
 
 
-def _plan_for(body: PromptBody):
+def _plan_counting(prompt: str, context: str, on_count=None):
+    """planner.plan, reporting each action as the model writes it.
+
+    A four-scene build takes 283 seconds and writes 71 actions. With nobody
+    watching this is the ordinary blocking call; with somebody watching it is
+    the same plan with a running count, which is the difference between a wait
+    and a hang.
+
+    A count that fails must not take the plan down with it: progress is a
+    courtesy and the plan is the point.
+    """
+    if on_count is None:
+        return planner.plan(prompt, context, PARAM_REFERENCE)
+    result = None
+    for kind, payload in planner.plan_stream(prompt, context, PARAM_REFERENCE):
+        if kind == "count":
+            try:
+                on_count(payload)
+            except Exception:
+                pass
+        else:
+            result = payload
+    return result
+
+
+def _plan_for(body: PromptBody, on_count=None):
     """Everything /api/plan does, so the streaming twin cannot drift from it.
 
     One body, two deliveries. The alternative was a second copy of the
@@ -779,9 +804,9 @@ def _plan_for(body: PromptBody):
         prof = _profile["loaded"]
         try:
             with _settings_lock:
-                result = planner.plan(body.prompt,
-                                      rigprofile.as_state_text(prof),
-                                      PARAM_REFERENCE)
+                result = _plan_counting(body.prompt,
+                                        rigprofile.as_state_text(prof),
+                                        on_count)
         except Exception as e:
             return {"error": str(e)}
         result["device"] = {"preset": {"name": prof.get("preset_name"),
@@ -827,7 +852,7 @@ def _plan_for(body: PromptBody):
     context = state_text(snap) if snap else rigprofile.as_blank_text()
     try:
         with _settings_lock:
-            result = planner.plan(body.prompt, context, PARAM_REFERENCE)
+            result = _plan_counting(body.prompt, context, on_count)
         result["device"] = ({"preset": snap["preset"], "scene": snap["scene"]}
                             if snap else {"preset": None, "scene": None})
         # Say so loudly. A plan built against a remembered reading is not the
@@ -2409,7 +2434,7 @@ def api_plan_stream(body: PromptBody):
 
         def work():
             try:
-                out.put(("plan", _plan_for(body)))
+                out.put(("plan", _plan_for(body, on_count=lambda n: out.put(("count", n)))))
             except Exception as exc:
                 out.put(("error", str(exc)))
             finally:
