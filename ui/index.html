@@ -14,6 +14,26 @@
      rediscovered one element at a time. */
   [hidden] { display: none !important; }
 
+  /* Two ways to work, one at a time. */
+  .tabs { display: flex; gap: 0; margin: 26px 0 18px; }
+  .tab {
+    font: inherit; font-size: var(--fs-body); letter-spacing: 0.15em;
+    padding: 11px 26px; cursor: pointer; color: var(--muted);
+    background: transparent; border: 1px solid var(--line);
+    border-bottom-color: var(--cyan-dim);
+  }
+  .tab + .tab { border-left: none; }
+  .tab:hover { color: var(--text); }
+  .tab.on {
+    color: var(--cyan); border-color: var(--cyan-dim);
+    border-bottom-color: transparent; background: rgba(47,230,255,0.06);
+  }
+  /* The rest of the rule under the tabs, so they read as tabs rather than as
+     two buttons that happen to sit side by side. */
+  .tabs::after {
+    content: ""; flex: 1; border-bottom: 1px solid var(--cyan-dim);
+  }
+
   :root {
     --bg: #05080d;
     --panel: rgba(13, 22, 34, 0.85);
@@ -1339,6 +1359,25 @@
     </div>
   </div>
 
+
+  <!-- Two ways to work, and they were competing for the same screen. Saying
+       what you want and turning a knob are different activities: one wants
+       room to read a conversation, the other wants every control at once.
+       Neither needs the other on screen while it is happening.
+
+       SCENES and the SIGNAL CHAIN stay ABOVE this, because they are what you
+       are looking AT in both modes. So do UNDO, SAVE and the LOG, further
+       down: hiding undo behind a tab would be actively unsafe, and the log
+       records what both halves did. -->
+  <div class="tabs" role="tablist">
+    <button class="tab on" id="tab-ai-btn" role="tab" aria-selected="true"
+            aria-controls="tab-ai">DESIGN BY ASKING</button>
+    <button class="tab" id="tab-manual-btn" role="tab" aria-selected="false"
+            aria-controls="tab-manual">TONE CONTROLS</button>
+  </div>
+
+  <div id="tab-ai" role="tabpanel" aria-labelledby="tab-ai-btn">
+
   <div class="console command" data-label="COMMAND">
     <!-- Talk it through first, if you want to. A tone is an opinion, and the
          first sentence somebody types is rarely the one they mean. Empty and
@@ -1396,13 +1435,6 @@
     </div>
   </div>
 
-  <!-- One long column-flow made you hunt for the reverb. These follow the
-       signal: what makes the sound, then what shapes it, then what sits
-       around it. Each panel folds, so a preset with six effects no longer
-       pushes the amp off the screen. -->
-  <!-- An empty FM9 slot has no grid cells at all, so every other way of
-       adding a block refuses, correctly, and used to leave you nowhere to go
-       but a terminal (issue #36). -->
   <div class="console needs-rig" data-label="EMPTY SLOT" id="emptypanel" style="display:none">
     <p class="hint" id="emptywhy"></p>
     <div class="abrow">
@@ -1413,11 +1445,54 @@
     </div>
   </div>
 
+  <div class="console" data-label="TONE RECIPES">
+    <div class="profrow">
+      <input id="rsearch" autocomplete="off" spellcheck="false"
+             placeholder="filter by name, author or what it is for">
+      <button class="small" id="rrefresh">REFRESH</button>
+    </div>
+    <div id="rlist"></div>
+    <div class="hint" id="rshare"></div>
+    <div class="hint">Tones other people have built, shared as instructions
+      rather than as preset files. Reading them needs no account: they live in
+      a public folder and are fetched straight from it. USE validates every
+      step against YOUR device first, then proposes it like any other plan.</div>
+  </div>
+
+  <div class="console" data-label="DESIGNED PRESETS">
+    <div class="profbar" id="profbar" hidden></div>
+    <div class="profrow">
+      <button class="small" id="profexport">SHARE MY RIG</button>
+      <button class="small" id="profimport">DESIGN FOR SOMEONE ELSE</button>
+      <span class="hint" style="margin:0">A rig profile describes which blocks
+        a preset has and how they are wired, never the parameter values, so
+        nobody's paid preset travels with it.</span>
+    </div>
+    <div id="dlist"></div>
+    <div class="hint">Tones you built with the rig switched off. Each one was
+      validated when it was saved, so it would actually run, but nothing has
+      been read back from hardware yet: a design is
+      <span class="savewarn">designed, not verified</span>, until it lands.
+      SEND checks the preset has not moved underneath it first.</div>
+  </div>
+  </div>
+
+  <div id="tab-manual" role="tabpanel" aria-labelledby="tab-manual-btn" hidden>
+
+
+  <!-- One long column-flow made you hunt for the reverb. These follow the
+       signal: what makes the sound, then what shapes it, then what sits
+       around it. Each panel folds, so a preset with six effects no longer
+       pushes the amp off the screen. -->
+  <!-- An empty FM9 slot has no grid cells at all, so every other way of
+       adding a block refuses, correctly, and used to leave you nowhere to go
+       but a terminal (issue #36). -->
   <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
     <div id="picks"></div>
     <div class="knobs" id="knobs-amp"><span class="hint">awaiting link...</span></div>
     <div class="hint">Drag any slider to set it. Changes go to the edit buffer, not to your saved preset.</div>
   </div>
+
 
   <!-- Its own panel, not a cell of the TONE column grid. A graphic EQ is read
        as a shape and a shape needs width. -->
@@ -1439,6 +1514,18 @@
     <div class="knobs" id="knobs-util"></div>
   </div>
 
+  <div class="console needs-rig" data-label="PRESET HEALTH">
+    <div class="hz">
+      <button id="scan">SCAN THIS PRESET</button>
+      <span class="hint" style="margin:0" id="scanhint">Walks every scene to
+        read it, so the rig makes noise for a few seconds. Not a background
+        check, and never on a timer.</span>
+    </div>
+    <div id="hout"></div>
+  </div>
+  </div>
+
+
   <div class="console needs-rig" data-label="UNDO / COMPARE">
     <div class="abrow">
       <button id="undo" disabled>UNDO</button>
@@ -1452,16 +1539,6 @@
     </div>
     <div class="hint">Snapshots are silent reads of the edit buffer, taken
       before every change. Nothing here touches a saved preset.</div>
-  </div>
-
-  <div class="console needs-rig" data-label="PRESET HEALTH">
-    <div class="hz">
-      <button id="scan">SCAN THIS PRESET</button>
-      <span class="hint" style="margin:0" id="scanhint">Walks every scene to
-        read it, so the rig makes noise for a few seconds. Not a background
-        check, and never on a timer.</span>
-    </div>
-    <div id="hout"></div>
   </div>
 
   <div class="console needs-rig" data-label="SAVE TO PRESET">
@@ -1497,36 +1574,6 @@
     </div>
   </div>
 
-  <div class="console" data-label="TONE RECIPES">
-    <div class="profrow">
-      <input id="rsearch" autocomplete="off" spellcheck="false"
-             placeholder="filter by name, author or what it is for">
-      <button class="small" id="rrefresh">REFRESH</button>
-    </div>
-    <div id="rlist"></div>
-    <div class="hint" id="rshare"></div>
-    <div class="hint">Tones other people have built, shared as instructions
-      rather than as preset files. Reading them needs no account: they live in
-      a public folder and are fetched straight from it. USE validates every
-      step against YOUR device first, then proposes it like any other plan.</div>
-  </div>
-
-  <div class="console" data-label="DESIGNED PRESETS">
-    <div class="profbar" id="profbar" hidden></div>
-    <div class="profrow">
-      <button class="small" id="profexport">SHARE MY RIG</button>
-      <button class="small" id="profimport">DESIGN FOR SOMEONE ELSE</button>
-      <span class="hint" style="margin:0">A rig profile describes which blocks
-        a preset has and how they are wired, never the parameter values, so
-        nobody's paid preset travels with it.</span>
-    </div>
-    <div id="dlist"></div>
-    <div class="hint">Tones you built with the rig switched off. Each one was
-      validated when it was saved, so it would actually run, but nothing has
-      been read back from hardware yet: a design is
-      <span class="savewarn">designed, not verified</span>, until it lands.
-      SEND checks the preset has not moved underneath it first.</div>
-  </div>
 
   <div class="console" data-label="LOG" style="margin-top:20px">
     <div id="log"></div>
@@ -4278,6 +4325,11 @@ let planRecipe = null;
 function showPlan(plan) {
   planRecipe = plan.recipe || null;
   currentPlan = plan;
+  // A plan waiting to be confirmed must never be behind a tab. Nothing
+  // transmits without the button being pressed, so a hidden panel is not
+  // dangerous in itself, but a proposal you cannot see is one you cannot
+  // refuse either, and it would sit there looking like nothing happened.
+  if (typeof showTab === 'function') showTab('ai');
   // Light the scenes this plan would also move, so it cannot be skipped the
   // way a line of small print under a card can be.
   affectedScenes = scenesAffectedBy(plan);
@@ -5113,6 +5165,33 @@ $('aibackend').onchange = () => {
 loadAiSettings();
 refresh();
 loadPresets(false);      // cached server side, so this is cheap after the first read
+// --- the two ways to work -------------------------------------------------
+//
+// Saying what you want and turning a knob are different activities. One wants
+// room to read a conversation back; the other wants every control at once.
+// They were competing for the same screen, and the loser was whichever you
+// happened to want.
+const TAB_KEY = 'tonecommand.tab.v1';
+
+function showTab(which) {
+  const on = which === 'manual' ? 'manual' : 'ai';
+  for (const name of ['ai', 'manual']) {
+    const picked = name === on;
+    $(`tab-${name}`).hidden = !picked;
+    $(`tab-${name}-btn`).classList.toggle('on', picked);
+    $(`tab-${name}-btn`).setAttribute('aria-selected', String(picked));
+  }
+  try { localStorage.setItem(TAB_KEY, on); } catch (e) { /* private window */ }
+}
+
+$('tab-ai-btn').onclick = () => showTab('ai');
+$('tab-manual-btn').onclick = () => showTab('manual');
+try {
+  showTab(localStorage.getItem(TAB_KEY) || 'ai');
+} catch (e) {
+  showTab('ai');
+}
+
 setInterval(refresh, 5000);
 </script>
 </body>

@@ -575,6 +575,17 @@ patience.** A source is read into a compact spec before anything is built: a
 twelve of its tone statements and dropping the sponsor read. The expensive
 build pass never sees the transcript.
 
+### Two ways to work
+
+The page has two tabs. **DESIGN BY ASKING** holds the conversation, the plan
+it proposes, recipes and scratch builds. **TONE CONTROLS** holds every slider:
+amp and cab, graphic EQ, effects, dynamics.
+
+Scenes and the signal chain sit above both, because they are what you are
+looking at either way. Undo, save and the log sit below both, because they
+cover what either half just did. A plan waiting to be confirmed always brings
+the asking tab forward: a proposal you cannot see is one you cannot refuse.
+
 ### Talking it through first
 
 A tone is an opinion, and the first sentence somebody types is rarely the one
