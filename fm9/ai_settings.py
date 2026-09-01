@@ -42,12 +42,55 @@ from . import planner
 CLIPROXY_DEFAULT_URL = planner.CLIPROXY_DEFAULT_URL
 LOCAL_LLM_DEFAULT_URL = "http://127.0.0.1:1234/v1"      # LM Studio
 
+#: Named services behind the "OpenAI-compatible endpoint" choice.
+#:
+#: That name is accurate and useless: it describes a protocol, and somebody
+#: who wants to use ChatGPT does not know that ChatGPT speaks it, let alone
+#: that the answer to type is "https://api.openai.com/v1". An empty box with
+#: no clue in it is a dead end for everyone except the person who wrote it.
+#: So the services are NAMED, and picking one fills the box in.
+#:
+#: No model ids here on purpose: the panel lists the real ones from the
+#: endpoint's own /models once a URL is set, and a hardcoded id is wrong the
+#: day the provider retires it.
+ENDPOINT_PRESETS = [
+    {
+        "name": "ChatGPT",
+        "url": "https://api.openai.com/v1",
+        "key": "required",
+        "help": "Needs a paid OpenAI API key from platform.openai.com. That "
+                "is a separate account from ChatGPT Plus, and it bills per "
+                "request on top of any subscription you already pay for.",
+    },
+    {
+        "name": "A subscription you already pay for",
+        "url": CLIPROXY_DEFAULT_URL,
+        "key": "no",
+        "help": "Run CLIProxyAPI and log it into ChatGPT/Codex, Gemini, Grok "
+                "or Kimi. It signs in the normal way and costs nothing extra "
+                "per request. Start it before you send a prompt.",
+    },
+    {
+        "name": "A model on this laptop",
+        "url": LOCAL_LLM_DEFAULT_URL,
+        "key": "no",
+        "help": "LM Studio's default address. Free and offline, but small "
+                "local models get the plan format wrong more often.",
+    },
+    {
+        "name": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1",
+        "key": "required",
+        "help": "One key, many providers, billed per request.",
+    },
+]
+
 BACKEND_LABELS = {
     "": "auto (let the planner choose)",
     "cli": "Claude Code CLI",
     "api": "Claude API",
     "grok": "Grok CLI",
-    "openai": "OpenAI-compatible endpoint",
+    "openai": "ChatGPT, or another service you choose",
 }
 
 #: The same names with the explanation trimmed off, for places with no room to
@@ -94,8 +137,9 @@ BACKEND_NOTES = {
            "optional; blank uses the planner default.",
     "grok": "Runs on your Grok subscription. Model optional; blank uses the "
             "CLI's own default.",
-    "openai": "Any OpenAI-compatible server, including CLIProxyAPI and local "
-              "models. A key is often not needed.",
+    "openai": "Pick a service above to fill in the address, or type your "
+              "own. Any OpenAI-compatible server works. A key is often "
+              "not needed.",
 }
 
 _MANAGED = ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
@@ -280,7 +324,7 @@ def missing_setup(backend: str, settings: AiSettings | None = None) -> str:
     if backend == "api" and not settings.key_for("api"):
         return "an Anthropic API key, in the key box"
     if backend == "openai" and not settings.base_url:
-        return "a base URL, for example " + CLIPROXY_DEFAULT_URL
+        return "an address"
     return ""
 
 

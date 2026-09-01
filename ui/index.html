@@ -1061,6 +1061,22 @@
 }
 .airow input { flex: 1 1 140px; min-width: 120px; }
 .airow #aikey { flex: 3 1 340px; }
+/* The endpoint box used to be an empty field labelled with a protocol name.
+   "OpenAI-compatible endpoint" tells you what it speaks, not what to type,
+   and nobody guesses "https://api.openai.com/v1". These name the services. */
+#aipresets { display: flex; flex-wrap: wrap; gap: 7px;
+             flex: 1 1 100%; margin: 2px 0 0; }
+#aipresethelp { flex: 1 1 100%; margin: 0; }
+#aipresets button {
+  font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer;
+  background: var(--panel, #16181d); color: var(--fg, #d8dde5);
+  border: 1px solid var(--line, #333a45); border-radius: 999px;
+}
+#aipresets button:hover { border-color: var(--accent, #6ea8fe); }
+#aipresets button[aria-pressed="true"] {
+  border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
+}
+#aipresethelp:empty { display: none; }
 .airow select, .airow button { flex: 0 0 auto; }
 .answered { color: var(--dim); font-size: 11px; letter-spacing: .04em; margin-top: 6px; }
 
@@ -1451,6 +1467,8 @@
       <select id="aibackend"></select>
       <input id="aibaseurl" autocomplete="off" spellcheck="false"
              placeholder="http://127.0.0.1:8317/v1">
+      <div id="aipresets" hidden></div>
+      <div class="hint" id="aipresethelp"></div>
       <input id="aimodel" autocomplete="off" spellcheck="false"
              list="aimodels" placeholder="model (optional)">
       <datalist id="aimodels"></datalist>
@@ -4254,12 +4272,52 @@ async function engage() {
 }
 
 let aiDefaults = {};
+let aiEndpoints = [];
 let aiBackends = [];
 let aiEnvBaseUrl = '';        // what .env or the shell already provides
+let aiSavedBaseUrl = '';      // what is actually in effect, not what is typed
 
 // Each backend reads different variables, and two of them read none at all.
 // Showing a box a backend ignores is the same sin as offering a backend that
 // silently falls through to another one.
+// Which named service the address in the box belongs to, or nothing when it
+// is one the reader typed themselves. Matching on the URL rather than on a
+// remembered click means a value that came from .env, or from a previous
+// save, still lights up the right chip.
+function aiPresetFor(url) {
+  const u = String(url || '').trim().replace(/\/+$/, '');
+  return aiEndpoints.find(p => p.url.replace(/\/+$/, '') === u) || null;
+}
+
+function renderAiPresets() {
+  const box = $('aipresets');
+  const on = $('aibaseurl').style.display !== 'none' && aiEndpoints.length;
+  box.hidden = !on;
+  $('aipresethelp').textContent = '';
+  if (!on) return;
+  const current = aiPresetFor($('aibaseurl').value);
+  box.innerHTML = '';
+  for (const preset of aiEndpoints) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = preset.name;
+    b.setAttribute('aria-pressed', String(current === preset));
+    b.onclick = () => {
+      $('aibaseurl').value = preset.url;
+      renderAiPresets();
+      // The model list comes from the endpoint's own /models, so it is only
+      // worth asking once there is an endpoint to ask.
+      loadAiModels($('aibackend').value);
+    };
+    box.appendChild(b);
+  }
+  if (current) {
+    $('aipresethelp').textContent = current.key === 'required'
+      ? `${current.help} A key is required.`
+      : `${current.help} No key needed.`;
+  }
+}
+
 function aiFields() {
   const chosen = $('aibackend').value;
   const b = aiBackends.find(x => x.backend === chosen);
@@ -4289,6 +4347,7 @@ function aiFields() {
     $('aikey').placeholder = b.hasKey ? 'key stored (blank keeps it)'
       : 'API key (required for Claude API but optional for others)';
   }
+  renderAiPresets();
 }
 
 // The gear says nothing until something is wrong. Naming the backend on it
@@ -4317,6 +4376,7 @@ async function loadAiSettings() {
     const r = await fetch('/api/ai-settings');
     const d = await r.json();
     aiDefaults = d.defaults || {};
+    aiEndpoints = d.endpoints || [];
     aiBackends = d.backends || [];
     // options come from the server, auto included, so labels and the fields
     // each backend honours are described in exactly one place
@@ -4329,6 +4389,7 @@ async function loadAiSettings() {
     // the settings file, which then outranked .env for good
     $('aibaseurl').value = d.settings.baseUrl || '';
     aiEnvBaseUrl = d.settings.baseUrlFallback || '';
+    aiSavedBaseUrl = d.settings.baseUrl || '';
     aiFields();
     aiGear(d.settings.backend || '');
   } catch (e) {
@@ -4356,7 +4417,13 @@ async function loadAiModels(backend) {
       opt.value = m;
       dl.appendChild(opt);
     }
-    $('aisrc').textContent = d.source ? `Models from ${d.source}.` : '';
+    const typed = $('aibaseurl').value.trim();
+    const unsaved = typed && typed !== aiSavedBaseUrl;
+    $('aisrc').textContent = (d.models || []).length
+      ? (d.source ? `Models from ${d.source}.` : '')
+      : (unsaved ? 'Save to list the models this service offers. '
+                 + 'The model box can stay blank until then.'
+                 : (d.source ? `No model list: ${d.source}.` : ''));
   } catch (e) {
     // a missing list is a lost convenience, not a broken panel
   }
@@ -4483,6 +4550,11 @@ document.addEventListener('keydown', e => {
 });
 $('aisave').onclick = () => saveAiSettings();
 $('aiclearkey').onclick = () => saveAiSettings({clearKey: true});
+// Typing an address by hand still lights the matching chip, or clears it.
+// Without this a hand-typed api.openai.com/v1 leaves ChatGPT unlit, which
+// reads as "that is not the right one" and invites a second guess.
+$('aibaseurl').oninput = () => renderAiPresets();
+
 $('aibackend').onchange = () => {
   // only when nothing already provides one: filling the box over a .env
   // value would pin this default on the next save

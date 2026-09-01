@@ -2256,7 +2256,10 @@ def api_ai_settings_state():
     return {"settings": ai_settings.panel_state(),
             "backends": ai_settings.available_backends(),
             "defaults": {"cliproxy": ai_settings.CLIPROXY_DEFAULT_URL,
-                         "localLlm": ai_settings.LOCAL_LLM_DEFAULT_URL}}
+                         "localLlm": ai_settings.LOCAL_LLM_DEFAULT_URL},
+            # Named services for the endpoint box, so it is a choice rather
+            # than a blank the reader has to already know the answer to.
+            "endpoints": ai_settings.ENDPOINT_PRESETS}
 
 
 @app.get("/api/ai-settings/models")

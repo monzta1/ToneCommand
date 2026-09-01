@@ -604,6 +604,17 @@ the store whitelist uses:
 | `PLANNER_TIMEOUT` | `180` | Seconds allowed per backend attempt. |
 | `GROK_CLI_MODEL` | none | Model passed to the `grok` CLI. Unset uses its own default. |
 
+### Using ChatGPT
+
+Open the gear, choose **ChatGPT, or another service you choose**, and click
+the **ChatGPT** chip. That fills in the address. Paste an OpenAI API key from
+platform.openai.com and save; the model box then lists what your key can
+actually reach, and can stay blank.
+
+Note that an OpenAI API key is a separate, pay-per-request account from a
+ChatGPT Plus subscription. To use a subscription you already pay for instead,
+click **A subscription you already pay for** and see the router route below.
+
 ### Using Grok, Codex, Gemini or a local model
 
 Two routes, and neither ships with this project:

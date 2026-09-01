@@ -384,7 +384,9 @@ def test_pinning_a_backend_that_cannot_run_is_refused_in_words(client, store):
     r = client.post("/api/ai-settings", json={"backend": "openai",
                                               "baseUrl": ""})
     assert r.status_code == 400
-    assert "base URL" in r.json()["error"]
+    # Plain words on purpose: "base URL" named the field, "an address" names
+    # the thing, and the panel offers the services that supply one.
+    assert "needs an address" in r.json()["error"]
 
 
 def test_a_key_in_dot_env_is_enough_to_pin_the_api_backend(store, monkeypatch):
@@ -621,3 +623,75 @@ def test_the_short_names_live_beside_the_long_ones():
     """Both tables cover the same backends, so adding one cannot leave the
     button falling back to a raw key like 'openai'."""
     assert set(ai_settings.BACKEND_SHORT) == set(ai_settings.BACKEND_LABELS)
+
+
+# --- naming the services, instead of naming the protocol ------------------
+#
+# "OpenAI-compatible endpoint" over an empty box is accurate and useless.
+# Somebody who wants to use ChatGPT does not know ChatGPT speaks that
+# protocol, and certainly does not know to type https://api.openai.com/v1.
+
+def test_chatgpt_is_offered_by_name_with_its_address():
+    by_name = {p["name"]: p for p in ai_settings.ENDPOINT_PRESETS}
+    assert "ChatGPT" in by_name
+    assert by_name["ChatGPT"]["url"] == "https://api.openai.com/v1"
+    assert by_name["ChatGPT"]["key"] == "required"
+
+
+def test_every_preset_is_complete_and_addressable():
+    for p in ai_settings.ENDPOINT_PRESETS:
+        assert set(p) == {"name", "url", "key", "help"}, p
+        assert p["url"].startswith("http") and p["url"].endswith("/v1"), p
+        assert p["key"] in ("required", "no"), p
+        assert len(p["help"]) > 40, p          # a label is not an explanation
+
+
+def test_no_preset_hardcodes_a_model_id():
+    """Model ids are listed live from the endpoint's own /models. One frozen
+    here is wrong the day the provider retires it, and wrong silently."""
+    for p in ai_settings.ENDPOINT_PRESETS:
+        assert "model" not in p, p
+
+
+def test_the_paid_route_says_it_is_paid_and_separate_from_plus():
+    """A ChatGPT Plus subscription does not carry API access. Finding that
+    out from a 401 after pasting the wrong thing is a bad afternoon."""
+    chatgpt = next(p for p in ai_settings.ENDPOINT_PRESETS
+                   if p["name"] == "ChatGPT")
+    assert "separate account" in chatgpt["help"]
+    assert "bills per request" in chatgpt["help"]
+
+
+def test_the_free_route_exists_and_is_named_for_what_it_saves():
+    """Using a subscription already paid for is the frugal path, so it is
+    named by its benefit rather than by the proxy's product name."""
+    sub = next(p for p in ai_settings.ENDPOINT_PRESETS
+               if p["url"] == ai_settings.CLIPROXY_DEFAULT_URL)
+    assert "subscription" in sub["name"].lower()
+    assert sub["key"] == "no"
+
+
+def test_the_dropdown_entry_no_longer_names_only_a_protocol():
+    label = ai_settings.BACKEND_LABELS["openai"]
+    assert "ChatGPT" in label
+    assert "OpenAI-compatible" not in label, "a protocol name is not a service"
+
+
+def test_the_browser_is_given_the_presets(client):
+    d = client.get("/api/ai-settings").json()
+    assert [p["name"] for p in d["endpoints"]] == \
+        [p["name"] for p in ai_settings.ENDPOINT_PRESETS]
+
+
+def test_the_still_needed_line_does_not_repeat_the_note():
+    """It read "Still needed: an address: pick one of the services above, or
+    type your own." directly after a sentence saying exactly that."""
+    need = ai_settings.missing_setup("openai", ai_settings.AiSettings())
+    assert need == "an address"
+    assert need not in ai_settings.BACKEND_NOTES["openai"]
+
+
+def test_the_note_points_the_right_way_up():
+    """The chips sit above the note, so "below" sends the reader past it."""
+    note = ai_settings.BACKEND_NOTES["openai"]
+    assert "above" in note and "below" not in note
