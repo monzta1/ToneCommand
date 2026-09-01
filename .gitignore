@@ -31,3 +31,7 @@ ai_settings.json
 store_slots.json
 designs/
 outbox.json
+
+# wrangler caches the Cloudflare account id and name here. Not a credential,
+# but it is account metadata and a build artefact, and neither belongs in git.
+.wrangler/
