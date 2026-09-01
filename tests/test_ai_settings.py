@@ -8,11 +8,14 @@ silently discards one.
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from fm9 import ai_settings, planner
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -306,7 +309,7 @@ def test_the_model_source_line_is_set_not_appended(store):
     ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
     assert "$('ainote').textContent +=" not in ui
     assert "aisrc" in ui, "the source line needs its own element"
-    assert "if ($('aibackend').value !== backend) return;" in ui, \
+    assert "$('aibackend').value !== backend) return;" in ui, \
         "a slow listing must not land under a different backend"
 
 
@@ -695,3 +698,102 @@ def test_the_note_points_the_right_way_up():
     """The chips sit above the note, so "below" sends the reader past it."""
     note = ai_settings.BACKEND_NOTES["openai"]
     assert "above" in note and "below" not in note
+
+
+# --- filling the model box, not merely offering a list --------------------
+#
+# Blank is not a safe default on a hosted service: with no model the planner
+# sends "local", and ChatGPT answers a 404 for a model nobody typed. So
+# "optional" was a lie on exactly the route this panel now recommends.
+
+def test_the_catalogue_is_not_the_menu():
+    """A /models listing is everything the account can reach, most of which
+    cannot write a tone plan."""
+    kept = ai_settings.usable_models([
+        "gpt-5", "text-embedding-3-small", "whisper-1", "dall-e-3", "tts-1",
+        "omni-moderation-latest", "gpt-4o-realtime-preview", "gpt-image-1",
+        "codex-mini-latest"])
+    assert kept == ["gpt-5"]
+
+
+def test_legacy_completion_models_are_dropped():
+    """They answer, so nothing filters them by shape, and they cannot follow
+    the plan schema. babbage-002 sorting first would have been auto-filled."""
+    assert ai_settings.usable_models(
+        ["babbage-002", "davinci-002", "gpt-3.5-turbo-instruct", "gpt-4o"]
+    ) == ["gpt-4o"]
+
+
+def test_the_undated_alias_is_offered_before_the_snapshot():
+    """The box is FILLED with the first entry, and a listing arrives in no
+    order at all, so first has to mean best rather than whatever came back.
+    The undated alias keeps working after a snapshot is retired."""
+    got = ai_settings.usable_models(["gpt-4o-2024-08-06", "gpt-5"])
+    assert got[0] == "gpt-5"
+
+
+def test_a_local_servers_own_names_survive():
+    """The filter must not be an allowlist: a model on someone's laptop is
+    named whatever they named it."""
+    names = ["llama-3.3-70b", "qwen2.5-coder-32b", "mistral-nemo"]
+    assert ai_settings.usable_models(names) == names
+
+
+def test_models_can_be_listed_against_an_address_not_yet_saved(store, monkeypatch):
+    """Picking a service and being handed an empty model box is the same dead
+    end the address box used to be, one field further down."""
+    seen = {}
+
+    def fake(base_url=""):
+        seen["base"] = base_url
+        return ["gpt-5"], "stub"
+
+    monkeypatch.setattr(ai_settings, "_endpoint_models", fake)
+    out = ai_settings.list_models("openai", "https://api.openai.com/v1")
+    assert seen["base"] == "https://api.openai.com/v1"
+    assert out["models"] == ["gpt-5"]
+
+
+def test_the_endpoint_passes_the_typed_address_through(client, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ai_settings, "list_models",
+                        lambda b, u="": seen.update(backend=b, url=u) or
+                        {"backend": b, "models": [], "source": ""})
+    client.get("/api/ai-settings/models?backend=openai&base_url=http%3A%2F%2Fx%2Fv1")
+    assert seen == {"backend": "openai", "url": "http://x/v1"}
+
+
+def test_the_browser_fills_the_box_but_never_overwrites_a_choice():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
+    assert "!$('aimodel').value.trim()" in fn, "must only fill an empty box"
+    assert "$('aimodel').value = models[0]" in fn
+    # and the listing must be asked against what is typed
+    assert "base_url=${encodeURIComponent(typedUrl)}" in fn
+
+
+def test_a_stale_listing_cannot_land_on_a_fresh_one():
+    """Changing backend then address fires two listings, and a slow first
+    reply landed after a fast second and overwrote a correct list with "no
+    model list yet". Both carried the same backend, so guarding on that
+    alone did not catch it."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
+    assert "const seq = ++aiModelsSeq;" in fn
+    assert "seq !== aiModelsSeq" in fn
+
+
+def test_the_key_box_stops_contradicting_the_service_above_it():
+    """"optional for others" sat directly under "A key is required.", and
+    "model (optional)" is plainly false on a hosted service where blank
+    sends "local" and earns a 404 for a model nobody typed."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
+    assert "API key, required for this service" in fn
+    assert "no key needed for this service" in fn
+    assert "fills itself in once you save a key" in fn
+    # a stored key must still say so rather than demand another
+    assert "dataset.stored === '1'" in fn
+    # and it must not paste a chip's phrase into a sentence: "no key needed
+    # for A subscription you already pay for" is not English
+    assert "${current.name} key" not in fn

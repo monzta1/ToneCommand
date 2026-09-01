@@ -2263,13 +2263,17 @@ def api_ai_settings_state():
 
 
 @app.get("/api/ai-settings/models")
-def api_ai_models(backend: str = ""):
+def api_ai_models(backend: str = "", base_url: str = ""):
     """Model ids to offer for a backend, and where the list came from.
 
     Suggestions only: every model box stays typeable, because a list that
     cannot be overridden is worse than no list once it goes stale.
+
+    `base_url` is what is currently TYPED in the panel, which is not yet what
+    is saved. Listing against it means picking a service fills the model box
+    in the same click, instead of after a save nobody knows they owe.
     """
-    return ai_settings.list_models(backend)
+    return ai_settings.list_models(backend, base_url)
 
 
 @app.post("/api/ai-settings")

@@ -607,9 +607,14 @@ the store whitelist uses:
 ### Using ChatGPT
 
 Open the gear, choose **ChatGPT, or another service you choose**, and click
-the **ChatGPT** chip. That fills in the address. Paste an OpenAI API key from
-platform.openai.com and save; the model box then lists what your key can
-actually reach, and can stay blank.
+the **ChatGPT** chip. That fills in the address. Paste a key from
+platform.openai.com and save, and the model box fills itself in with one your
+key can actually reach, picked from the service's own list. Change it from the
+dropdown if you want a different one.
+
+A key is genuinely required on this route, and so is a model: with the box
+blank the planner sends `local`, which a hosted service answers with a 404 for
+a model nobody asked for.
 
 Note that an OpenAI API key is a separate, pay-per-request account from a
 ChatGPT Plus subscription. To use a subscription you already pay for instead,

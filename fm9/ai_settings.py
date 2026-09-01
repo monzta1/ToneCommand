@@ -32,6 +32,7 @@ never what it is.
 from __future__ import annotations
 
 import json
+import re
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,17 +59,19 @@ ENDPOINT_PRESETS = [
         "name": "ChatGPT",
         "url": "https://api.openai.com/v1",
         "key": "required",
-        "help": "Needs a paid OpenAI API key from platform.openai.com. That "
-                "is a separate account from ChatGPT Plus, and it bills per "
-                "request on top of any subscription you already pay for.",
+        "help": "Needs a paid ChatGPT developer key, from OpenAI (the company "
+                "behind ChatGPT) at platform.openai.com. That is a separate "
+                "account from ChatGPT Plus, and it bills per request on top "
+                "of any subscription you already pay for.",
     },
     {
         "name": "A subscription you already pay for",
         "url": CLIPROXY_DEFAULT_URL,
         "key": "no",
-        "help": "Run CLIProxyAPI and log it into ChatGPT/Codex, Gemini, Grok "
-                "or Kimi. It signs in the normal way and costs nothing extra "
-                "per request. Start it before you send a prompt.",
+        "help": "Use the ChatGPT subscription you already have, at no extra "
+                "cost per request. Needs CLIProxyAPI running and signed in "
+                "the normal way; it also covers Gemini, Grok and Kimi. Start "
+                "it before you send a prompt.",
     },
     {
         "name": "A model on this laptop",
@@ -104,7 +107,7 @@ BACKEND_SHORT = {
     "cli": "Claude CLI",
     "api": "Claude API",
     "grok": "Grok",
-    "openai": "custom endpoint",
+    "openai": "ChatGPT or other",
 }
 
 #: Which controls each backend genuinely honours, and the variable behind each.
@@ -138,8 +141,8 @@ BACKEND_NOTES = {
     "grok": "Runs on your Grok subscription. Model optional; blank uses the "
             "CLI's own default.",
     "openai": "Pick a service above to fill in the address, or type your "
-              "own. Any OpenAI-compatible server works. A key is often "
-              "not needed.",
+              "own. Anything that speaks the ChatGPT API works, which most "
+              "services do. A key is often not needed.",
 }
 
 _MANAGED = ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
@@ -413,7 +416,7 @@ def apply_to_env(settings: AiSettings | None = None) -> AiSettings:
 CLAUDE_CLI_ALIASES = ("sonnet", "opus", "haiku", "fable")
 
 
-def list_models(backend: str) -> dict:
+def list_models(backend: str, base_url: str = "") -> dict:
     """Model ids to offer for a backend, and where they came from.
 
     Suggestions only. Every model box stays typeable, because a list that
@@ -423,7 +426,7 @@ def list_models(backend: str) -> dict:
     if backend == "grok":
         found, why = _grok_models()
     elif backend == "openai":
-        found, why = _endpoint_models()
+        found, why = _endpoint_models(base_url)
     elif backend == "cli":
         found, why = list(CLAUDE_CLI_ALIASES), "aliases the claude CLI documents"
     elif backend == "api":
@@ -482,12 +485,54 @@ def _grok_models() -> tuple[list[str], str]:
         [], "grok models listed nothing")[1]
 
 
-def _endpoint_models() -> tuple[list[str], str]:
-    """Ask the configured endpoint. /models is part of the OpenAI shape."""
+#: Ids a /models listing returns that cannot write a tone plan. ChatGPT's
+#: listing is the whole catalogue, so without this the model box offers
+#: image, speech and embedding models beside the ones that can actually
+#: answer, and the first entry alphabetically is usually one of them.
+NOT_A_PLANNER = ("embedding", "whisper", "tts", "dall-e", "moderation",
+                 "audio", "image", "realtime", "transcribe", "search",
+                 "sora", "clip", "rerank", "guard", "codex-mini")
+
+#: Older completion-only families. They answer, so nothing filters them out
+#: by shape, and they cannot follow the plan schema. Named rather than
+#: pattern-matched, because there is no pattern: they are just old.
+LEGACY_COMPLETION = ("babbage", "davinci", "curie", "ada-", "text-ada",
+                     "instruct")
+
+#: A dated snapshot: gpt-5-2026-04-11 beside gpt-5. Both work; the undated
+#: one is the alias that keeps working after the snapshot is retired.
+_DATED = re.compile(r"-(?:\d{4}-\d{2}-\d{2}|\d{4})$")
+
+
+def usable_models(ids: list[str]) -> list[str]:
+    """The listing, minus what cannot write a tone plan, best guess first.
+
+    Ordering matters because the panel FILLS the box with the first entry
+    rather than only offering a list, and a /models listing arrives in no
+    particular order. Suggestions still, and the box stays typeable: a filter
+    that hides a working model is a nuisance, while offering
+    `text-embedding-3-small` as a planner is a wrong answer dressed as a
+    choice.
+    """
+    keep = [m for m in ids
+            if not any(bad in m.lower() for bad in NOT_A_PLANNER)
+            and not any(old in m.lower() for old in LEGACY_COMPLETION)]
+    # Undated aliases first, then the endpoint's own order within each group.
+    return sorted(keep, key=lambda m: (bool(_DATED.search(m)), ))
+
+
+def _endpoint_models(base_url: str = "") -> tuple[list[str], str]:
+    """Ask the endpoint. /models is part of the shape every one of these speaks.
+
+    `base_url` overrides the saved setting so the panel can list models for a
+    service the moment it is picked, rather than only after a save. Picking
+    ChatGPT and being shown an empty model box is the same dead end the
+    address box used to be.
+    """
     import json as _json
     import urllib.error
     import urllib.request
-    base = load().base_url or planner._openai_base_url()
+    base = base_url or load().base_url or planner._openai_base_url()
     if not base:
         return [], "set a base URL first"
     req = urllib.request.Request(f"{base.rstrip('/')}/models", method="GET")
@@ -501,8 +546,8 @@ def _endpoint_models() -> tuple[list[str], str]:
             _json.JSONDecodeError) as exc:
         return [], f"could not reach {base}: {exc}"
     entries = data.get("data") if isinstance(data, dict) else None
-    found = [e["id"] for e in entries or []
-             if isinstance(e, dict) and isinstance(e.get("id"), str)]
+    found = usable_models([e["id"] for e in entries or []
+                           if isinstance(e, dict) and isinstance(e.get("id"), str)])
     return found, f"{base}/models" if found else "the endpoint listed no models"
 
 

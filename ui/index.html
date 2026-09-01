@@ -4276,6 +4276,7 @@ let aiEndpoints = [];
 let aiBackends = [];
 let aiEnvBaseUrl = '';        // what .env or the shell already provides
 let aiSavedBaseUrl = '';      // what is actually in effect, not what is typed
+let aiModelsSeq = 0;          // only the newest model listing may land
 
 // Each backend reads different variables, and two of them read none at all.
 // Showing a box a backend ignores is the same sin as offering a backend that
@@ -4315,6 +4316,20 @@ function renderAiPresets() {
     $('aipresethelp').textContent = current.key === 'required'
       ? `${current.help} A key is required.`
       : `${current.help} No key needed.`;
+    // The generic placeholders contradict the chip. "optional for others"
+    // sits under a sentence saying a key is required, and "model (optional)"
+    // is plain false on a hosted service, where blank sends "local" and gets
+    // a 404 for a model nobody typed.
+    if (current.key === 'required') {
+      $('aikey').placeholder = $('aikey').dataset.stored === '1'
+        ? 'key stored (blank keeps it)'
+        : 'API key, required for this service';
+      if (!$('aimodel').value.trim()) {
+        $('aimodel').placeholder = 'model (fills itself in once you save a key)';
+      }
+    } else {
+      $('aikey').placeholder = 'no key needed for this service';
+    }
   }
 }
 
@@ -4344,6 +4359,7 @@ function aiFields() {
     // Spell out the whole rule rather than a per-backend word: the Claude API
     // cannot run without a key, and an OAuth router wants none at all, so
     // hunting for one you do not need is a waste of an afternoon.
+    $('aikey').dataset.stored = b.hasKey ? '1' : '0';
     $('aikey').placeholder = b.hasKey ? 'key stored (blank keeps it)'
       : 'API key (required for Claude API but optional for others)';
   }
@@ -4399,15 +4415,26 @@ async function loadAiSettings() {
 
 // Pick or type: the list is a convenience, never a constraint.
 async function loadAiModels(backend) {
+  // Changing the backend and then the address fires two listings, and they
+  // do not come back in the order they were sent: a slow first reply landed
+  // AFTER a fast second one and overwrote a correct list with "no model list
+  // yet". Guarding on the backend alone did not catch it, because both
+  // requests carried the same backend.
+  const seq = ++aiModelsSeq;
   $('aimodels').innerHTML = '';
   $('aisrc').textContent = '';
   try {
+    // Ask against what is TYPED, not what is saved. Picking ChatGPT and
+    // being handed an empty model box is the dead end the address box used
+    // to be, one field further down.
+    const typedUrl = $('aibaseurl').value.trim();
     const d = await (await fetch(
-      `/api/ai-settings/models?backend=${encodeURIComponent(backend)}`)).json();
+      `/api/ai-settings/models?backend=${encodeURIComponent(backend)}`
+      + `&base_url=${encodeURIComponent(typedUrl)}`)).json();
     // the listing can be slow (a subprocess, or a request over the network),
     // so drop the answer if the user has moved on: appending it would stack
     // one backend's source line under another's
-    if ($('aibackend').value !== backend) return;
+    if (seq !== aiModelsSeq || $('aibackend').value !== backend) return;
     // property, not an interpolated value="" attribute: an id containing a
     // double quote would break out of it
     const dl = $('aimodels');
@@ -4417,12 +4444,25 @@ async function loadAiModels(backend) {
       opt.value = m;
       dl.appendChild(opt);
     }
+    // Fill the box, do not merely offer a list behind a dropdown arrow most
+    // people never open. Blank is not a safe default here: with no model the
+    // planner sends "local", which a hosted service answers with a 404 for a
+    // model nobody typed. Only when it is empty, so a deliberate choice and
+    // a saved one both survive.
+    const models = d.models || [];
+    let filled = false;
+    if (models.length && !$('aimodel').value.trim()) {
+      $('aimodel').value = models[0];
+      filled = true;
+    }
     const typed = $('aibaseurl').value.trim();
     const unsaved = typed && typed !== aiSavedBaseUrl;
-    $('aisrc').textContent = (d.models || []).length
-      ? (d.source ? `Models from ${d.source}.` : '')
-      : (unsaved ? 'Save to list the models this service offers. '
-                 + 'The model box can stay blank until then.'
+    $('aisrc').textContent = models.length
+      ? (filled ? `Filled in ${models[0]}, one of ${models.length} this `
+                + `service offers. Change it if you want another.`
+                : (d.source ? `Models from ${d.source}.` : ''))
+      : (unsaved ? 'No model list yet. Add a key and save, and this box will '
+                 + 'fill itself in.'
                  : (d.source ? `No model list: ${d.source}.` : ''));
   } catch (e) {
     // a missing list is a lost convenience, not a broken panel
