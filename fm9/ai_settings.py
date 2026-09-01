@@ -521,6 +521,40 @@ def usable_models(ids: list[str]) -> list[str]:
     return sorted(keep, key=lambda m: (bool(_DATED.search(m)), ))
 
 
+def endpoint_reachable(base_url: str) -> str:
+    """"" if something answers at `base_url`, else why it does not.
+
+    Presence is not reachability. Saving only checked that an ADDRESS was
+    filled in, so choosing the subscription route without the router running
+    saved cleanly and then failed at the next prompt, which is the exact
+    trade _check_runnable exists to prevent: a sentence now instead of a
+    failed prompt later.
+
+    A warning, never a refusal. Configuring the panel before starting the
+    router is a perfectly reasonable order to do things in.
+    """
+    import urllib.error
+    import urllib.request
+    if not base_url:
+        return ""
+    req = urllib.request.Request(f"{base_url.rstrip('/')}/models", method="GET")
+    key = load().key_for("openai")
+    if key:
+        req.add_header("authorization", f"Bearer {key}")
+    try:
+        urllib.request.urlopen(req, timeout=3)
+        return ""
+    except urllib.error.HTTPError:
+        # It answered. 401 without a key is a running service, not a broken
+        # one, and refusing to distinguish those would cry wolf on every
+        # correctly configured hosted endpoint.
+        return ""
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return (f"Saved, but nothing is answering at {base_url} "
+                f"({getattr(exc, 'reason', exc)}). Start the service, then "
+                f"send a prompt.")
+
+
 def _endpoint_models(base_url: str = "") -> tuple[list[str], str]:
     """Ask the endpoint. /models is part of the shape every one of these speaks.
 

@@ -4485,6 +4485,10 @@ async function saveAiSettings(extra) {
     if (d.error) throw new Error(d.error);
     log(`AI backend: ${d.settings.backend || 'auto'}`
         + (d.settings.hasKey ? ' (key stored)' : ''), 'ok');
+    // A saved setting is not a working one. The subscription route needs a
+    // router installed and signed in, and without this the first sign of
+    // that missing is a failed prompt some minutes later.
+    if (d.warning) log(d.warning, 'warn');
     await loadAiSettings();
 refreshSnaps();
     aiModal(false);

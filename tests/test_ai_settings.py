@@ -797,3 +797,42 @@ def test_the_key_box_stops_contradicting_the_service_above_it():
     # and it must not paste a chip's phrase into a sentence: "no key needed
     # for A subscription you already pay for" is not English
     assert "${current.name} key" not in fn
+
+
+# --- a saved setting is not a working one ---------------------------------
+
+def test_saving_warns_when_nothing_is_listening(client, store):
+    """Choosing the subscription route without the router running saved
+    cleanly and then failed at the next prompt. _check_runnable only asked
+    whether an address was FILLED IN, never whether anything answered it."""
+    r = client.post("/api/ai-settings",
+                    json={"backend": "openai",
+                          "baseUrl": "http://127.0.0.1:9/v1"})
+    assert r.status_code == 200, "a warning, never a refusal"
+    assert "nothing is answering" in r.json()["warning"]
+
+
+def test_a_reachable_endpoint_warns_about_nothing(client, store, monkeypatch):
+    monkeypatch.setattr(ai_settings, "endpoint_reachable", lambda u: "")
+    r = client.post("/api/ai-settings",
+                    json={"backend": "openai", "baseUrl": "http://x/v1"})
+    assert r.json()["warning"] == ""
+
+
+def test_an_http_error_is_a_running_service(monkeypatch):
+    """401 without a key means it answered. Treating that as unreachable
+    would cry wolf on every correctly configured hosted endpoint."""
+    import urllib.error
+    import urllib.request
+
+    def boom(*a, **k):
+        raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    assert ai_settings.endpoint_reachable("https://api.openai.com/v1") == ""
+
+
+def test_the_warning_reaches_the_log_not_just_the_response():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function saveAiSettings(extra)")[1].split("\n}\n")[0]
+    assert "if (d.warning) log(d.warning, 'warn');" in fn

@@ -2294,8 +2294,15 @@ def api_ai_settings(body: dict):
         return JSONResponse({"error": str(exc)}, status_code=400)
     finally:
         _settings_lock.release()
+    # Say now, not at the next prompt. Only for the endpoint route, and only
+    # as a warning: setting the panel up before starting the router is a
+    # reasonable order to work in, so this must not refuse the save.
+    warning = ""
+    if (saved.backend or "openai") in ("", "openai"):
+        warning = ai_settings.endpoint_reachable(saved.base_url)
     return {"settings": saved.public(),
-            "backends": ai_settings.available_backends()}
+            "backends": ai_settings.available_backends(),
+            "warning": warning}
 
 
 @app.post("/api/apply")
