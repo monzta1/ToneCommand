@@ -515,6 +515,82 @@ CHAT_SCHEMA = {
 }
 
 
+class ReplyStreamer:
+    """Pulls the `reply` string out of a JSON object as it arrives.
+
+    Conversation asks for `{"reply": ..., "ready": ..., "request": ...}`, and a
+    model streams that as raw characters. Waiting for the closing brace before
+    showing anything means watching a spinner for the whole reply, which is the
+    thing streaming exists to stop.
+
+    `reply` is deliberately FIRST in CHAT_SCHEMA so it can be read before the
+    rest exists. This walks the text once, emits the decoded contents of that
+    one string as they appear, and stops at its closing quote. It never parses
+    the whole object: the caller still does that at the end, from the complete
+    text, so a malformed reply fails exactly where it failed before.
+    """
+
+    _ESCAPES = {'"': '"', "\\": "\\", "/": "/", "b": "\b",
+                "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+    def __init__(self, field: str = "reply") -> None:
+        self._needle = f'"{field}"'
+        self._buf = ""          # everything seen, until the value starts
+        self._inside = False    # we are between the value's quotes
+        self._done = False      # the closing quote has been passed
+        self._escape = False    # the previous character was a backslash
+        self._unicode = ""      # collecting the four digits of a \uXXXX
+
+    def feed(self, chunk: str) -> str:
+        """New raw characters in; newly visible reply text out."""
+        if self._done or not chunk:
+            return ""
+        if not self._inside:
+            self._buf += chunk
+            at = self._buf.find(self._needle)
+            if at < 0:
+                # Keep only enough to match a needle split across two chunks.
+                self._buf = self._buf[-len(self._needle):]
+                return ""
+            rest = self._buf[at + len(self._needle):]
+            quote = rest.find('"')
+            if quote < 0:                      # the colon arrived, the value did not
+                return ""
+            self._inside = True
+            chunk = rest[quote + 1:]
+            self._buf = ""
+        out = []
+        for ch in chunk:
+            if self._unicode is not None and len(self._unicode) and len(self._unicode) < 5:
+                self._unicode += ch
+                if len(self._unicode) == 5:
+                    try:
+                        out.append(chr(int(self._unicode[1:], 16)))
+                    except ValueError:
+                        out.append(self._unicode[1:])
+                    self._unicode = ""
+                continue
+            if self._escape:
+                self._escape = False
+                if ch == "u":
+                    self._unicode = "u"
+                else:
+                    out.append(self._ESCAPES.get(ch, ch))
+                continue
+            if ch == "\\":
+                self._escape = True
+                continue
+            if ch == '"':
+                self._done = True
+                break
+            out.append(ch)
+        return "".join(out)
+
+    @property
+    def finished(self) -> bool:
+        return self._done
+
+
 def chat_shape_line() -> str:
     return ('{"reply": string, "ready": boolean, "request": string}')
 
@@ -934,6 +1010,115 @@ def _plan_quality(plan_obj: dict) -> str:
     return "empty"
 
 
+def _chat_prompt(messages: list[dict]) -> str:
+    """The conversation so far, as one prompt. Shared by both paths."""
+    turns = []
+    for m in messages[-24:]:                 # a rehearsal chat, not a novel
+        who = "Guitarist" if m.get("role") == "user" else "You"
+        text = str(m.get("content") or "").strip()
+        if text:
+            turns.append(f"{who}: {text[:4000]}")
+    if not turns:
+        raise RuntimeError("nothing to talk about")
+    return ("Conversation so far:\n" + "\n\n".join(turns)
+            + "\n\nReply to the guitarist's latest message.")
+
+
+def converse_stream(messages: list[dict], device_state: str,
+                    param_reference: str):
+    """Converse, yielding words as they arrive.
+
+    Yields ("text", chunk) as the reply forms and finally ("done", result)
+    carrying the same dict `converse` returns. Raises the same way it does.
+
+    Only the OpenAI-compatible backend streams, because it is the only one
+    that speaks a wire protocol we drive directly; the CLI backends shell out
+    to a binary that answers once. So this streams when it can and yields the
+    whole thing in one piece when it cannot, rather than offering a different
+    feature depending on somebody's configuration.
+    """
+    import urllib.error
+    import urllib.request
+
+    prompt = _chat_prompt(messages)
+    base = _openai_base_url()
+    if not base or (_env("PLANNER_BACKEND").lower() not in ("", "openai")):
+        yield ("done", converse(messages, device_state, param_reference))
+        return
+
+    model = _env("PLANNER_MODEL", "local")
+    payload = json.dumps({
+        "model": model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": f"{CHAT_SYSTEM}\n\n{JSON_ONLY}"},
+            {"role": "user", "content": _full_prompt(
+                prompt, device_state, param_reference,
+                CHAT_SYSTEM, chat_shape_line())},
+        ],
+        "temperature": 0.2,
+        "max_tokens": int(_env("PLANNER_MAX_TOKENS", "8192")),
+    }).encode()
+    headers = {"content-type": "application/json"}
+    key = _env("PLANNER_API_KEY")
+    if key:
+        headers["authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(f"{base}/chat/completions", data=payload,
+                                 headers=headers, method="POST")
+    limit = timeout_s()
+    deadline = time.monotonic() + limit
+    streamer = ReplyStreamer()
+    whole = []
+    try:
+        with urllib.request.urlopen(req, timeout=limit) as resp:
+            for line in resp:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"no complete reply within {limit}s")
+                line = line.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                body = line[5:].strip()
+                if body == "[DONE]":
+                    break
+                try:
+                    parsed = json.loads(body)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                choices = parsed.get("choices") or []
+                delta = (choices[0].get("delta") or {}) if choices else {}
+                piece = delta.get("content")
+                if not isinstance(piece, str) or not piece:
+                    continue
+                whole.append(piece)
+                shown = streamer.feed(piece)
+                if shown:
+                    yield ("text", shown)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace").strip()[:300]
+        raise BackendFailure("openai", "http_status",
+                             f"{exc.code} {detail or exc.reason}", base, model)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise BackendFailure("openai", "transport",
+                             f"{getattr(exc, 'reason', exc)}", base, model)
+
+    text = "".join(whole)
+    try:
+        raw = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        raise BackendFailure("openai", "unreadable_output",
+                             text.strip()[:200] or "empty body", base, model)
+    reply = str(raw.get("reply") or "").strip()
+    if not reply:
+        raise RuntimeError("the model replied with nothing to say")
+    yield ("done", {
+        "reply": reply,
+        "ready": bool(raw.get("ready")),
+        "request": str(raw.get("request") or "").strip(),
+        "backend": "openai", "model": model,
+        "attempts": [Attempt("openai", base, model).as_dict()],
+    })
+
+
 def converse(messages: list[dict], device_state: str,
              param_reference: str) -> dict:
     """Talk a tone through, before anything is planned or sent.
@@ -947,16 +1132,7 @@ def converse(messages: list[dict], device_state: str,
     leaves the whole plan, validate and confirm pipeline in front of anything
     reaching the rig. What this returns is a better sentence to plan from.
     """
-    turns = []
-    for m in messages[-24:]:                 # a rehearsal chat, not a novel
-        who = "Guitarist" if m.get("role") == "user" else "You"
-        text = str(m.get("content") or "").strip()
-        if text:
-            turns.append(f"{who}: {text[:4000]}")
-    if not turns:
-        raise RuntimeError("nothing to talk about")
-    prompt = ("Conversation so far:\n" + "\n\n".join(turns)
-              + "\n\nReply to the guitarist's latest message.")
+    prompt = _chat_prompt(messages)
     raw, name, model, attempts = _ask_backends(
         prompt, device_state, param_reference,
         system=CHAT_SYSTEM, shape=chat_shape_line(), schema=CHAT_SCHEMA)

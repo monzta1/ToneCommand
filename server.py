@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import threading
 import uuid
+import json
 import time
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import (FileResponse, JSONResponse,
+                               StreamingResponse)
 from pydantic import BaseModel
 
 from fm9.device import FM9, FM9NotFound
@@ -2288,6 +2290,25 @@ def api_ai_setup():
     return ai_settings.setup_guide_state()
 
 
+def _chat_context() -> str:
+    """The rig the conversation is about.
+
+    A loaded profile outranks the live device, the same as it does for
+    planning: you asked to design for somebody else's rig, so describing your
+    own would be answering a different question. Shared by the streaming and
+    non-streaming paths so the two cannot drift into describing different rigs.
+    """
+    if _profile["loaded"]:
+        return rigprofile.as_state_text(_profile["loaded"])
+    with _lock:
+        try:
+            snap = snapshot(get_fm9())
+        except FM9NotFound:
+            drop_fm9()
+            snap = _last_snapshot["state"]
+    return state_text(snap) if snap else rigprofile.as_blank_text()
+
+
 class ChatBody(BaseModel):
     messages: list[dict]
 
@@ -2308,21 +2329,75 @@ def api_chat(body: ChatBody):
     """
     if not body.messages:
         return JSONResponse({"error": "nothing to talk about"}, status_code=400)
-    if _profile["loaded"]:
-        context = rigprofile.as_state_text(_profile["loaded"])
-    else:
-        with _lock:
-            try:
-                snap = snapshot(get_fm9())
-            except FM9NotFound:
-                drop_fm9()
-                snap = _last_snapshot["state"]
-        context = state_text(snap) if snap else rigprofile.as_blank_text()
+    context = _chat_context()
     try:
         with _settings_lock:
             return planner.converse(body.messages, context, PARAM_REFERENCE)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=502)
+
+
+@app.post("/api/chat/stream")
+def api_chat_stream(body: ChatBody):
+    """The same conversation, delivered as it is written.
+
+    Server-sent events. Three kinds:
+
+      text   a piece of the reply, to append
+      done   the finished result, identical to what /api/chat returns
+      error  it failed, with the reason
+
+    Plus a `ping` every few seconds while nothing else is happening. That is
+    not decoration: it is how the browser tells "still thinking" apart from
+    "the connection died", which is the difference between waiting and being
+    stuck, and no amount of spinner animation answers it.
+
+    /api/chat stays, unchanged. A browser that cannot hold a stream open, or
+    a backend that cannot stream, still gets an answer.
+    """
+    if not body.messages:
+        return JSONResponse({"error": "nothing to talk about"}, status_code=400)
+    context = _chat_context()
+
+    def events():
+        import queue
+        import threading as _th
+        # The generator runs on a worker so the main thread can emit pings
+        # while it is blocked on the network. Without that, "no bytes for
+        # thirty seconds" and "finished quietly" look the same from here.
+        out: queue.Queue = queue.Queue()
+
+        def work():
+            try:
+                with _settings_lock:
+                    for kind, payload in planner.converse_stream(
+                            body.messages, context, PARAM_REFERENCE):
+                        out.put((kind, payload))
+            except Exception as exc:
+                out.put(("error", str(exc)))
+            finally:
+                out.put((None, None))
+
+        worker = _th.Thread(target=work, daemon=True)
+        worker.start()
+        started = time.monotonic()
+        while True:
+            try:
+                kind, payload = out.get(timeout=3)
+            except Exception:
+                yield ("event: ping\ndata: "
+                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
+                       + "\n\n")
+                continue
+            if kind is None:
+                return
+            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+            if kind in ("done", "error"):
+                return
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"cache-control": "no-cache",
+                                      "x-accel-buffering": "no"})
 
 
 @app.post("/api/ai-settings/setup/run")

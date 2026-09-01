@@ -9,6 +9,7 @@ path to the hardware. It produces a better sentence, and that sentence goes
 through the same planner, validator and confirm gate as one typed straight in.
 """
 import inspect
+import json
 from pathlib import Path
 
 import pytest
@@ -238,7 +239,7 @@ def test_storage_is_never_trusted():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function loadChat()")[1].split("\n}\n")[0]
     assert "Array.isArray(d.log)" in fn
-    assert "m.role === 'user' || m.role === 'assistant'" in fn
+    assert "['user', 'assistant', 'note'].includes(m.role)" in fn
     assert "catch (e)" in fn
 
 
@@ -296,7 +297,7 @@ def test_it_says_it_is_thinking_where_you_are_looking():
     """A spinner on a button at the far side of the panel is not an answer to
     "did that send?" when your eyes are on the last thing said."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "chatBusy ? '<div class=\"cthinking\">thinking...</div>' : ''" in ui
+    assert "chatBusy ? `<div class=\"cthinking\">${waitLine()}</div>`" in ui
 
 
 def test_only_one_turn_at_a_time():
@@ -448,3 +449,123 @@ def test_the_working_line_is_always_cleared():
         fn = ui.split(name)[1].split("\n}\n")[0]
         tail = fn.split("finally {")[-1]
         assert "chatWorking = ''" in tail, name
+
+
+# --- streaming, and telling slow apart from stuck -------------------------
+#
+# Measured before building any of this: stripping the 8,600-token parameter
+# reference did NOT make replies faster (2.7s with, 3.5s without: the proxy
+# caches the prefix), and a smaller model was SLOWER (5-7s). The prompt was
+# never the problem. Staring at an unchanging spinner for 3 to 8 seconds was.
+
+def test_the_reply_field_comes_first_so_it_can_be_read_early():
+    """Waiting for the closing brace before showing anything means watching a
+    spinner for the whole reply, which is what streaming exists to stop."""
+    assert list(planner.CHAT_SCHEMA["properties"])[0] == "reply"
+
+
+@pytest.mark.parametrize("obj", [
+    {"reply": "Hello there", "ready": False, "request": ""},
+    {"reply": 'He said "warmer" and \\ then left', "ready": True, "request": "x"},
+    {"reply": "line one\nline two\ttabbed", "ready": False, "request": ""},
+    {"reply": "unicode: é done", "ready": True, "request": "y"},
+    {"reply": "", "ready": False, "request": "z"},
+])
+@pytest.mark.parametrize("size", [1, 2, 3, 7, 40, 10_000])
+def test_the_reply_survives_any_chunk_boundary(obj, size):
+    """A network splits wherever it likes, including inside an escape."""
+    raw = json.dumps(obj)
+    s = planner.ReplyStreamer()
+    got = "".join(s.feed(raw[i:i + size]) for i in range(0, len(raw), size))
+    assert got == obj["reply"]
+
+
+def test_the_streamer_stops_at_the_end_of_the_reply():
+    s = planner.ReplyStreamer()
+    s.feed(json.dumps({"reply": "done", "ready": True, "request": "later"}))
+    assert s.finished
+    assert s.feed('{"reply": "more"}') == "", "nothing after the closing quote"
+
+
+def test_the_streamer_is_not_fooled_by_earlier_fields():
+    s = planner.ReplyStreamer()
+    assert s.feed('{"ready": true, "request": "no", "reply": "yes"}') == "yes"
+
+
+def test_a_backend_that_cannot_stream_still_answers(monkeypatch):
+    """Streaming must not become a feature only some configurations have."""
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "converse",
+                        lambda *a, **k: {"reply": "hi", "ready": False,
+                                         "request": "", "backend": "cli",
+                                         "model": "m", "attempts": []})
+    out = list(planner.converse_stream([{"role": "user", "content": "x"}], "s", "r"))
+    assert out == [("done", {"reply": "hi", "ready": False, "request": "",
+                             "backend": "cli", "model": "m", "attempts": []})]
+
+
+def test_the_stream_endpoint_exists_beside_the_plain_one(client):
+    """The non-streaming route stays: a browser that cannot hold a stream
+    open, or a backend that cannot stream, still gets an answer."""
+    paths = {r.path for r in server.app.routes}
+    assert "/api/chat" in paths and "/api/chat/stream" in paths
+    assert client.post("/api/chat/stream", json={"messages": []}).status_code == 400
+
+
+def test_both_chat_paths_describe_the_same_rig():
+    """Two ways to build the context is two rigs to disagree about."""
+    src = inspect.getsource(server.api_chat_stream)
+    assert "_chat_context()" in src
+    assert "_chat_context()" in inspect.getsource(server.api_chat)
+
+
+def test_the_stream_pings_while_it_is_quiet():
+    """The only thing that separates "still thinking" from "the connection
+    died". No amount of spinner animation answers that."""
+    src = inspect.getsource(server.api_chat_stream)
+    assert "event: ping" in src
+    assert "out.get(timeout=3)" in src
+
+
+def test_the_browser_tells_slow_apart_from_stuck():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function waitLine()")[1].split("\n}\n")[0]
+    assert "It may be stuck" in fn, "no answer at all has to say so"
+    assert "Longer than usual" in fn, "slow is not the same as broken"
+    assert "writing..." in fn
+    assert "chatAlive" in fn, "stuck is judged on pings, not on words"
+
+
+def test_the_wait_counts_seconds_out_loud():
+    """A spinner says "working" for as long as it is on screen and never
+    distinguishes four seconds from four minutes."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "setInterval(renderChat, 1000)" in ui
+    fn = ui.split("function waitLine()")[1].split("\n}\n")[0]
+    assert "secs" in fn
+
+
+def test_a_wait_can_be_left():
+    """A wedged backend used to mean reloading the page, which until recently
+    also lost the conversation."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "chatAbort = new AbortController()" in ui
+    assert "signal: chatAbort.signal" in ui
+    assert "chatAbort.abort()" in ui
+    fn = ui.split("async function talk()")[1].split("\n}\n")[0]
+    assert "e.name === 'AbortError'" in fn, "stopping is not an error"
+
+
+def test_a_stream_that_ends_early_is_a_failure_not_a_reply():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function talk()")[1].split("\n}\n")[0]
+    assert "if (!landed) throw" in fn
+
+
+def test_which_model_answered_is_on_the_reply_it_produced():
+    """It was returned on every turn and thrown away, so "who am I talking
+    to" had no answer anywhere on the page."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "model: d.model || ''" in ui
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "m.model ? `<i>${esc(m.model)}</i>`" in fn
