@@ -1078,7 +1078,17 @@
      enlarging pixels: the panel is cramped because the drawing is capped at
      its natural size, not because it lacks detail. */
   .modal.gridmodal .console { width: min(1500px, 96vw); }
-  #gridbig { overflow-x: auto; }
+  /* overscroll-behavior stops a two-finger swipe escaping to macOS once the
+     container has nothing left to scroll, which is what drags Notification
+     Centre in from the right instead of moving the chain. It bites hardest on
+     a SHORT chain, where there is no scroll to absorb the gesture at all, so
+     it is not enough that a long one happens to feel fine. */
+  #gridbig { overflow-x: auto; overscroll-behavior: contain; }
+  #gridbig::-webkit-scrollbar { height: 10px; }
+  #gridbig::-webkit-scrollbar-thumb {
+    background: rgba(47,230,255,0.28); border-radius: 5px;
+  }
+  #gridbig::-webkit-scrollbar-track { background: rgba(47,230,255,0.05); }
   #gridbig svg.grid { height: auto; }
   .gridzoom {
     font: inherit; font-size: inherit; color: var(--cyan-dim);
@@ -1388,9 +1398,9 @@
   <div class="console" data-label="SIGNAL CHAIN">
     <button class="mclose" id="gridclose" title="close">&#10005;</button>
     <div id="gridbig"></div>
-    <div class="hint">A read-only copy, drawn large. Bypassing and channel
-      changes stay on the panel behind this, so nothing here can change your
-      rig by accident.</div>
+    <div class="hint">Drawn at twice size, so it scrolls sideways on a long
+      chain. Click a block to bypass it, its letter to change channel, or
+      anywhere off the chain to close.</div>
   </div>
 </div>
 
@@ -2069,6 +2079,10 @@ function renderGrid(g) {
          <feGaussianBlur stdDeviation="2.2" result="b"/>
          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
        </filter></defs>${parts.join('')}</svg>`;
+  // The enlarged copy is the view being acted in, so it has to follow the
+  // same redraw. Without this a bypass toggled there stays looking engaged
+  // until the modal is closed and reopened, which is worse than no copy.
+  if (gridOpen) openGrid();
   // filterUnits matters more than it looks. The default is objectBoundingBox,
   // and a horizontal line or a straight cable has a bounding box zero pixels
   // tall, so a percentage filter region collapses to nothing and the element
@@ -3169,9 +3183,22 @@ async function blockAction(action, btn, what) {
   }
 }
 
-$('blocks').addEventListener('click', e => {
+// The panel drawing is an OVERVIEW. Any click on it opens the readable copy,
+// including a click on a block, because at 74px cells and 6.5px labels the
+// small one is for seeing the shape of the rig rather than for aiming at it.
+// Bypass and channel switching move into the enlarged view, where the target
+// is twice the size and you can read what you are about to switch off.
+$('blocks').addEventListener('click', () => openGrid());
+
+// Bypass and channel, on whichever copy is interactive. Bound to the enlarged
+// view now; the markup and the behaviour are identical, so this is the same
+// handler pointed at a different container rather than a second one to keep
+// in step.
+$('gridbig').addEventListener('click', e => {
   const btn = e.target.closest('.cell');
-  if (!btn) return;
+  // Anywhere that is not a block closes it. In a view opened to read the
+  // chain, the space around the chain is the obvious way out.
+  if (!btn) { closeGrid(); return; }
   const eid = Number(btn.dataset.eid);
   const fam = btn.dataset.fam;
   const inst = Number(btn.dataset.inst || 1);
@@ -3837,6 +3864,7 @@ $('egs').addEventListener('click', e => {
 function openGrid() {
   const svg = $('blocks').querySelector('svg.grid');
   if (!svg) return;
+  gridOpen = true;
   const big = svg.cloneNode(true);
   // Scaled deliberately, not fitted to the box. Fitting gained about ten
   // percent, because the panel is already nearly as wide as the drawing: the
@@ -3848,35 +3876,32 @@ function openGrid() {
   $('gridbig').appendChild(big);
   $('gridmodal').hidden = false;
 
-  // Scale AFTER showing, because the width to fill is not known until the
-  // modal is laid out. As much as the screen allows, capped at 2x: past that
-  // it is just big, and a chain that runs off the edge is worse for reviewing
-  // than a slightly smaller one you can see all of. Twelve blocks on a laptop
-  // lands around 1.3x, which is the difference between squinting and reading.
+  // A flat 2x, and it scrolls if that does not fit. Fitting the width was the
+  // wrong trade once this became the view you ACT in: a block you can read is
+  // worth more than a chain you can see all of at a size you cannot aim at.
+  // Twelve blocks scroll on a laptop, which is a shorter gesture than
+  // squinting.
   const vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
   const naturalW = Number(vb[2]) || 0;
   if (naturalW) {
-    const room = $('gridbig').clientWidth || naturalW;
-    const scale = Math.max(1, Math.min(2, room / naturalW));
-    big.style.width = Math.round(naturalW * scale) + 'px';
+    big.style.width = Math.round(naturalW * 2) + 'px';
     big.style.maxWidth = 'none';
   }
 }
 
 function closeGrid() {
+  gridOpen = false;
   $('gridmodal').hidden = true;
   $('gridbig').innerHTML = '';        // not left holding a stale rig
 }
 
+// Kept in step with the rig while it is open. It is the view being acted in
+// now, so a bypass toggled here has to redraw here: a copy that shows the
+// state from before your own click is worse than no copy.
+let gridOpen = false;
+
 $('gridzoom').onclick = openGrid;
 $('gridclose').onclick = closeGrid;
-
-// Clicking the empty space around the blocks opens it too. The cell handler
-// already ignores background clicks, so this takes nothing away from bypass
-// or channel switching.
-$('blocks').addEventListener('click', e => {
-  if (!e.target.closest('.cell')) openGrid();
-});
 
 $('gridmodal').addEventListener('click', e => {
   if (e.target === $('gridmodal')) closeGrid();     // click the backdrop

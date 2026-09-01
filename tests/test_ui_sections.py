@@ -236,34 +236,53 @@ def test_the_enlarged_view_is_a_clone_not_a_second_renderer():
     assert "renderGrid" not in fn
 
 
-def test_it_cannot_change_the_rig():
-    """Inert by construction rather than by care: the cell click handler is
-    bound to #blocks, so a copy living anywhere else cannot bypass a block or
-    cycle a channel however hard it is clicked."""
+def test_any_click_on_the_panel_opens_the_readable_copy():
+    """The small drawing is an overview. At 74px cells and 6.5px labels it is
+    for seeing the shape of the rig, not for aiming at."""
+    assert "$('blocks').addEventListener('click', () => openGrid());" in SCRIPT
+
+
+def test_bypass_and_channel_move_into_the_enlarged_view():
+    """They are not lost, they move to where the target is twice the size and
+    you can read what you are about to switch off. Same handler, different
+    container, so there is no second copy to keep in step."""
+    fn = SCRIPT.split("$('gridbig').addEventListener('click', e => {")[1].split("\n});")[0]
+    assert "set_bypass" in fn and "set_channel" in fn
+    assert "data-cyc" in fn
+
+
+def test_clicking_off_the_chain_closes_it():
+    """In a view opened to read the chain, the space around the chain is the
+    obvious way out."""
+    fn = SCRIPT.split("$('gridbig').addEventListener('click', e => {")[1].split("\n});")[0]
+    assert "if (!btn) { closeGrid(); return; }" in fn
+
+
+def test_it_is_drawn_at_twice_size_and_allowed_to_scroll():
+    """Fitting the width was the wrong trade once this became the view you ACT
+    in: a block you can read is worth more than a whole chain at a size you
+    cannot aim at."""
     fn = SCRIPT.split("function openGrid()")[1].split("\n}\n")[0]
-    assert "blockAction" not in fn and "fetch(" not in fn
-    assert "read-only copy" in UI
+    assert "naturalW * 2" in fn
+    style = UI.split("<style>")[1]
+    assert re.search(r"#gridbig \{[^}]*overflow-x: auto", style)
 
 
-def test_opening_it_does_not_cost_the_existing_clicks():
-    """Bypass and channel switching are what the panel is FOR. The background
-    was already ignored by the cell handler, so this takes nothing away."""
-    fn = SCRIPT.split("$('blocks').addEventListener('click', e => {\n  if (!e.target.closest('.cell'))")[1].split("\n});")[0]
-    assert "openGrid()" in fn
-    # and the original handler still guards on .cell
-    assert "const btn = e.target.closest('.cell');" in SCRIPT
+def test_the_scroll_gesture_cannot_escape_to_the_os():
+    """A two-finger swipe past the end of the container drags macOS
+    Notification Centre in instead of moving the chain. It bites hardest on a
+    SHORT chain, where there is no scroll to absorb the gesture at all, so a
+    long one feeling fine proves nothing."""
+    style = UI.split("<style>")[1]
+    assert re.search(r"#gridbig \{[^}]*overscroll-behavior: contain", style)
 
 
-def test_it_scales_to_the_screen_rather_than_to_the_box():
-    """Fitting the box gained about ten percent, because the panel is already
-    nearly as wide as the drawing. Scaled deliberately instead, capped at 2x:
-    past that it is merely big, and a chain running off the edge is worse for
-    reviewing than a slightly smaller one you can see all of."""
-    fn = SCRIPT.split("function openGrid()")[1].split("\n}\n")[0]
-    assert "Math.min(2, room / naturalW)" in fn
-    assert "Math.max(1," in fn, "never smaller than the panel it came from"
-    assert fn.index("hidden = false") < fn.index("clientWidth"), \
-        "the width to fill is not known until the modal is laid out"
+def test_the_enlarged_copy_follows_the_rig_while_it_is_open():
+    """It is the view being acted in now, so a bypass toggled there has to
+    redraw there. A copy showing the state from before your own click is worse
+    than no copy."""
+    assert "if (gridOpen) openGrid();" in SCRIPT
+    assert "gridOpen = true;" in SCRIPT and "gridOpen = false;" in SCRIPT
 
 
 def test_there_are_three_ways_out():
