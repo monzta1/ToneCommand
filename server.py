@@ -2579,8 +2579,94 @@ def api_ai_settings(body: dict):
             "warning": warning}
 
 
+def describe_action(a) -> str:
+    """One short line naming what an action does, for a progress report.
+
+    Deliberately plain: this is read while something is happening to somebody's
+    rig, not afterwards in a log.
+    """
+    kind = getattr(a, "kind", "")
+    block = (getattr(a, "block", "") or "").upper()
+    inst = getattr(a, "instance", None) or 1
+    if kind == "set_param":
+        return f"{block} {inst} {getattr(a, 'param', '')}"
+    if kind == "set_bypass":
+        return f"{block} {inst} {'bypassed' if getattr(a, 'bypassed', False) else 'engaged'}"
+    if kind == "set_channel":
+        return f"{block} {inst} channel"
+    if kind == "set_scene":
+        return f"scene {int(getattr(a, 'value', 0) or 0)}"
+    if kind == "set_type":
+        return f"{block} {inst} -> {getattr(a, 'type_name', '')}"
+    if kind == "rename_preset":
+        return f"named {getattr(a, 'type_name', '')!r}"
+    if kind == "rename_scene":
+        return f"scene {int(getattr(a, 'value', 0) or 0)} named {getattr(a, 'type_name', '')!r}"
+    if kind == "store":
+        return f"stored to slot {int(getattr(a, 'value', 0) or 0)}"
+    return kind.replace("_", " ")
+
+
 @app.post("/api/apply")
 def api_apply(body: ApplyBody):
+    """Send the plan, in one request. Kept for callers that cannot stream."""
+    return _apply_for(body)
+
+
+@app.post("/api/apply/stream")
+def api_apply_stream(body: ApplyBody):
+    """Send the plan, saying which change is landing as it lands.
+
+    TRANSMIT gave no feedback at all: the button greyed out, nothing moved,
+    and 1.5 seconds later the whole panel vanished, taking the evidence with
+    it. For a five-change plan that is indistinguishable from a dead button,
+    which is exactly what it was reported as.
+
+    Unlike planning, this is a real loop over real actions, so the progress
+    here is not an estimate: it is which change of how many has actually been
+    written to the rig.
+    """
+    import queue
+    import threading as _th
+
+    def events():
+        out: queue.Queue = queue.Queue()
+
+        def work():
+            try:
+                out.put(("result", _apply_for(body, on_step=lambda s: out.put(("step", s)))))
+            except Exception as exc:
+                out.put(("error", str(exc)))
+            finally:
+                out.put((None, None))
+
+        _th.Thread(target=work, daemon=True).start()
+        started = time.monotonic()
+        while True:
+            try:
+                kind, payload = out.get(timeout=3)
+            except Exception:
+                yield ("event: ping\ndata: "
+                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
+                       + "\n\n")
+                continue
+            if kind is None:
+                return
+            if hasattr(payload, "body"):        # a JSONResponse refusal
+                payload = json.loads(payload.body.decode())
+                kind = "error"
+                yield f"event: error\ndata: {json.dumps(payload.get('error', 'refused'))}\n\n"
+                return
+            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+            if kind in ("result", "error"):
+                return
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"cache-control": "no-cache",
+                                      "x-accel-buffering": "no"})
+
+
+def _apply_for(body: ApplyBody, on_step=None):
     results = []
     if _gig_mode["on"]:
         blocked = [a.kind for a in body.actions if a.kind not in GIG_SAFE_KINDS]
@@ -2636,6 +2722,19 @@ def api_apply(body: ApplyBody):
                 if warns:
                     res["detail"] = (res.get("detail", "") + " | " + "; ".join(warns)).strip(" |")
                 results.append({"action": a.model_dump(), **res})
+                # Said as it happens, not collected and delivered at the end.
+                # A five-change transmit gave no sign of life until it was
+                # over, which for a long plan is indistinguishable from a
+                # button that does nothing.
+                if on_step is not None:
+                    try:
+                        on_step({"done": len([r for r in results
+                                              if r.get("action")]),
+                                 "total": len(body.actions),
+                                 "ok": bool(res.get("ok")),
+                                 "what": describe_action(a)})
+                    except Exception:
+                        pass
                 if not res.get("ok") and a.kind == "add_block":
                     # later actions in the plan target the block that failed
                     # to land; running them would set params and bind pedals

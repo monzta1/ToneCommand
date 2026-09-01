@@ -1181,6 +1181,22 @@
   100% { transform: translateX(295%); }
 }
 #chat .cbnote { grid-column: 1 / -1; font-size: 11.5px; opacity: .6; }
+/* The transmit outcome, where the button is. */
+.planres {
+  margin-top: 14px; padding: 12px 14px; border-radius: 8px; font-size: 13px;
+  line-height: 1.6; border: 1px solid var(--line);
+}
+.planres.busy { border-color: var(--cyan-dim); color: var(--cyan); }
+.planres.ok   { border-color: #2f7d52; background: rgba(90,209,138,0.07); }
+.planres.part { border-color: #8a6a2a; background: rgba(224,163,74,0.07); }
+.planres.bad  { border-color: #7d2f2f; background: rgba(209,90,90,0.07); }
+.planres button {
+  font: inherit; font-size: 11px; letter-spacing: .1em; margin-left: 10px;
+  padding: 4px 11px; border-radius: 5px; cursor: pointer;
+  background: transparent; color: inherit; border: 1px solid currentColor;
+  opacity: .75;
+}
+.planres button:hover { opacity: 1; }
 #chat .cnote {
   font-size: 12px; color: var(--cyan-dim); border-left: 2px solid var(--line);
   padding-left: 11px; line-height: 1.6;
@@ -1530,6 +1546,11 @@
       <button id="keep">SAVE FOR LATER</button>
       <button class="danger" id="discard">DISCARD</button>
     </div>
+    <!-- What happened, next to the button that made it happen, and it stays
+         there until dismissed. The panel used to hide itself a second and a
+         half after transmitting, which threw away the ticks and crosses on
+         the cards, the only place the outcome was visible. -->
+    <div id="planresult" hidden></div>
   </div>
 
   <div class="console needs-rig" data-label="EMPTY SLOT" id="emptypanel" style="display:none">
@@ -5339,6 +5360,21 @@ refreshSnaps();
   }
 }
 
+// The outcome, in the panel where the button is. `how` is busy, ok, part or
+// bad, and picks the colour; the text is trusted HTML from this file only.
+function planResult(html, how) {
+  const el = $('planresult');
+  if (!el) return;
+  el.className = 'planres ' + (how || '');
+  el.innerHTML = html + (how && how !== 'busy'
+    ? ' <button id="planclose">DISMISS</button>' : '');
+  el.hidden = false;
+  if ($('planclose')) $('planclose').onclick = () => {
+    el.hidden = true;
+    $('planbox').style.display = 'none';
+  };
+}
+
 async function apply() {
   if (!currentPlan) return;
   const spends = currentPlan.actions.filter(
@@ -5364,21 +5400,40 @@ async function apply() {
     }
   }
   $('apply').disabled = true; $('discard').disabled = true;
+  const total = currentPlan.actions.length;
   log('transmitting to FM9...');
-  // The transcript is where somebody who has been talking for five turns is
-  // looking. Transmitting reported itself only into the LOG, which is two
-  // panels further down the page.
+  // Where the button is. The transcript is two panels up and the log is two
+  // panels down; somebody who has just pressed TRANSMIT is looking at
+  // TRANSMIT, and it said nothing at all.
+  const say = (n) => {
+    $('apply').innerHTML = `<span class="spin">◍</span> SENDING ${n}/${total}`;
+  };
+  say(0);
+  planResult(`<span class="spin">◍</span> Sending to the FM9...`, 'busy');
   chatWorking = 'sending to the FM9...';
   renderChat();
   try {
-    const r = await fetch('/api/apply', {
+    const r = await fetch('/api/apply/stream', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         actions: currentPlan.actions,
         expected_preset: currentPlan.device ? currentPlan.device.preset.number : null,
       }),
     });
-    const out = await r.json();
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let out = null;
+    for await (const [ev, d] of sseFrom(r)) {
+      if (ev === 'step') {
+        say(d.done);
+        planResult(`<span class="spin">◍</span> Sending ${d.done} of ${d.total}`
+                   + `: ${esc(d.what)}`, 'busy');
+      } else if (ev === 'error') {
+        throw new Error(d);
+      } else if (ev === 'result') {
+        out = d; break;
+      }
+    }
+    if (!out) throw new Error('the transmit ended before it finished');
     if (out.error) throw new Error(out.error);
     const cards = document.querySelectorAll('.plan-card');
     // Results do not line up with cards one for one: a failed undo snapshot
@@ -5419,19 +5474,29 @@ async function apply() {
         body: JSON.stringify({name: planRecipe})}).catch(() => {});
       planRecipe = null;
     }
-    $('prompt').value = '';
     const rescan = fixPending;
     fixPending = false;
-    setTimeout(() => { $('planbox').style.display = 'none';
-                       clearAffected(); refresh();
-                       // prove it rather than assert it
-                       if (rescan) scanPreset(); }, 1500);
+    // The panel used to hide itself 1.5 seconds after finishing, which threw
+    // away the one place the outcome was visible: the per-action ticks and
+    // crosses on the cards. It stays until it is dismissed.
+    planResult(bad
+      ? `<b>Sent ${good} of ${acted.length}.</b> ${bad} did not apply, `
+        + `marked above. Your presets are untouched; UNDO covers what landed.`
+      : `<b>Sent ${good} change${good === 1 ? '' : 's'} to the FM9.</b> `
+        + `It is in the edit buffer, so play it. Nothing is written to the `
+        + `preset until you press SAVE, and UNDO puts it back.`,
+      bad ? 'part' : 'ok');
+    clearAffected();
+    refresh();
+    if (rescan) scanPreset();
   } catch (e) {
     log(`transmit failed: ${e.message}`, 'err');
     chatWorking = '';
+    planResult(`<b>Nothing was sent.</b> ${esc(e.message)}`, 'bad');
     chatNote(`Nothing was sent: ${e.message}`);
   } finally {
     chatWorking = '';
+    $('apply').innerHTML = 'TRANSMIT TO FM9';   // its own label, not a shorter one
     $('apply').disabled = false; $('discard').disabled = false;
     currentPlan = null;
     clearAffected();

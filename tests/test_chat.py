@@ -822,3 +822,69 @@ def test_the_count_resets_between_builds():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "chatCount = 0;" in fn
+
+
+# --- TRANSMIT saying something -------------------------------------------
+#
+# Reported as: "i hit transmit, i got no progress, nothing - not sure if it
+# wrote". The button greyed out, nothing moved, and 1.5 seconds later the
+# whole panel hid itself, taking the per-action ticks with it.
+
+def test_transmitting_reports_each_change_as_it_lands():
+    """Unlike planning, this is a real loop over real actions, so the
+    progress is not an estimate: it is which change of how many has actually
+    been written."""
+    src = inspect.getsource(server._apply_for)
+    assert "on_step" in src
+    assert '"done": len(' in src and '"total": len(body.actions)' in src
+
+
+def test_a_progress_callback_cannot_break_the_transmit():
+    src = inspect.getsource(server._apply_for)
+    step = src.split("if on_step is not None:")[1].split("if not res.get")[0]
+    assert "except Exception:" in step
+
+
+def test_both_apply_paths_share_one_loop():
+    assert "_apply_for(body)" in inspect.getsource(server.api_apply)
+    assert "_apply_for(body, on_step=" in inspect.getsource(server.api_apply_stream)
+
+
+def test_the_stream_route_exists_beside_the_plain_one():
+    paths = {r.path for r in server.app.routes}
+    assert "/api/apply" in paths and "/api/apply/stream" in paths
+
+
+def test_the_button_counts_where_the_finger_was():
+    """The transcript is two panels up and the log two panels down. Somebody
+    who has just pressed TRANSMIT is looking at TRANSMIT."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "SENDING ${n}/${total}" in fn
+    assert "Sending ${d.done} of ${d.total}" in fn
+
+
+def test_the_outcome_stays_until_it_is_dismissed():
+    """It used to hide the panel 1.5s after finishing, throwing away the
+    ticks and crosses on the cards, the only place the outcome was visible."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "setTimeout(() => { $('planbox').style.display = 'none'" not in fn
+    assert "planResult(" in fn
+    res = ui.split("function planResult(html, how)")[1].split("\n}\n")[0]
+    assert "DISMISS" in res
+
+
+def test_the_outcome_says_what_landed_and_what_did_not():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "did not apply" in fn
+    assert "UNDO puts it back" in fn
+    assert "Nothing was sent." in fn
+
+
+def test_the_button_gets_its_own_label_back():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert 'id="apply">TRANSMIT TO FM9<' in ui
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "'TRANSMIT TO FM9'" in fn, "restoring a shorter label renames the button"

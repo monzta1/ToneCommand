@@ -106,13 +106,29 @@ the right behaviour and it is discoverable only by reading three call sites.
 **Fix:** one paragraph at the top of the module saying what each lock covers
 and what is legal inside it.
 
-### 4. Presentation logic in `server.py`
+### 4. UNDO does not survive a restart
+
+`_snaps` is a module-level dict. Restart the server and every undo, A and B
+snapshot goes with it, while the edit buffer on the rig keeps the changes they
+were the way back from. Found the hard way: a transmit, then a restart, then
+an undo that answered "nothing captured in undo" with the changes still on the
+hardware.
+
+It is recoverable, because nothing is ever stored without an explicit SAVE, so
+reselecting the preset discards the buffer. But "reload your preset" is a
+worse answer than UNDO, and the button implies a promise the process lifetime
+does not keep.
+
+**Fix:** write the undo snapshot to disk beside the settings. It is a few
+dozen parameter values.
+
+### 5. Presentation logic in `server.py`
 
 `slot_label`, `state_text`, and the plan-shape prose exist to be read by
 either a model or a person. They are formatting, sitting in the policy layer.
 Harmless today, and the first thing to go wrong when a second client appears.
 
-### 5. `ai_settings.py` has grown a second job
+### 6. `ai_settings.py` has grown a second job
 
 1,024 lines. It manages planner settings, and it also now installs software,
 edits a third-party YAML config, derives a password and runs `brew`. Those are
