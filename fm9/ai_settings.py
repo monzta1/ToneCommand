@@ -592,8 +592,17 @@ def usable_models(ids: list[str]) -> list[str]:
     keep = [m for m in ids
             if not any(bad in m.lower() for bad in NOT_A_PLANNER)
             and not any(old in m.lower() for old in LEGACY_COMPLETION)]
-    # Undated aliases first, then the endpoint's own order within each group.
-    return sorted(keep, key=lambda m: (bool(_DATED.search(m)), ))
+    # Undated aliases first, then newest-looking name first.
+    #
+    # The endpoint's own order is not stable: the same connector returned
+    # gpt-5.5 first on one call and gpt-5.4 first on the next. Since the panel
+    # FILLS the box with the first entry, "first" was decided by luck. Reverse
+    # alphabetical is not cleverness about which model is better, a thing this
+    # cannot know; it is a rule that puts 5.6 above 5.4 and, more importantly,
+    # gives the same answer every time. The full list is on screen either way.
+    dated = [m for m in keep if _DATED.search(m)]
+    plain = [m for m in keep if not _DATED.search(m)]
+    return sorted(plain, reverse=True) + sorted(dated, reverse=True)
 
 
 def endpoint_reachable(base_url: str) -> str:

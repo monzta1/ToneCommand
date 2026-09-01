@@ -751,7 +751,9 @@ def test_a_local_servers_own_names_survive():
     """The filter must not be an allowlist: a model on someone's laptop is
     named whatever they named it."""
     names = ["llama-3.3-70b", "qwen2.5-coder-32b", "mistral-nemo"]
-    assert ai_settings.usable_models(names) == names
+    # Sorted, not filtered: the claim here is that none are dropped, and the
+    # order is settled by test_the_order_is_the_same_every_time.
+    assert sorted(ai_settings.usable_models(names)) == sorted(names)
 
 
 def test_models_can_be_listed_against_an_address_not_yet_saved(store, monkeypatch):
@@ -1140,3 +1142,47 @@ def test_the_browser_still_advances_only_on_proof():
     fn = ui.split("if ($('srun')) $('srun').onclick")[1].split("\n  };\n")[0]
     assert "await loadSetup(false);" in fn, "re-check the machine, do not assume"
     assert "if (now.done)" in fn
+
+
+# --- showing all the models, not just the one already chosen --------------
+
+def test_the_order_is_the_same_every_time():
+    """The connector returned gpt-5.5 first on one call and gpt-5.4 first on
+    the next. Since the panel FILLS the box with the first entry, which model
+    somebody ended up on was decided by luck."""
+    import random
+    real = ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.3-codex-spark",
+            "gpt-5.6-terra", "codex-auto-review", "gpt-5.4", "gpt-5.4-mini"]
+    seen = {tuple(ai_settings.usable_models(random.sample(real, len(real))))
+            for _ in range(40)}
+    assert len(seen) == 1, "the same listing must always sort the same way"
+    assert list(seen)[0][0] == "gpt-5.6-terra"
+
+
+def test_dated_snapshots_still_sort_last():
+    got = ai_settings.usable_models(["gpt-5.5", "gpt-5.6", "gpt-5.6-2026-04-11"])
+    assert got == ["gpt-5.6", "gpt-5.5", "gpt-5.6-2026-04-11"]
+
+
+def test_the_models_are_buttons_because_a_datalist_hides_them():
+    """A datalist FILTERS itself by what is already in the box, so once a
+    model is filled in the only suggestion still matching is the one already
+    chosen. Eight models loaded and the list looked empty."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<div id="aimodelpicks" hidden></div>' in ui
+    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
+    assert "picks.innerHTML = ''" in fn
+    assert "$('aimodel').value = m;" in fn, "clicking one must choose it"
+    assert "aria-pressed" in fn, "the current one has to be visibly current"
+
+
+def test_typing_a_model_by_hand_still_lights_the_right_one():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "$('aimodel').oninput" in ui
+    fn = ui.split("$('aimodel').oninput = () => {")[1].split("\n};\n")[0]
+    assert "b.textContent === v" in fn
+
+
+def test_a_backend_with_no_model_list_shows_no_model_chips():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "if (!(b && b.needsModel)) $('aimodelpicks').hidden = true;" in ui
