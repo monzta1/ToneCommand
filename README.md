@@ -4,12 +4,51 @@
        width="820">
 </p>
 
-<p align="center"><strong>Describe the tone you want. Your rig obeys.</strong></p>
+<p align="center"><strong>OLD SOUL. NEW MACHINE. HUMANS IN COMMAND.</strong></p>
 
 Natural-language tone control for the Fractal FM9: type "give me a Van Halen
 Balance era tone with the flanger on the expression pedal", review the exact
 parameter changes it proposes, confirm, and they land on the hardware over
 USB MIDI with read-back verification.
+
+## Humans in command
+
+That is not a slogan. It is the constraint every other decision here bends to.
+
+A language model proposes. It never sends. There is no autonomous mode, no
+"just do it" flag, and no path from a sentence to your hardware that does not
+pass through a human reading the exact list of parameter changes first.
+
+The tool refuses more than it does.
+
+It refuses to guess a value it cannot ground, and says so, rather than
+inventing a plausible number. It refuses to name a model it has not verified,
+so an amp you have never heard of stays an ordinal rather than becoming a
+confident lie. It refuses to claim an expression pedal sweep works, because a
+dead binding reads identically to a live one over MIDI and the only instrument
+that can tell them apart is your foot. It refuses to store to any preset slot
+you have not explicitly marked disposable, and names what is in one before it
+overwrites it.
+
+And before anything is sent, it shows you the blast radius. FM9 parameters
+live on the channel, not the scene, so nudging a mid in scene 1 quietly moves
+every other scene sharing that channel. That is how a working preset gets
+wrecked by somebody being helpful. Every scene that would move lights up amber
+and says WILL CHANGE, while there is still time to not do it.
+
+It ran that check on its author's own rig and found three scenes in one preset
+that were the same sound under three different names. One was called PITCH and
+had no pitch block in it. That preset had been gigged.
+
+Every verification in this project ends the same way:
+
+**ears: pending, always.**
+
+A machine reading a wire can prove the signal is alive, the levels are sane
+and the write landed. It cannot tell you the tone is good. That judgement was
+never ours to take, and nothing here will pretend otherwise.
+
+The old soul is the player. The new machine does the arithmetic.
 
 ![The ToneCommand interface: scenes, the live routing grid, the command bar, the amp and cab panel and the graphic EQ](docs/img/ui-full.png)
 
