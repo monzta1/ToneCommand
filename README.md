@@ -575,6 +575,25 @@ patience.** A source is read into a compact spec before anything is built: a
 twelve of its tone statements and dropping the sponsor read. The expensive
 build pass never sees the transcript.
 
+### Talking it through first
+
+A tone is an opinion, and the first sentence somebody types is rarely the one
+they mean. "Warmer" from a player chasing a Dumble and "warmer" from one
+chasing a Vox are different edits.
+
+Type into the COMMAND box and press **TALK IT OVER** instead of ENGAGE. It
+asks about what you can hear rather than about parameter names, and it knows
+what is actually in your preset, so it will name your amp and cab rather than
+talking in the abstract. Argue until you agree. When it has enough to go on it
+shows the agreed change and offers **BUILD THIS**, which drops that sentence
+into the prompt box and plans it.
+
+Nothing about safety changes. Conversation produces no actions and has no path
+to the hardware; it produces a better sentence, and that sentence goes through
+the same planner, the same `validate_action` and the same confirm gate as one
+typed straight in. Typing a change and pressing ENGAGE still works exactly as
+before, with no conversation required.
+
 ### Planner backends
 
 Natural-language planning tries, in order of preference:

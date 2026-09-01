@@ -1094,6 +1094,35 @@
 #aimodelpicks button[aria-pressed="true"] {
   opacity: 1; border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
 }
+/* The conversation. Empty and absent until somebody uses it, so the panel
+   looks exactly as it did for anyone who just wants to type and go. */
+#chat {
+  max-height: 340px; overflow-y: auto; margin: 0 0 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+#chat .cmsg { font-size: 13px; line-height: 1.6; }
+#chat .cwho {
+  display: block; font-size: 10px; letter-spacing: .12em; opacity: .45;
+  margin: 0 0 3px;
+}
+#chat .cmsg.user { opacity: .75; }
+#chat .cmsg.assistant { color: var(--fg, #d8dde5); }
+#chat .cagreed {
+  border: 1px solid var(--accent, #6ea8fe); border-radius: 8px;
+  padding: 11px 13px; font-size: 13px; line-height: 1.6;
+}
+#chat .cagreed .cwho { color: var(--accent, #6ea8fe); opacity: .9; }
+#chat .cagreed + .cbtns { margin-top: 2px; }
+#chat .cbtns { display: flex; gap: 8px; margin: 4px 0 0; }
+#chat .cbtns button {
+  font: inherit; font-size: 11px; padding: 6px 13px; cursor: pointer;
+  border-radius: 6px; background: transparent; color: var(--fg, #d8dde5);
+  border: 1px solid var(--line, #333a45);
+}
+#chat .cbtns #cbuild {
+  border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
+  font-weight: 600;
+}
 /* The guided setup. One step visible at a time, and it does not advance on a
    click: it advances when the step is actually verified. A wizard that takes
    your word for it fails at the end with no clue which step went wrong. */
@@ -1292,10 +1321,16 @@
   </div>
 
   <div class="console command" data-label="COMMAND">
+    <!-- Talk it through first, if you want to. A tone is an opinion, and the
+         first sentence somebody types is rarely the one they mean. Empty and
+         out of the way until used, so typing and pressing ENGAGE still works
+         exactly as it always has. -->
+    <div id="chat" hidden></div>
     <div class="promptrow">
       <span class="prompt-prefix">&gt;</span>
       <input id="prompt" autocomplete="off" spellcheck="false"
              placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly">
+      <button id="talk" title="Think it through together before anything is proposed">TALK IT OVER</button>
       <button id="engage">ENGAGE</button>
     </div>
     <!-- What it can do, said by showing rather than claiming. These are real
@@ -4306,6 +4341,81 @@ function spliceNote(a) {
   return lines.length ? `<div class="splice">${lines.join('')}</div>` : '';
 }
 
+// --- talking it over ------------------------------------------------------
+//
+// A tone is an opinion, and the first sentence somebody types is rarely the
+// one they mean. "Warmer" from a player chasing a Dumble and "warmer" from one
+// chasing a Vox are different edits.
+//
+// This changes nothing about how a plan reaches the rig. The conversation
+// produces a better SENTENCE; that sentence goes through /api/plan, the same
+// validator and the same confirm gate as one typed straight in. Nothing said
+// here can propose an action, because nothing here returns any.
+let chatLog = [];              // {role, content}
+let chatReady = false;         // the model thinks it has enough to go on
+let chatRequest = '';          // the agreed instruction, in its words
+
+function renderChat() {
+  const box = $('chat');
+  box.hidden = !chatLog.length;
+  if (box.hidden) { box.innerHTML = ''; return; }
+  box.innerHTML = chatLog.map(m =>
+    `<div class="cmsg ${m.role}"><span class="cwho">${
+      m.role === 'user' ? 'YOU' : 'TONECOMMAND'}</span>${esc(m.content)}</div>`
+  ).join('')
+  // The agreed sentence, when there is one, and then ONE button row. Built
+  // once rather than per branch: an id written twice in a template is how a
+  // handler ends up bound to whichever copy rendered last.
+  + (chatReady && chatRequest
+      ? `<div class="cagreed"><span class="cwho">AGREED</span>${
+          esc(chatRequest)}</div>`
+      : '')
+  + `<div class="cbtns">${
+      chatReady && chatRequest ? '<button id="cbuild">BUILD THIS</button>' : ''
+    }<button id="cclear">START OVER</button></div>`;
+  box.scrollTop = box.scrollHeight;
+  if ($('cbuild')) $('cbuild').onclick = () => {
+    // Straight into the ordinary path, with the agreed sentence in the box so
+    // it is visible and editable rather than smuggled in behind the scenes.
+    $('prompt').value = chatRequest;
+    engage();
+  };
+  $('cclear').onclick = () => {
+    chatLog = []; chatReady = false; chatRequest = '';
+    renderChat();
+  };
+}
+
+async function talk() {
+  const said = $('prompt').value.trim();
+  if (!said) return;
+  chatLog.push({role: 'user', content: said});
+  $('prompt').value = '';
+  chatReady = false;
+  renderChat();
+  const b = $('talk');
+  b.disabled = true;
+  const was = b.textContent;
+  b.innerHTML = '<span class="spin">◍</span>';
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({messages: chatLog})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    chatLog.push({role: 'assistant', content: d.reply});
+    chatReady = !!d.ready;
+    chatRequest = d.request || '';
+  } catch (e) {
+    log(`could not talk that through: ${e.message}`, 'err');
+    chatLog.pop();          // do not leave a question that was never answered
+  } finally {
+    b.disabled = false;
+    b.textContent = was;
+    renderChat();
+  }
+}
+
 async function engage() {
   const prompt = $('prompt').value.trim();
   if (!prompt) return;
@@ -4834,7 +4944,13 @@ async function apply() {
 }
 
 $('engage').onclick = engage;
-$('prompt').addEventListener('keydown', e => { if (e.key === 'Enter') engage(); });
+$('talk').onclick = talk;
+$('prompt').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  // Once a conversation is open, Enter continues it. Planning mid-argument is
+  // the thing this feature exists to stop, and ENGAGE is still right there.
+  if (chatLog.length) talk(); else engage();
+});
 $('apply').onclick = apply;
 $('discard').onclick = () => {
   $('planbox').style.display = 'none'; currentPlan = null;

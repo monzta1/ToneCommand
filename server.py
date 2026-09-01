@@ -2288,6 +2288,43 @@ def api_ai_setup():
     return ai_settings.setup_guide_state()
 
 
+class ChatBody(BaseModel):
+    messages: list[dict]
+
+
+@app.post("/api/chat")
+def api_chat(body: ChatBody):
+    """Talk a tone through before planning it.
+
+    A tone is an opinion, and the first sentence somebody types is rarely the
+    one they mean. This lets them argue it out first.
+
+    It is grounded in the same device state the planner gets, so the model can
+    name their actual amp and cab rather than talking in the abstract. It
+    produces NO actions and touches no hardware: there is no executor path
+    from here. What it produces is a better sentence to plan from, and the
+    plan still goes through validate_action and the confirm gate exactly as
+    a typed one does.
+    """
+    if not body.messages:
+        return JSONResponse({"error": "nothing to talk about"}, status_code=400)
+    if _profile["loaded"]:
+        context = rigprofile.as_state_text(_profile["loaded"])
+    else:
+        with _lock:
+            try:
+                snap = snapshot(get_fm9())
+            except FM9NotFound:
+                drop_fm9()
+                snap = _last_snapshot["state"]
+        context = state_text(snap) if snap else rigprofile.as_blank_text()
+    try:
+        with _settings_lock:
+            return planner.converse(body.messages, context, PARAM_REFERENCE)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+
 @app.post("/api/ai-settings/setup/run")
 def api_ai_setup_run(body: dict):
     """Do one setup step, on an explicit click.

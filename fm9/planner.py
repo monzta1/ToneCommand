@@ -478,20 +478,63 @@ def _cli_error_message(proc: subprocess.CompletedProcess) -> str:
     return " | ".join(parts)[:300]
 
 
-def _full_prompt(prompt: str, device_state: str, param_reference: str) -> str:
+#: Talking it through, before committing to anything.
+#:
+#: A tone is an opinion, and the first sentence somebody types is rarely the
+#: one they mean. "Warmer" from a player chasing a Dumble and "warmer" from
+#: one chasing a Vox are different edits, and a planner that guesses on the
+#: first message spends its answer on a question nobody asked.
+#:
+#: This is the SAME transports, the same backends and the same fallthrough as
+#: planning. It only differs in what it asks for: prose, and a judgement about
+#: whether there is enough to go on yet. It proposes NOTHING. Nothing here can
+#: reach hardware, because nothing here produces actions.
+CHAT_SYSTEM = """You are helping a guitarist decide what they want their FM9 to sound like, BEFORE any change is made.
+
+You receive the current device state and a reference of controllable parameters. You are having a conversation, not writing a plan. No changes happen as a result of anything you say here.
+
+How to be useful:
+- Talk like a good tech at a rehearsal: short, concrete, plain English. Two or three sentences is usually right. Never a wall of text.
+- Ask about what they can HEAR, not about parameter names. "Is it too woolly on low notes, or too spiky on the top?" beats "shall I lower DISTORT_BASS?".
+- Use what is actually in their preset. Name their real amp and cab. If they ask for something the preset cannot do without adding a block, say so now rather than later.
+- One question at a time. Offer a couple of named options when it helps ("more of a Vox chime, or a Dumble warmth?").
+- When they describe something you can already act on, say what you would change in plain terms and ask if that is the idea. Do not list parameter values.
+- If they are clearly ready, say so plainly and stop asking questions.
+
+Set `ready` true only when you could write a concrete plan right now without guessing at anything that matters. Put in `request` a single clear sentence describing the agreed tone change, written as an instruction, capturing everything decided in the conversation."""
+
+CHAT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reply": {"type": "string"},
+        "ready": {"type": "boolean"},
+        "request": {"type": "string"},
+    },
+    "required": ["reply", "ready", "request"],
+    "additionalProperties": False,
+}
+
+
+def chat_shape_line() -> str:
+    return ('{"reply": string, "ready": boolean, "request": string}')
+
+
+def _full_prompt(prompt: str, device_state: str, param_reference: str,
+                 system: str = "", shape: str = "") -> str:
     """The one prompt every text-completion backend sends.
 
-    Kept verbatim from the CLI path so the three backends differ only in
-    transport, never in what the model was asked.
+    Kept verbatim from the CLI path so the backends differ only in transport,
+    never in what the model was asked. `system` and `shape` default to the
+    planning pair; conversation passes its own and reuses everything else.
     """
     return (
-        f"{SYSTEM}\n\n"
+        f"{system or SYSTEM}\n\n"
         f"Controllable parameter reference:\n{param_reference}\n\n"
         f"Current device state:\n{device_state}\n\n"
         f"Request: {prompt}\n\n"
         "Respond with ONLY a single JSON object, no markdown fences and no "
         "other text, with this shape:\n"
-        + plan_shape_line()
+        + (shape or plan_shape_line())
     )
 
 
@@ -511,8 +554,9 @@ def cli_envelope_model(envelope: dict, fallback: str = "") -> str:
 
 
 def _plan_via_cli(prompt: str, device_state: str,
-                  param_reference: str) -> tuple[dict, str]:
-    full_prompt = _full_prompt(prompt, device_state, param_reference)
+                  param_reference: str, system: str = "",
+                  shape: str = "", schema: dict | None = None) -> tuple[dict, str]:
+    full_prompt = _full_prompt(prompt, device_state, param_reference, system, shape)
     cli = find_claude_cli()
     if not cli:
         raise BackendFailure("cli", "unavailable", "claude binary not found")
@@ -577,7 +621,8 @@ def parse_grok_envelope(stdout: str) -> dict:
 
 
 def _plan_via_grok_cli(prompt: str, device_state: str,
-                       param_reference: str) -> tuple[dict, str]:
+                       param_reference: str, system: str = "",
+                  shape: str = "", schema: dict | None = None) -> tuple[dict, str]:
     """Grok CLI in headless mode, on the user's existing Grok subscription.
 
     Reached only by PLANNER_BACKEND=grok or through a router - never
@@ -597,8 +642,8 @@ def _plan_via_grok_cli(prompt: str, device_state: str,
         raise BackendFailure("grok", "unavailable", "grok binary not found")
     model = _env("GROK_CLI_MODEL")
     args = [grok,
-            "-p", _full_prompt(prompt, device_state, param_reference),
-            "--json-schema", json.dumps(PLAN_SCHEMA),   # implies output json
+            "-p", _full_prompt(prompt, device_state, param_reference, system, shape),
+            "--json-schema", json.dumps(schema or PLAN_SCHEMA),  # implies json
             "--verbatim", "--no-subagents", "--no-plan",
             "--disable-web-search", "--max-turns", "8"]
     if model:
@@ -696,7 +741,8 @@ def _read_until(resp, deadline: float, chunk: int = 65536) -> str:
 
 
 def _plan_via_openai(prompt: str, device_state: str,
-                     param_reference: str) -> tuple[dict, str]:
+                     param_reference: str, system: str = "",
+                  shape: str = "", schema: dict | None = None) -> tuple[dict, str]:
     """Any OpenAI-compatible chat-completions endpoint.
 
     This is the path to CLIProxyAPI - and through it to Claude Code, Codex,
@@ -716,7 +762,7 @@ def _plan_via_openai(prompt: str, device_state: str,
         "messages": [
             {"role": "system", "content": f"{SYSTEM}\n\n{JSON_ONLY}"},
             {"role": "user",
-             "content": _full_prompt(prompt, device_state, param_reference)},
+             "content": _full_prompt(prompt, device_state, param_reference, system, shape)},
         ],
         "temperature": 0.2,
         "max_tokens": int(_env("PLANNER_MAX_TOKENS", "8192")),
@@ -765,7 +811,8 @@ def _plan_via_openai(prompt: str, device_state: str,
 
 
 def _plan_via_api(prompt: str, device_state: str,
-                  param_reference: str) -> tuple[dict, str]:
+                  param_reference: str, system: str = "",
+                  shape: str = "", schema: dict | None = None) -> tuple[dict, str]:
     try:
         import anthropic
     except ImportError as exc:
@@ -783,14 +830,14 @@ def _plan_via_api(prompt: str, device_state: str,
             model=api_model(),
             max_tokens=2048,
             system=[
-                {"type": "text", "text": SYSTEM,
+                {"type": "text", "text": system or SYSTEM,
                  "cache_control": {"type": "ephemeral"}},
                 {"type": "text",
                  "text": f"Controllable parameter reference:\n{param_reference}",
                  "cache_control": {"type": "ephemeral"}},
             ],
             output_config={"format": {"type": "json_schema",
-                                      "schema": PLAN_SCHEMA}},
+                                      "schema": schema or PLAN_SCHEMA}},
             messages=[{
                 "role": "user",
                 "content": f"Current device state:\n{device_state}\n\nRequest: {prompt}",
@@ -887,12 +934,56 @@ def _plan_quality(plan_obj: dict) -> str:
     return "empty"
 
 
-def plan(prompt: str, device_state: str, param_reference: str) -> dict:
-    """Ask each candidate backend in turn until one produces a plan.
+def converse(messages: list[dict], device_state: str,
+             param_reference: str) -> dict:
+    """Talk a tone through, before anything is planned or sent.
 
-    Returns the plan with `backend`, `model`, `plan_quality`, and the full
-    `attempts` record attached. Raises only when every candidate failed at the
-    transport level, with one aggregate message naming each attempt.
+    Same backends, same order, same fallthrough, same failure taxonomy. The
+    only difference is what is asked for: prose and a judgement about whether
+    there is enough to go on yet.
+
+    It CANNOT produce actions. There is no plan shape in the reply and no path
+    from here into the executor: agreeing on an idea in conversation still
+    leaves the whole plan, validate and confirm pipeline in front of anything
+    reaching the rig. What this returns is a better sentence to plan from.
+    """
+    turns = []
+    for m in messages[-24:]:                 # a rehearsal chat, not a novel
+        who = "Guitarist" if m.get("role") == "user" else "You"
+        text = str(m.get("content") or "").strip()
+        if text:
+            turns.append(f"{who}: {text[:4000]}")
+    if not turns:
+        raise RuntimeError("nothing to talk about")
+    prompt = ("Conversation so far:\n" + "\n\n".join(turns)
+              + "\n\nReply to the guitarist's latest message.")
+    raw, name, model, attempts = _ask_backends(
+        prompt, device_state, param_reference,
+        system=CHAT_SYSTEM, shape=chat_shape_line(), schema=CHAT_SCHEMA)
+    reply = str(raw.get("reply") or "").strip()
+    if not reply:
+        raise RuntimeError("the model replied with nothing to say")
+    return {"reply": reply,
+            "ready": bool(raw.get("ready")),
+            "request": str(raw.get("request") or "").strip(),
+            "backend": name, "model": model,
+            "attempts": [a.as_dict() for a in attempts]}
+
+
+def _ask_backends(prompt: str, device_state: str, param_reference: str,
+                  system: str = "", shape: str = "",
+                  schema: dict | None = None, validate=None,
+                  ) -> tuple[dict, str, str, list[Attempt]]:
+    """Each candidate in turn until one answers. Shared by plan and converse.
+
+    Extracted so conversation reuses the fallthrough, the attempt record and
+    the failure taxonomy rather than growing a second, subtly different copy
+    of them.
+
+    `validate` runs INSIDE the try, and that placement is load-bearing: a
+    reply can parse as JSON and still be shaped wrongly enough to raise
+    ({"actions": 42} is valid JSON and a truthy non-iterable). That is this
+    backend failing to deliver, not a reason to abandon the rest of them.
     """
     order = candidates()
     if not order:
@@ -908,31 +999,44 @@ def plan(prompt: str, device_state: str, param_reference: str) -> dict:
             continue
         model = None
         try:
-            raw, model = runner(prompt, device_state, param_reference)
-            # Validation stays INSIDE the try: a reply that parses as JSON can
-            # still be shaped wrongly enough to raise here ({"actions": 42} is
-            # valid JSON and a truthy non-iterable), and that is this backend
-            # failing to deliver a plan, not a reason to abandon the rest.
-            plan_obj = _validate(raw)
+            raw, model = runner(prompt, device_state, param_reference,
+                                system, shape, schema)
+            if validate is not None:
+                raw = validate(raw)
         except BackendFailure as exc:
             attempts.append(Attempt(exc.backend, exc.target, exc.model,
                                     exc.failure_class, exc.detail))
             continue
         except Exception as exc:
-            # An unexpected fault is still this backend failing, not a plan.
             attempts.append(Attempt(name, None, model, "backend_error",
                                     str(exc)[:300]))
             continue
+        if not isinstance(raw, dict):
+            attempts.append(Attempt(name, None, model, "unreadable_output",
+                                    f"reply was {type(raw).__name__}, not an object"))
+            continue
         resolve = _TARGETS.get(name)
         attempts.append(Attempt(name, resolve() if resolve else None, model))
-        plan_obj["backend"] = name
-        plan_obj["model"] = model
-        plan_obj["plan_quality"] = _plan_quality(plan_obj)
-        plan_obj["attempts"] = [a.as_dict() for a in attempts]
-        log.info("planner: %s answered via %s (model %s, %d action(s))",
-                 plan_obj["plan_quality"], name, model,
-                 len(plan_obj.get("actions") or []))
-        return plan_obj
+        return raw, name, model, attempts
     detail = "; ".join(f"{a.backend} [{a.failure_class}] {a.detail}"
                        for a in attempts)
     raise RuntimeError(f"every planner backend failed: {detail}")
+
+
+def plan(prompt: str, device_state: str, param_reference: str) -> dict:
+    """Ask each candidate backend in turn until one produces a plan.
+
+    Returns the plan with `backend`, `model`, `plan_quality`, and the full
+    `attempts` record attached. Raises only when every candidate failed at the
+    transport level, with one aggregate message naming each attempt.
+    """
+    plan_obj, name, model, attempts = _ask_backends(
+        prompt, device_state, param_reference, validate=_validate)
+    plan_obj["backend"] = name
+    plan_obj["model"] = model
+    plan_obj["plan_quality"] = _plan_quality(plan_obj)
+    plan_obj["attempts"] = [a.as_dict() for a in attempts]
+    log.info("planner: %s answered via %s (model %s, %d action(s))",
+             plan_obj["plan_quality"], name, model,
+             len(plan_obj.get("actions") or []))
+    return plan_obj
