@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TONECOMMAND</title>
 <style>
+  /* The `hidden` attribute only carries `display: none` from the browser's own
+     stylesheet, so ANY author rule setting display beats it. Three elements
+     here are laid out with `display: flex` and were therefore visible while
+     hidden: the example chips stayed under an open conversation, and the
+     service and model chips stayed on backends that have neither. Hiding
+     something is not a suggestion, so it is stated once, here, rather than
+     rediscovered one element at a time. */
+  [hidden] { display: none !important; }
+
   :root {
     --bg: #05080d;
     --panel: rgba(13, 22, 34, 0.85);
@@ -1330,8 +1339,7 @@
       <span class="prompt-prefix">&gt;</span>
       <input id="prompt" autocomplete="off" spellcheck="false"
              placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly">
-      <button id="talk" title="Think it through together before anything is proposed">TALK IT OVER</button>
-      <button id="engage">ENGAGE</button>
+      <button id="engage">SEND</button>
     </div>
     <!-- What it can do, said by showing rather than claiming. These are real
          requests the planner resolves; clicking one loads it so the first
@@ -4015,7 +4023,7 @@ $('egs').innerHTML = EXAMPLES
 $('egs').addEventListener('click', e => {
   const b = e.target.closest('button[data-eg]');
   if (!b) return;
-  // Loaded, not sent. Pressing ENGAGE stays the player's move, and seeing the
+  // Loaded, not sent. Pressing SEND stays the player's move, and seeing the
   // sentence first is half of what the examples are teaching.
   $('prompt').value = EXAMPLES[Number(b.dataset.eg)][1];
   $('prompt').focus();
@@ -4374,12 +4382,10 @@ function renderChat() {
       chatReady && chatRequest ? '<button id="cbuild">BUILD THIS</button>' : ''
     }<button id="cclear">START OVER</button></div>`;
   box.scrollTop = box.scrollHeight;
-  if ($('cbuild')) $('cbuild').onclick = () => {
-    // Straight into the ordinary path, with the agreed sentence in the box so
-    // it is visible and editable rather than smuggled in behind the scenes.
-    $('prompt').value = chatRequest;
-    engage();
-  };
+  // The examples teach the vocabulary to somebody staring at an empty box.
+  // Once there is a conversation on screen they are just clutter under it.
+  $('egs').hidden = !!chatLog.length;
+  if ($('cbuild')) $('cbuild').onclick = () => engage(chatRequest);
   $('cclear').onclick = () => {
     chatLog = []; chatReady = false; chatRequest = '';
     renderChat();
@@ -4393,10 +4399,12 @@ async function talk() {
   $('prompt').value = '';
   chatReady = false;
   renderChat();
-  const b = $('talk');
+  const b = $('engage');
   b.disabled = true;
   const was = b.textContent;
-  b.innerHTML = '<span class="spin">◍</span>';
+  // A spinner INSTEAD of the label leaves an unexplained circle where a
+  // button used to be. Keep the word, show it is working.
+  b.innerHTML = '<span class="spin">◍</span> SENDING';
   try {
     const r = await fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -4416,11 +4424,16 @@ async function talk() {
   }
 }
 
-async function engage() {
-  const prompt = $('prompt').value.trim();
+// Build the agreed tone. Takes the sentence rather than reading the input:
+// pasting a long agreed sentence into a one-line box showed the reader the
+// middle of their own request, scrolled sideways, and nothing else.
+async function engage(prompt) {
+  prompt = String(prompt || '').trim();
   if (!prompt) return;
-  $('engage').disabled = true;
-  $('engage').innerHTML = '<span class="spin">◍</span>';
+  const b = $('cbuild') || $('engage');
+  b.disabled = true;
+  const was = b.textContent;
+  b.innerHTML = '<span class="spin">◍</span> BUILDING';
   log(`interpreting: "${prompt}"`);
   try {
     const r = await fetch('/api/plan', {
@@ -4430,7 +4443,12 @@ async function engage() {
     const plan = await r.json();
     if (plan.error) throw new Error(plan.error);
     if (plan.clarification) {
-      log(`needs clarification: ${plan.clarification}`, 'err');
+      // The planner asking a question is not an error, and printing it in red
+      // under a hidden panel left it nowhere to be answered. It belongs in the
+      // conversation, where there is a box to answer it in.
+      chatLog.push({role: 'assistant', content: plan.clarification});
+      chatReady = false;
+      renderChat();
       $('planbox').style.display = 'none';
       clearAffected();
       return;
@@ -4439,8 +4457,8 @@ async function engage() {
   } catch (e) {
     log(`plan failed: ${e.message}`, 'err');
   } finally {
-    $('engage').disabled = false;
-    $('engage').textContent = 'ENGAGE';
+    b.disabled = false;
+    b.textContent = was;
   }
 }
 
@@ -4943,14 +4961,12 @@ async function apply() {
   }
 }
 
-$('engage').onclick = engage;
-$('talk').onclick = talk;
-$('prompt').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  // Once a conversation is open, Enter continues it. Planning mid-argument is
-  // the thing this feature exists to stop, and ENGAGE is still right there.
-  if (chatLog.length) talk(); else engage();
-});
+// One box, one action: say what you want. Building is offered once there is
+// something agreed to build, and not before. Two buttons in this row meant
+// choosing, before typing a word, whether your own request was clear enough,
+// which is not a thing anybody knows about their own request.
+$('engage').onclick = talk;
+$('prompt').addEventListener('keydown', e => { if (e.key === 'Enter') talk(); });
 $('apply').onclick = apply;
 $('discard').onclick = () => {
   $('planbox').style.display = 'none'; currentPlan = null;

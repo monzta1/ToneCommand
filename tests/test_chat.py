@@ -156,28 +156,54 @@ def test_a_backend_that_returns_a_non_object_falls_through(monkeypatch):
 
 # --- the browser ----------------------------------------------------------
 
-def test_typing_and_engaging_still_works_untouched():
-    """Most people just want to type a change and go. The conversation is
-    additive; it must not become a toll gate in front of that."""
+def test_there_is_one_action_in_the_prompt_row():
+    """Two buttons meant choosing, before typing a word, whether your own
+    request was clear enough to skip the conversation. Nobody knows that
+    about their own request."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert '<div id="chat" hidden></div>' in ui
-    fn = ui.split("async function engage()")[1].split("\n}\n")[0]
-    assert "/api/chat" not in fn, "ENGAGE must plan directly, as it always has"
+    row = ui.split('<div class="promptrow">')[1].split("</div>")[0]
+    assert row.count("<button") == 1
+    assert 'id="engage">SEND<' in row
+    assert "TALK IT OVER" not in ui
 
 
-def test_enter_continues_an_argument_rather_than_planning_mid_argument():
+def test_send_and_enter_both_talk():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
-    assert "if (chatLog.length) talk(); else engage();" in fn
+    assert "$('engage').onclick = talk;" in ui
+    assert "if (e.key === 'Enter') talk();" in ui
 
 
-def test_the_agreed_sentence_goes_into_the_box_where_it_can_be_seen():
-    """Smuggling it in behind the scenes would mean the thing that gets
-    planned is not the thing on screen."""
+def test_building_takes_the_sentence_rather_than_the_input_box():
+    """Pasting a long agreed sentence into a one-line box showed the reader
+    the middle of their own request, scrolled sideways, and nothing else."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
-    assert "$('prompt').value = chatRequest;" in fn
-    assert "engage();" in fn
+    assert "$('cbuild').onclick = () => engage(chatRequest);" in ui
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "$('prompt').value" not in fn, "building must not touch the input"
+    assert "/api/plan" in fn, "and it still goes through the ordinary planner"
+
+
+def test_a_planner_question_lands_in_the_conversation_not_in_red():
+    """The planner has always been able to ask (PLAN_SCHEMA.clarification).
+    The UI printed the question as an error and hid the panel, leaving it
+    nowhere to be answered. The conversation is where a question belongs."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "chatLog.push({role: 'assistant', content: plan.clarification})" in fn
+    assert "needs clarification" not in fn, "no longer logged as an error"
+
+
+def test_the_examples_step_aside_once_a_conversation_starts():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "$('egs').hidden = !!chatLog.length;" in ui
+
+
+def test_a_working_button_keeps_its_word():
+    """A spinner INSTEAD of the label leaves an unexplained circle where a
+    button used to be, and the screenshot had two of them side by side."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    for label in ("SENDING", "BUILDING"):
+        assert f"◍</span> {label}" in ui
 
 
 def test_a_failed_turn_does_not_leave_a_dangling_question():

@@ -581,18 +581,20 @@ A tone is an opinion, and the first sentence somebody types is rarely the one
 they mean. "Warmer" from a player chasing a Dumble and "warmer" from one
 chasing a Vox are different edits.
 
-Type into the COMMAND box and press **TALK IT OVER** instead of ENGAGE. It
-asks about what you can hear rather than about parameter names, and it knows
-what is actually in your preset, so it will name your amp and cab rather than
-talking in the abstract. Argue until you agree. When it has enough to go on it
-shows the agreed change and offers **BUILD THIS**, which drops that sentence
-into the prompt box and plans it.
+Say what you want in the COMMAND box and press **SEND**. It replies, asking
+about what you can hear rather than about parameter names, and it knows what is
+in your preset, so it names your actual amp and cab rather than talking in the
+abstract. Keep going until you agree. When it has enough to go on it shows the
+agreed change and offers **BUILD THIS**.
+
+One box, one action. Building is offered once there is something agreed to
+build, and not before.
 
 Nothing about safety changes. Conversation produces no actions and has no path
 to the hardware; it produces a better sentence, and that sentence goes through
-the same planner, the same `validate_action` and the same confirm gate as one
-typed straight in. Typing a change and pressing ENGAGE still works exactly as
-before, with no conversation required.
+the same planner, the same `validate_action` and the same confirm gate as any
+other. If the planner needs to ask something before it can act, its question
+now lands in the conversation, where there is a box to answer it.
 
 ### Planner backends
 

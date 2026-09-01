@@ -37,7 +37,10 @@ def test_the_helper_removes_the_class_as_well_as_the_state():
 
 def test_every_way_a_plan_can_end_puts_the_warning_out():
     for path in ("plan discarded",          # discard button
-                 "needs clarification",      # planner asked a question instead
+                 # The planner asking a question instead of acting. It used to
+                 # be logged as "needs clarification"; it is now pushed into
+                 # the conversation, where it can actually be answered.
+                 "content: plan.clarification",
                  ):
         seg = UI.split(path)[1][:400]
         assert "clearAffected()" in UI.split(path)[0][-400:] or "clearAffected()" in seg, path
@@ -305,3 +308,15 @@ def test_every_dropdown_arrow_is_the_same_drawn_triangle():
         assert "border-top: 7px solid" in rule
     # and no glyph left behind to show through the triangle
     assert "&#9662;" not in UI
+
+
+def test_hidden_actually_hides():
+    """`hidden` carries display:none from the BROWSER's stylesheet, so any
+    author rule setting display beats it. Three elements here are laid out
+    with display:flex and were visible while hidden: the example chips stayed
+    under an open conversation, and the service chips stayed on backends that
+    have no endpoint at all. Stated once rather than rediscovered per
+    element."""
+    assert "[hidden] { display: none !important; }" in UI
+    # and it must come before the rules it has to beat
+    assert UI.index("[hidden] { display: none !important; }") < UI.index(".egs {")
