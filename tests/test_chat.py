@@ -170,7 +170,8 @@ def test_there_is_one_action_in_the_prompt_row():
 def test_send_and_enter_both_talk():
     ui = (ROOT / "ui" / "index.html").read_text()
     assert "$('engage').onclick = talk;" in ui
-    assert "if (e.key === 'Enter') talk();" in ui
+    fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
+    assert "talk();" in fn
 
 
 def test_building_takes_the_sentence_rather_than_the_input_box():
@@ -210,3 +211,107 @@ def test_a_failed_turn_does_not_leave_a_dangling_question():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function talk()")[1].split("\n}\n")[0]
     assert "chatLog.pop();" in fn
+
+
+# --- a conversation is work, and work should not evaporate ----------------
+
+def test_the_conversation_outlives_a_reload():
+    """Losing four turns to a refresh is the kind of small betrayal that
+    stops people using a thing they otherwise liked."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "const CHAT_KEY = 'tonecommand.chat.v1';" in ui
+    assert "function saveChat()" in ui and "function loadChat()" in ui
+    # restored on load, not merely written
+    tail = ui.split("$('prompt').addEventListener('keydown'")[1]
+    assert "loadChat();" in tail and "renderChat();" in tail
+
+
+def test_storage_is_never_trusted():
+    """An older version of this page, or a half-written entry, must not take
+    the panel down with it."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function loadChat()")[1].split("\n}\n")[0]
+    assert "Array.isArray(d.log)" in fn
+    assert "m.role === 'user' || m.role === 'assistant'" in fn
+    assert "catch (e)" in fn
+
+
+def test_every_storage_call_can_fail_without_a_message():
+    """A private window throws on localStorage. That is not worth an error."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    for fn_name in ("function saveChat()", "function loadChat()"):
+        fn = ui.split(fn_name)[1].split("\n}\n")[0]
+        assert "try {" in fn and "catch" in fn, fn_name
+
+
+def test_clearing_leaves_nothing_behind():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    save = ui.split("function saveChat()")[1].split("\n}\n")[0]
+    assert "if (!chatLog.length) { localStorage.removeItem(CHAT_KEY); return; }" in save
+
+
+def test_clear_asks_before_deleting_real_work():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("$('cclear').onclick")[1].split("\n  };")[0]
+    assert "window.confirm" in fn
+    assert "chatLog.length > 1" in fn, "do not nag over a single line"
+
+
+# --- the box people actually type into ------------------------------------
+
+def test_the_prompt_is_a_textarea_that_grows():
+    """People describe tones in sentences. A one-line box shows them the
+    middle of their own thought."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<textarea id="prompt"' in ui
+    assert "function growPrompt()" in ui
+
+
+def test_an_emptied_box_returns_to_one_line():
+    """Collapsed to zero, an EMPTY textarea reported 62px against a 31.2px
+    line, so emptying a grown box left it permanently double height. Every
+    other size measures correctly."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function growPrompt()")[1].split("\n}\n")[0]
+    assert "if (!t.value) { t.style.height = ''; return; }" in fn
+
+
+def test_enter_sends_and_shift_enter_writes_a_line():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
+    assert "e.shiftKey" in fn and "e.preventDefault();" in fn
+    assert "Enter sends, Shift+Enter starts a new line" in ui, \
+        "a box that grows implies Enter breaks a line; say which it is"
+
+
+# --- and the small things that make it feel finished ----------------------
+
+def test_it_says_it_is_thinking_where_you_are_looking():
+    """A spinner on a button at the far side of the panel is not an answer to
+    "did that send?" when your eyes are on the last thing said."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "chatBusy ? '<div class=\"cthinking\">thinking...</div>' : ''" in ui
+
+
+def test_only_one_turn_at_a_time():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function talk()")[1].split("\n}\n")[0]
+    assert "if (chatBusy) return;" in fn
+
+
+def test_a_failed_turn_gives_the_words_back():
+    """Dropping the turn silently made somebody retype a sentence they had
+    already written. That is the wrong party paying for a failed request."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function talk()")[1].split("\n}\n")[0]
+    assert "$('prompt').value = said;" in fn
+
+
+def test_reading_back_is_not_interrupted_by_a_new_message():
+    """Yanking somebody to the bottom while they are reading something
+    further up is worse than making them scroll."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "wasAtBottom" in fn
+    assert fn.index("const wasAtBottom") < fn.index("box.innerHTML ="), \
+        "measure before the rewrite, or scrollTop means nothing"

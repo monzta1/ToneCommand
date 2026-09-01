@@ -317,7 +317,11 @@
   #prompt {
     flex: 1; background: transparent; border: none; outline: none;
     color: var(--text); font: inherit; font-size: var(--fs-lead); caret-color: var(--cyan);
+    resize: none; overflow-y: auto; line-height: 1.5; padding: 0;
+    max-height: 8.5em;          /* grows with the thought, then scrolls */
   }
+  .promptrow { align-items: flex-end; }
+  .prompt-prefix { align-self: flex-end; line-height: 1.5; }
   #prompt::placeholder { color: var(--muted); opacity: 0.6; }
   button {
     font: inherit; letter-spacing: 0.15em; font-size: var(--fs-body); cursor: pointer;
@@ -1106,9 +1110,15 @@
 /* The conversation. Empty and absent until somebody uses it, so the panel
    looks exactly as it did for anyone who just wants to type and go. */
 #chat {
-  max-height: 340px; overflow-y: auto; margin: 0 0 12px;
-  display: flex; flex-direction: column; gap: 10px;
+  /* Tall enough to hold a conversation you can actually read back, and it
+     grows with the window rather than being pinned to one laptop's height.
+     min-height stops a two-line exchange from looking like an error. */
+  height: 52vh; min-height: 260px; max-height: 640px;
+  overflow-y: auto; margin: 0 0 14px; padding-right: 6px;
+  display: flex; flex-direction: column; gap: 14px;
+  scroll-behavior: smooth;
 }
+#chat .cthinking { font-size: 13px; opacity: .5; }
 #chat .cmsg { font-size: 13px; line-height: 1.6; }
 #chat .cwho {
   display: block; font-size: 10px; letter-spacing: .12em; opacity: .45;
@@ -1337,8 +1347,13 @@
     <div id="chat" hidden></div>
     <div class="promptrow">
       <span class="prompt-prefix">&gt;</span>
-      <input id="prompt" autocomplete="off" spellcheck="false"
-             placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly">
+      <!-- A textarea, not an input. People describe tones in sentences, and a
+           one-line box shows them the middle of their own thought. It grows
+           with what is typed and stops at a few lines. Enter sends; the hint
+           below says so, because a box that grows implies Enter makes a
+           newline and that has to be answered where it is asked. -->
+      <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
+                placeholder="describe the tone change... e.g. tighten the gate for Drop C and bump presence slightly"></textarea>
       <button id="engage">SEND</button>
     </div>
     <!-- What it can do, said by showing rather than claiming. These are real
@@ -1347,7 +1362,7 @@
          the vocabulary. -->
     <div class="egs" id="egs"></div>
 
-    <div class="hint">Changes are proposed first and only sent to the FM9 after you confirm. Edit buffer only, nothing is saved to your presets.</div>
+    <div class="hint">Enter sends, Shift+Enter starts a new line. Changes are proposed first and only sent to the FM9 after you confirm. Edit buffer only, nothing is saved to your presets.</div>
 
     <!-- One field, one button. Paste a link and the work of watching the video
          and typing the settings out is the part being removed. -->
@@ -4362,15 +4377,55 @@ function spliceNote(a) {
 let chatLog = [];              // {role, content}
 let chatReady = false;         // the model thinks it has enough to go on
 let chatRequest = '';          // the agreed instruction, in its words
+let chatBusy = false;          // a turn is in flight
+
+// A conversation is work. Losing four turns of it to a reload, a crash, or a
+// closed laptop is the kind of small betrayal that stops people using a thing
+// they otherwise liked. Kept on this machine only, in this browser; it never
+// goes anywhere and CLEAR removes it.
+const CHAT_KEY = 'tonecommand.chat.v1';
+
+function saveChat() {
+  try {
+    // An empty conversation leaves nothing behind, so "cleared" means the key
+    // is gone rather than present and holding an empty list.
+    if (!chatLog.length) { localStorage.removeItem(CHAT_KEY); return; }
+    localStorage.setItem(CHAT_KEY, JSON.stringify(
+      {log: chatLog, ready: chatReady, request: chatRequest}));
+  } catch (e) { /* private window, or storage full: not worth a message */ }
+}
+
+function loadChat() {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    // Trust nothing that comes back out of storage: an older version of this
+    // page, or a half-written entry, must not take the panel down with it.
+    if (!d || !Array.isArray(d.log)) return;
+    chatLog = d.log.filter(m => m && typeof m.content === 'string'
+                             && (m.role === 'user' || m.role === 'assistant'));
+    chatReady = !!d.ready;
+    chatRequest = typeof d.request === 'string' ? d.request : '';
+  } catch (e) {
+    chatLog = []; chatReady = false; chatRequest = '';
+  }
+}
 
 function renderChat() {
   const box = $('chat');
+  // Measured BEFORE the rewrite, because after it scrollTop is meaningless.
+  const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.hidden = !chatLog.length;
-  if (box.hidden) { box.innerHTML = ''; return; }
+  if (box.hidden) { box.innerHTML = ''; saveChat(); return; }
   box.innerHTML = chatLog.map(m =>
     `<div class="cmsg ${m.role}"><span class="cwho">${
       m.role === 'user' ? 'YOU' : 'TONECOMMAND'}</span>${esc(m.content)}</div>`
   ).join('')
+  // Where the reader is already looking. A spinner on a button at the far
+  // side of the panel is not an answer to "did that send?" when your eyes are
+  // on the last thing said.
+  + (chatBusy ? '<div class="cthinking">thinking...</div>' : '')
   // The agreed sentence, when there is one, and then ONE button row. Built
   // once rather than per branch: an id written twice in a template is how a
   // handler ends up bound to whichever copy rendered last.
@@ -4380,24 +4435,58 @@ function renderChat() {
       : '')
   + `<div class="cbtns">${
       chatReady && chatRequest ? '<button id="cbuild">BUILD THIS</button>' : ''
-    }<button id="cclear">START OVER</button></div>`;
-  box.scrollTop = box.scrollHeight;
+    }<button id="cclear" title="Delete this conversation and start a new one">CLEAR</button></div>`;
+  // Follow the newest message only when already at the bottom. Yanking
+  // somebody back down while they are reading something further up is worse
+  // than making them scroll.
+  if (wasAtBottom) box.scrollTop = box.scrollHeight;
   // The examples teach the vocabulary to somebody staring at an empty box.
   // Once there is a conversation on screen they are just clutter under it.
   $('egs').hidden = !!chatLog.length;
   if ($('cbuild')) $('cbuild').onclick = () => engage(chatRequest);
   $('cclear').onclick = () => {
+    // Four turns is real work, so this asks once rather than making CLEAR a
+    // thing you learn to fear next to BUILD THIS.
+    if (chatLog.length > 1 && !window.confirm(
+          'Clear this conversation? It cannot be brought back.')) return;
     chatLog = []; chatReady = false; chatRequest = '';
+    try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing to undo */ }
     renderChat();
+    $('prompt').focus();
   };
+  saveChat();
+}
+
+// The box grows with the sentence rather than scrolling it sideways. Reset
+// first, or it can only ever get taller.
+function growPrompt() {
+  const t = $('prompt');
+  // Collapse to nothing first, then measure. `height: auto` does not fully
+  // collapse a textarea, so emptying a four-line box left it two lines tall
+  // forever: scrollHeight was reporting the height it already had.
+  t.style.overflowY = 'hidden';
+  // An EMPTY box measures two lines, not one: collapsed to zero height its
+  // scrollHeight came back 62 against a 31.2px line, so emptying a grown box
+  // left it permanently double height. Every other size measures correctly,
+  // so empty drops the inline height and takes the natural rows="1" instead
+  // of being computed at all.
+  if (!t.value) { t.style.height = ''; return; }
+  t.style.height = '0px';
+  const max = 8.5 * 16;
+  const needed = t.scrollHeight;
+  t.style.height = Math.min(needed, max) + 'px';
+  if (needed > max) t.style.overflowY = 'auto';
 }
 
 async function talk() {
+  if (chatBusy) return;                 // one turn at a time
   const said = $('prompt').value.trim();
   if (!said) return;
   chatLog.push({role: 'user', content: said});
   $('prompt').value = '';
+  growPrompt();
   chatReady = false;
+  chatBusy = true;
   renderChat();
   const b = $('engage');
   b.disabled = true;
@@ -4416,8 +4505,13 @@ async function talk() {
     chatRequest = d.request || '';
   } catch (e) {
     log(`could not talk that through: ${e.message}`, 'err');
-    chatLog.pop();          // do not leave a question that was never answered
+    // Give the words back. Dropping the turn silently made somebody retype a
+    // sentence they had already written, which is the wrong party paying for
+    // a failed request.
+    chatLog.pop();
+    if (!$('prompt').value.trim()) { $('prompt').value = said; growPrompt(); }
   } finally {
+    chatBusy = false;
     b.disabled = false;
     b.textContent = was;
     renderChat();
@@ -4966,7 +5060,18 @@ async function apply() {
 // choosing, before typing a word, whether your own request was clear enough,
 // which is not a thing anybody knows about their own request.
 $('engage').onclick = talk;
-$('prompt').addEventListener('keydown', e => { if (e.key === 'Enter') talk(); });
+$('prompt').addEventListener('input', growPrompt);
+$('prompt').addEventListener('keydown', e => {
+  // Enter sends, Shift+Enter makes a newline. The box grows, which implies
+  // Enter would break a line, so the hint under it says which is which.
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault();
+  talk();
+});
+
+// A conversation left open yesterday is still there today.
+loadChat();
+renderChat();
 $('apply').onclick = apply;
 $('discard').onclick = () => {
   $('planbox').style.display = 'none'; currentPlan = null;
