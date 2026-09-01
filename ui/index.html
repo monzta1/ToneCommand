@@ -385,6 +385,48 @@
   #clearslot { flex: 0 0 auto; border-color: var(--red); color: var(--red); }
   #clearslot:hover:not(:disabled) { background: rgba(255,90,90,0.12); }
   #clearslot:disabled { opacity: 0.4; }
+  /* Building from a source: progress that says where it is, because the
+     build genuinely takes minutes and a spinner over four minutes of silence
+     is a broken experience even when it is working perfectly. */
+  .srcrow { margin-top: 18px; }
+  /* #prompt carries flex:1 by id, so a second input in a .promptrow gets no
+     width at all and collapses to its intrinsic size. */
+  #srcinput {
+    flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+    color: var(--text); font: inherit; font-size: var(--fs-body);
+    caret-color: var(--cyan); border-bottom: 1px solid var(--line);
+    padding-bottom: 4px;
+  }
+  #srcinput:focus { border-bottom-color: var(--cyan-dim); }
+  #srcinput::placeholder { color: var(--muted); opacity: 0.6; }
+  .srcprog {
+    margin-top: 12px; padding: 12px 14px; border-radius: 4px;
+    background: rgba(47,230,255,0.05);
+    border: 1px solid rgba(47,230,255,0.22);
+    font-size: var(--fs-hint); line-height: 1.7; color: var(--fg);
+  }
+  .srcprog .step { display: block; color: var(--muted); }
+  .srcprog .step.now { color: var(--cyan); }
+  .srcprog .step.done { color: var(--green); }
+  .srcprog .step::before { content: '\00b7  '; }
+  .srcprog .step.now::before { content: '\25b8  '; }
+  .srcprog .step.done::before { content: '\2713  '; }
+  .srcprog .found { margin-top: 8px; color: var(--fg); }
+  /* What the source said, versus what this tool chose. The whole honesty of
+     the feature is in keeping these two visually separate. */
+  .srcsplit { margin: 14px 0 4px; }
+  .srcsplit h5 {
+    margin: 12px 0 5px; font-size: var(--fs-label); letter-spacing: 0.16em;
+    text-transform: uppercase; font-weight: 500;
+  }
+  .srcsplit h5.said { color: var(--green); }
+  .srcsplit h5.guessed { color: var(--amber); }
+  .srcsplit li { font-size: var(--fs-hint); line-height: 1.65; color: var(--dim); }
+  .srcsplit ul { margin: 0 0 4px 18px; }
+  .srcquote {
+    margin: 4px 0 0 18px; font-size: var(--fs-label); color: var(--muted);
+    border-left: 2px solid var(--line); padding-left: 10px;
+  }
   .knobs { columns: 340px; column-gap: 30px; }
   /* What is driving this parameter, when it is not you. Amber rather than
      cyan: cyan is "you can move this", and this is the one row you cannot. */
@@ -1085,6 +1127,20 @@
       <button id="engage">ENGAGE</button>
     </div>
     <div class="hint">Changes are proposed first and only sent to the FM9 after you confirm. Edit buffer only, nothing is saved to your presets.</div>
+
+    <!-- One field, one button. Paste a link and the work of watching the video
+         and typing the settings out is the part being removed. -->
+    <div class="promptrow srcrow">
+      <span class="prompt-prefix">&#9834;</span>
+      <input id="srcinput" autocomplete="off" spellcheck="false"
+             placeholder="or build from a video or description... paste a YouTube link, a page, or the text itself">
+      <button id="analyze">ANALYZE</button>
+    </div>
+    <div class="hint" id="srchint">Reads what the source actually says and
+      proposes a build for <em>your</em> rig. An interpretation to review and
+      tweak, not a copy: sources rarely state everything, and what it had to
+      guess is marked separately.</div>
+    <div id="srcprogress" class="srcprog" hidden></div>
   </div>
 
   <div class="console" data-label="PROPOSED CHANGES" id="planbox" style="display:none">
@@ -3535,6 +3591,101 @@ $('buildscratch').onclick = async () => {
   }
 };
 
+// Build from a video or a description.
+//
+// Two calls, not one, and the split is the reason this is usable. Reading the
+// source takes about twenty seconds and building takes minutes, so showing
+// what was found in between turns four minutes of silence into a wait with a
+// shape. It is also the only architecture that works: a raw source handed
+// straight to the planner times out.
+const SRC_STEPS = [
+  ['read',  'Reading the source'],
+  ['found', 'Working out what tone it describes'],
+  ['build', 'Building it against your rig'],
+];
+
+function srcProgress(active, note) {
+  const box = $('srcprogress');
+  box.hidden = false;
+  const at = SRC_STEPS.findIndex(s => s[0] === active);
+  box.innerHTML = SRC_STEPS.map(([key, label], i) => {
+    const cls = i < at ? 'done' : (i === at ? 'now' : '');
+    return `<span class="step ${cls}">${esc(label)}${i === at ? '...' : ''}</span>`;
+  }).join('') + (note ? `<div class="found">${note}</div>` : '');
+}
+
+// The honest half: what the source actually said, kept apart from what this
+// tool chose because the source did not say. Rendered before the plan cards,
+// so it is read before the changes rather than after them.
+function srcSplitHtml(from) {
+  if (!from) return '';
+  const said = (from.stated || []).map(x => `<li>${esc(x)}</li>`).join('');
+  const guessed = (from.vague || []).map(x => `<li>${esc(x)}</li>`).join('');
+  const quotes = (from.quotes || []).slice(0, 4).map(q =>
+    `<div class="srcquote">${esc(q.text)}${q.at ? ' <b>[' + esc(q.at) + ']</b>' : ''}</div>`
+  ).join('');
+  return `<div class="srcsplit">
+    ${said ? `<h5 class="said">The source specified these</h5><ul>${said}</ul>` : ''}
+    ${guessed ? `<h5 class="guessed">These were vague, so this is my choice</h5><ul>${guessed}</ul>` : ''}
+    ${quotes ? `<h5>From the source</h5>${quotes}` : ''}
+  </div>`;
+}
+
+async function analyzeSource() {
+  const raw = $('srcinput').value.trim();
+  if (!raw) return;
+  const btn = $('analyze');
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = 'READING...';
+  try {
+    srcProgress('read');
+    const r = await fetch('/api/describe/read', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source: raw})});
+    const spec = await r.json();
+    if (spec.error) throw new Error(spec.error);
+
+    const scenes = (spec.scenes || []).length;
+    const note = `<b>${esc(spec.summary || '')}</b>`
+      + (scenes ? `<br>${scenes} scene${scenes === 1 ? '' : 's'}: `
+          + (spec.scenes || []).map(x => esc(x.name)).join(', ') : '')
+      + `<br>${(spec.stated || []).length} settings stated in the source, `
+      + `${(spec.vague || []).length} left to interpret.`;
+    srcProgress('build', note);
+    for (const n of ((spec.source || {}).notes || [])) log(`source: ${n}`, 'warn');
+    log(`read ${spec.words} words: ${spec.summary}`, 'ok');
+
+    btn.textContent = 'BUILDING...';
+    const b = await fetch('/api/describe/build', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({spec})});
+    const plan = await b.json();
+    if (plan.error) throw new Error(plan.error);
+
+    srcProgress(null, note);
+    $('srcprogress').hidden = true;
+    showPlan(plan);
+    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
+    log(`"${plan.summary}" proposed from that source. Review it, then TRANSMIT.`, 'ok');
+    if (plan.dropped && plan.dropped.length) {
+      log(`dropped ${plan.dropped.join(', ')}: a build from someone else's `
+          + `source may not write to a preset slot`, 'warn');
+    }
+  } catch (e) {
+    $('srcprogress').hidden = true;
+    log(`could not build from that: ${e.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
+}
+
+$('analyze').onclick = analyzeSource;
+$('srcinput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyzeSource();
+});
+
 // Press the value to put it back to neutral. Goes through the same write path
 // as a drag, so it is verified by read-back and covered by undo like anything
 // else.
@@ -3622,7 +3773,28 @@ function showPlan(plan) {
         `${[...affectedScenes].sort((a, b) => a - b).join(', ')}`, 'warn');
   }
   const prevBy = $('planby'); if (prevBy) prevBy.remove();
+  const prevSrc = $('plansrc'); if (prevSrc) prevSrc.remove();
   $('plansummary').textContent = plan.summary;
+  // A plan built from somebody's video is not the same object as one built
+  // from a sentence the player typed, and the difference has to survive to
+  // the confirm panel. Framed as an interpretation, with what the source
+  // actually said kept apart from what this tool chose.
+  if (plan.from_source) {
+    const src = plan.from_source.source || {};
+    const where = src.title ? `"${esc(src.title)}"` : (src.url ? esc(src.url) : 'that source');
+    const note = document.createElement('div');
+    note.id = 'plansrc';
+    note.className = 'hint';
+    note.innerHTML = `This is my interpretation of what ${where} describes, `
+      + `built for your rig. It gets you in the ballpark: review and tweak `
+      + `before sending, and check anything marked below as interpreted.`
+      + srcSplitHtml(plan.from_source);
+    // BEFORE the summary, not after. The summary runs to hundreds of words
+    // on a multi-scene build, and provenance read at the end of that is
+    // provenance nobody read: "this is an interpretation" has to arrive
+    // before the thing being interpreted.
+    $('plansummary').before(note);
+  }
   // half the value of the settings panel: a wrong-sounding plan should be
   // attributable to the model that produced it, not to the tool
   if (plan.backend) {

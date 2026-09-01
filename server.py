@@ -19,8 +19,9 @@ from pydantic import BaseModel
 
 from fm9.device import FM9, FM9NotFound
 from fm9.registry import Registry
-from fm9 import (ai_settings, designs, editbuffer, health, planner,
-                 recipes as recipebook, rigprofile, scratch_build, share)
+from fm9 import (ai_settings, describe, designs, editbuffer, health,
+                 planner, recipes as recipebook, rigprofile, scratch_build,
+                 share)
 # `slots` is a local variable in more than one function here, so the module
 # gets a name that cannot be shadowed by one.
 from fm9 import slots as slotops
@@ -544,6 +545,117 @@ def api_state():
         except Exception as e:
             drop_fm9()
             return JSONResponse({"connected": False, "error": str(e)}, status_code=500)
+
+
+class DescribeBody(BaseModel):
+    source: str
+
+
+class BuildBody(BaseModel):
+    spec: dict
+
+
+@app.post("/api/describe/read")
+def api_describe_read(body: DescribeBody):
+    """Pass one: a link or pasted text becomes a compact tone spec.
+
+    Split from the build deliberately. Feeding a raw source to the planner
+    does not work (see fm9/describe.py), and the split is also what makes the
+    wait legible: the player sees what was found in about twenty seconds
+    rather than staring at a spinner for four minutes.
+    """
+    try:
+        src = describe.read_source(body.source)
+        spec = describe.extract(src["text"])
+    except describe.SourceError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": f"could not read that source: {exc}"},
+                            status_code=502)
+    if not spec.get("found"):
+        return JSONResponse(
+            {"error": spec.get("why") or "that source does not describe a tone",
+             "found": False}, status_code=422)
+    spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
+    spec["words"] = len(src["text"].split())
+    return spec
+
+
+@app.post("/api/describe/build")
+def api_describe_build(body: BuildBody):
+    """Pass two: the spec becomes a plan, through the ordinary planner.
+
+    Everything after this point is the existing pipeline. Same planner, same
+    validate_action, same confirm panel, same transmit gate. This endpoint
+    adds no write path and cannot reach hardware.
+    """
+    spec = body.spec or {}
+    brief = describe.brief_from(spec)
+
+    offline = False
+    with _lock:
+        try:
+            snap = snapshot(get_fm9())
+        except FM9NotFound:
+            drop_fm9()
+            snap = _last_snapshot["state"]
+            offline = True
+    context = state_text(snap) if snap else rigprofile.as_blank_text()
+
+    # The one difference from /api/plan, and it is a timeout rather than a
+    # gate: a four scene build measured 226s, which the stock 180s refuses.
+    # Raised and restored INSIDE the settings lock. Outside it, a concurrent
+    # /api/plan would inherit this path's much longer timeout, or have its own
+    # restored out from under it.
+    try:
+        with _settings_lock:
+            old = _os.environ.get("PLANNER_TIMEOUT")
+            _os.environ["PLANNER_TIMEOUT"] = str(describe.timeout_s())
+            try:
+                result = planner.plan(brief, context, PARAM_REFERENCE)
+            finally:
+                if old is None:
+                    _os.environ.pop("PLANNER_TIMEOUT", None)
+                else:
+                    _os.environ["PLANNER_TIMEOUT"] = old
+    except Exception as exc:
+        return JSONResponse({"error": f"planner failed: {exc}"}, status_code=502)
+
+    # A build assembled out of somebody else's video has no business
+    # overwriting a preset slot. Dropped here as well as being asked for in
+    # the brief, because asking is not enforcing.
+    dropped = [a for a in result.get("actions", [])
+               if a.get("kind") in describe.FORBIDDEN_KINDS]
+    result["actions"] = [a for a in result.get("actions", [])
+                         if a.get("kind") not in describe.FORBIDDEN_KINDS]
+    if dropped:
+        result["dropped"] = [a.get("kind") for a in dropped]
+
+    result["device"] = ({"preset": snap["preset"], "scene": snap["scene"]}
+                        if snap else {"preset": None, "scene": None})
+    result["offline"] = offline
+    result["anchored_at"] = _last_snapshot["at"] if offline else None
+    result["no_state"] = snap is None
+    result["values"] = snap.get("values", {}) if snap else {}
+    result["from_source"] = {
+        "summary": spec.get("summary"),
+        "stated": spec.get("stated") or [],
+        "vague": spec.get("vague") or [],
+        "quotes": spec.get("quotes") or [],
+        "source": spec.get("source") or {},
+    }
+    # The identical validation every other plan gets. Not a lighter version.
+    for a in result.get("actions", []):
+        errs, warns = validate_action(Action(**a))
+        a["validation_errors"] = errs
+        a["validation_warnings"] = warns
+        if a.get("block"):
+            try:
+                a["effect_id"] = reg.resolve_block(
+                    a["block"], int(a.get("instance") or 1))[1]
+            except Exception:
+                pass
+    return result
 
 
 @app.post("/api/plan")
