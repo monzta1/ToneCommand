@@ -780,6 +780,10 @@ def setup_guide_state() -> dict:
     for s in steps:
         if s["id"] == "listening":
             s["run"] = cliproxy_setup_command()
+        # Which steps the app can do on the person's behalf. The browser asks
+        # rather than assuming, so a machine without Homebrew gets the manual
+        # command opened up instead of a button that would only fail.
+        s["canRun"] = s["id"] in RUNNABLE and bool(_brew())
     return {**SETUP_GUIDE, "steps": steps, "next": nxt,
             "complete": not nxt,
             # So the browser can fill it in and nobody has to see it.
@@ -859,3 +863,153 @@ def cliproxy_probe() -> tuple[bool, str]:
         return False, ("It is running and answering, but offering no models, "
                        "which means the sign-in did not finish.")
     return True, f"Running and offering {len(models)} model(s)."
+
+
+# --- doing it, rather than describing it ----------------------------------
+#
+# Copy-pasting four commands into a terminal is a wall, and most people who
+# meet it simply leave. Only ONE of these steps genuinely needs a human, and
+# that is signing in to their own ChatGPT account in a browser. The rest is
+# ours to do.
+#
+# The rules this runs under, because a local page executing shell commands
+# deserves stated ones:
+#
+# - Nothing runs without an explicit click. There is no run-on-load path.
+# - Every command is a fixed argument list, never a string through a shell,
+#   and never built from anything the browser sent. `step` SELECTS from a
+#   table; it never becomes part of a command.
+# - The config edit is done here in Python rather than by shelling out to
+#   sed, so there is no quoting to get wrong on somebody else's machine, and
+#   a config that no longer holds the placeholders is left alone rather than
+#   silently mangled.
+# - Checking stays separate from doing: setup_step_state() still only looks.
+
+#: Steps this may perform. Anything else is refused rather than attempted.
+RUNNABLE = ("installed", "signed_in", "listening")
+
+#: The one long-lived child process: the OAuth sign-in, which blocks until
+#: the person has finished in their browser.
+_LOGIN: dict = {}
+
+
+def _brew() -> str:
+    import shutil
+    return shutil.which("brew") or ""
+
+
+def _cliproxy_bin() -> str:
+    """The connector's binary, on PATH or where the formula puts it."""
+    import os
+    import shutil
+    found = shutil.which("cliproxyapi")
+    if found:
+        return found
+    for guess in ("/opt/homebrew/opt/cliproxyapi/bin/cliproxyapi",
+                  "/usr/local/opt/cliproxyapi/bin/cliproxyapi"):
+        if os.path.exists(guess):
+            return guess
+    return ""
+
+
+def _write_api_key(path: str, key: str) -> str:
+    """Replace the template api-keys with `key`, in place. "" on success."""
+    import pathlib as _pl
+    try:
+        text = _pl.Path(path).read_text()
+    except OSError as exc:
+        return f"could not read {path}: {exc}"
+    if key in text:
+        return ""                                   # already done, not an error
+    out, replaced = [], False
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped in ('- "your-api-key-1"', "- 'your-api-key-1'"):
+            out.append(line.replace("your-api-key-1", key))
+            replaced = True
+        elif stripped in ('- "your-api-key-2"', '- "your-api-key-3"',
+                          "- 'your-api-key-2'", "- 'your-api-key-3'"):
+            continue                                # drop the spare templates
+        else:
+            out.append(line)
+    if not replaced:
+        return ("the config no longer has the placeholder passwords in it, so "
+                "it was left alone. Set api-keys by hand, then check again.")
+    try:
+        _pl.Path(path).write_text("".join(out))
+    except OSError as exc:
+        return f"could not write {path}: {exc}"
+    return ""
+
+
+def run_setup_step(step_id: str) -> dict:
+    """Perform one setup step. Only ever reached from an explicit click."""
+    import subprocess
+    if step_id not in RUNNABLE:
+        return {"ok": False, "output": "",
+                "detail": f"{step_id!r} is not something this can run for you."}
+    brew = _brew()
+    if not brew:
+        return {"ok": False, "output": "",
+                "detail": "Homebrew is not installed, so nothing can be "
+                          "installed for you. Get it from https://brew.sh, "
+                          "then come back."}
+
+    if step_id == "installed":
+        if _cliproxy_bin():
+            return {"ok": True, "detail": "Already installed.", "output": ""}
+        proc = subprocess.run([brew, "install", "cliproxyapi"],
+                              capture_output=True, text=True, timeout=900)
+        tail = (proc.stdout + proc.stderr)[-1500:]
+        ok = proc.returncode == 0 and bool(_cliproxy_bin())
+        return {"ok": ok, "output": tail,
+                "detail": "Installed." if ok else
+                          "The install did not finish. Its output is below."}
+
+    if step_id == "signed_in":
+        if setup_step_state("signed_in")[0]:
+            return {"ok": True, "detail": "Already signed in.", "output": ""}
+        binary = _cliproxy_bin()
+        if not binary:
+            return {"ok": False, "output": "",
+                    "detail": "Install the connector first."}
+        running = _LOGIN.get("proc")
+        if running is not None and running.poll() is None:
+            return {"ok": False, "output": "",
+                    "detail": "A sign-in is already waiting in your browser. "
+                              "Finish it there, then press CHECK."}
+        # Deliberately not waited on. It opens a browser and blocks until the
+        # person signs in, which is theirs to do at their own pace; holding
+        # the request open would just time out. CHECK is what notices.
+        _LOGIN["proc"] = subprocess.Popen(
+            [binary, "--codex-login"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        return {"ok": False, "output": "",
+                "detail": "Your browser should have opened. Sign in to "
+                          "ChatGPT, approve it, then press CHECK."}
+
+    # listening: give it a real password, then start it
+    cfg = cliproxy_config_path()
+    if not cfg:
+        return {"ok": False, "output": "",
+                "detail": "Could not find the connector's config file. "
+                          "Install it first."}
+    problem = _write_api_key(cfg, cliproxy_key())
+    if problem:
+        return {"ok": False, "detail": problem, "output": ""}
+    proc = subprocess.run([brew, "services", "restart", "cliproxyapi"],
+                          capture_output=True, text=True, timeout=180)
+    tail = (proc.stdout + proc.stderr)[-1500:]
+    if proc.returncode != 0:
+        return {"ok": False, "output": tail,
+                "detail": "Could not start it. Its output is below."}
+    # It needs a moment to bind the port, and reporting failure before it has
+    # had one would be a lie with a retry button next to it.
+    import time
+    why = "starting"
+    for _ in range(12):
+        time.sleep(1)
+        ok, why = cliproxy_probe()
+        if ok:
+            return {"ok": True, "detail": why, "output": tail}
+    return {"ok": False, "output": tail, "detail": why}

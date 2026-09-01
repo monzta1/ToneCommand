@@ -1110,6 +1110,16 @@
   background: transparent; color: var(--fg, #d8dde5); }
 #aisetup button.go { border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe); }
 #aisetup .sdone { font-size: 12px; margin: 8px 0 0; }
+#aisetup .sout {
+  font-size: 11px; line-height: 1.5; margin: 8px 0 0; white-space: pre-wrap;
+  max-height: 130px; overflow-y: auto; opacity: .55;
+}
+#aisetup .sout:empty { display: none; }
+#aisetup .smanual { margin: 10px 0 0; }
+#aisetup .smanual summary {
+  cursor: pointer; font-size: 11px; opacity: .5; letter-spacing: .06em;
+}
+#aisetup .smanual .scmd { margin-top: 9px; }
 #aisetup .sdone.ok { color: #5ad18a; }
 #aisetup .sdone.no { color: #e0a34a; }
 #aisetup ol.strack { margin: 10px 0 0; padding-left: 18px;
@@ -4442,16 +4452,24 @@ function renderSetup() {
     <div class="scount">STEP ${i + 1} OF ${g.steps.length}</div>
     <h4>${esc(step.title).toUpperCase()}</h4>
     <p class="ssay">${esc(step.say)}</p>
-    <div class="scmd">
-      <code>${esc(step.run)}</code>
-      <button id="scopy">COPY</button>
-    </div>
-    <p class="sfix">${esc(step.fix)}</p>
     <div class="sbtns">
-      <button class="go" id="scheck">I HAVE DONE THIS, CHECK IT</button>
+      ${step.canRun ? `<button class="go" id="srun">${
+        step.id === 'signed_in' ? 'OPEN THE SIGN-IN FOR ME' : 'DO IT FOR ME'
+      }</button>` : ''}
+      <button class="${step.canRun ? '' : 'go'}" id="scheck">${
+        step.canRun ? 'CHECK' : 'I HAVE DONE THIS, CHECK IT'}</button>
       ${i > 0 ? '<button id="sback">BACK</button>' : ''}
       <button id="squit">CLOSE</button>
     </div>
+    <p class="sout" id="srunout"></p>
+    <details class="smanual"${step.canRun ? '' : ' open'}>
+      <summary>${step.canRun ? 'or run it yourself' : 'run this'}</summary>
+      <div class="scmd">
+        <code>${esc(step.run)}</code>
+        <button id="scopy">COPY</button>
+      </div>
+      <p class="sfix">${esc(step.fix)}</p>
+    </details>
     <p class="sdone ${step.done ? 'ok' : 'no'}" id="sstate">${
       step.done ? 'Done. ' + esc(step.detail) : ''}</p>
     <ol class="strack">${g.steps.map((x, n) =>
@@ -4493,6 +4511,43 @@ function renderSetup() {
       $('scheck').disabled = false;
       $('scheck').textContent = 'I HAVE DONE THIS, CHECK IT';
       log(`could not check setup: ${e.message}`, 'err');
+    }
+  };
+  if ($('srun')) $('srun').onclick = async () => {
+    const b = $('srun');
+    b.disabled = true;
+    const was = b.textContent;
+    b.textContent = 'WORKING...';
+    $('srunout').textContent = '';
+    $('sstate').textContent = '';
+    try {
+      const r = await fetch('/api/ai-settings/setup/run', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({step: step.id})});
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      $('srunout').textContent = d.output || '';
+      if (d.ok) {
+        // Same rule as the manual path: it moves on because the machine says
+        // so, not because a command exited zero.
+        await loadSetup(false);
+        const now = setupGuide.steps[i];
+        if (now.done) {
+          setupAt = Math.min(i + 1, setupGuide.steps.length - 1);
+          log(`setup: ${now.title} ✓`, 'ok');
+        }
+        renderSetup();
+      } else {
+        $('sstate').className = 'sdone no';
+        $('sstate').textContent = d.detail || 'That did not work.';
+        b.disabled = false;
+        b.textContent = was;
+      }
+    } catch (e) {
+      $('sstate').className = 'sdone no';
+      $('sstate').textContent = e.message;
+      b.disabled = false;
+      b.textContent = was;
     }
   };
   if ($('sback')) $('sback').onclick = () => { setupAt = i - 1; renderSetup(); };

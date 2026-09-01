@@ -621,11 +621,16 @@ ChatGPT Plus subscription.
 
 ### Using the ChatGPT subscription you already pay for
 
-Choose **A subscription you already pay for** and click **SHOW ME HOW**. The
-panel walks through it one step at a time, shows the exact line to paste into
-a terminal, and checks your machine before offering the next step. It will not
-advance on your say-so, so a step that silently failed is caught where it
-happened rather than at the next prompt.
+Choose **A subscription you already pay for** and click **SHOW ME HOW**. Each
+step has a **DO IT FOR ME** button; the only one you have to do yourself is
+signing in to your own ChatGPT account, which opens in your browser. The
+terminal command for every step is still there under *or run it yourself*, for
+anyone who would rather see what runs on their machine, or who is not on
+Homebrew.
+
+It checks your machine after every step and will not advance on your say-so,
+so a step that silently failed is caught where it happened rather than at the
+next prompt.
 
 It installs [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), a
 separate MIT-licensed service (`brew install cliproxyapi`), signs it into your

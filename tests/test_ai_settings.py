@@ -1041,3 +1041,102 @@ def test_only_the_service_that_needs_setup_is_offered_it():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
     assert "current.url === setupGuide.url" in fn
+
+
+# --- doing it, rather than describing it ----------------------------------
+#
+# Four commands pasted into a terminal is a wall, and most people who meet it
+# leave. Only the browser sign-in genuinely needs a human.
+
+def test_only_three_steps_can_be_run_and_checking_is_not_one():
+    assert ai_settings.RUNNABLE == ("installed", "signed_in", "listening")
+    assert "brew" not in ai_settings.RUNNABLE, \
+        "installing Homebrew is not ours to do"
+
+
+def test_the_step_name_selects_and_never_becomes_a_command():
+    """`step` indexes a fixed table. If it could reach a shell, a local page
+    would be a remote code execution hole with a nice button on it."""
+    for evil in ("installed; rm -rf /", "$(id)", "../../etc/passwd", ""):
+        out = ai_settings.run_setup_step(evil)
+        assert out["ok"] is False
+        assert "not something this can run" in out["detail"]
+
+
+def test_the_endpoint_refuses_an_unknown_step(client):
+    r = client.post("/api/ai-settings/setup/run", json={"step": "brew"})
+    assert r.status_code == 400
+    r = client.post("/api/ai-settings/setup/run", json={})
+    assert r.status_code == 400
+
+
+def test_no_command_is_ever_built_from_a_string():
+    """Fixed argument lists only. A shell string is where quoting bugs and
+    injections both live."""
+    import inspect
+    src = _code_only(inspect.getsource(ai_settings.run_setup_step))
+    assert "shell=True" not in src
+    assert "os.system" not in src
+    for call in ("subprocess.run(", "subprocess.Popen("):
+        for at in [i for i in range(len(src)) if src.startswith(call, i)]:
+            rest = src[at + len(call):].lstrip()      # the list may wrap
+            assert rest.startswith("["), \
+                f"every command must be an argument list, got {rest[:40]!r}"
+
+
+def test_the_config_edit_is_python_not_sed(tmp_path):
+    """Shelling out to sed means quoting somebody else's file path correctly
+    on a machine you have never seen."""
+    cfg = tmp_path / "c.conf"
+    cfg.write_text('port: 8317\napi-keys:\n  - "your-api-key-1"\n'
+                   '  - "your-api-key-2"\n  - "your-api-key-3"\n\ndebug: false\n')
+    assert ai_settings._write_api_key(str(cfg), "abc123") == ""
+    got = cfg.read_text()
+    assert '- "abc123"' in got
+    assert "your-api-key" not in got
+    assert "port: 8317" in got and "debug: false" in got   # nothing else moved
+
+
+def test_editing_twice_is_not_an_error(tmp_path):
+    cfg = tmp_path / "c.conf"
+    cfg.write_text('api-keys:\n  - "your-api-key-1"\n')
+    assert ai_settings._write_api_key(str(cfg), "abc123") == ""
+    assert ai_settings._write_api_key(str(cfg), "abc123") == ""
+    assert cfg.read_text().count("abc123") == 1
+
+
+def test_a_config_without_placeholders_is_left_alone(tmp_path):
+    """Somebody who set their own api-keys has made a decision. Overwriting
+    it because our marker was missing would be us guessing at their config."""
+    cfg = tmp_path / "c.conf"
+    cfg.write_text('api-keys:\n  - "the-one-i-chose"\n')
+    problem = ai_settings._write_api_key(str(cfg), "abc123")
+    assert "left alone" in problem
+    assert cfg.read_text() == 'api-keys:\n  - "the-one-i-chose"\n'
+
+
+def test_a_missing_homebrew_offers_no_button_it_cannot_honour(monkeypatch):
+    monkeypatch.setattr(ai_settings, "_brew", lambda: "")
+    monkeypatch.setattr(ai_settings, "setup_step_state", lambda i: (False, i))
+    assert all(not s["canRun"] for s in ai_settings.setup_guide_state()["steps"])
+    out = ai_settings.run_setup_step("installed")
+    assert out["ok"] is False and "brew.sh" in out["detail"]
+
+
+def test_the_manual_command_survives_alongside_the_button():
+    """Somebody who would rather see what runs on their machine, or who is not
+    on Homebrew at all, must not be left without a path."""
+    for step in ai_settings.setup_guide_state()["steps"]:
+        assert step["run"].strip(), step["id"]
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "or run it yourself" in ui
+
+
+def test_the_browser_still_advances_only_on_proof():
+    """A command exiting zero is not the same as the step being done, which
+    is exactly how the placeholder-password failure got past the first
+    version of this."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("if ($('srun')) $('srun').onclick")[1].split("\n  };\n")[0]
+    assert "await loadSetup(false);" in fn, "re-check the machine, do not assume"
+    assert "if (now.done)" in fn

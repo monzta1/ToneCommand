@@ -2288,6 +2288,32 @@ def api_ai_setup():
     return ai_settings.setup_guide_state()
 
 
+@app.post("/api/ai-settings/setup/run")
+def api_ai_setup_run(body: dict):
+    """Do one setup step, on an explicit click.
+
+    Copy-pasting four commands into a terminal is a wall most people simply
+    leave at. `step` selects from a fixed table of three; it never becomes
+    part of a command, and nothing here is composed from what the browser
+    sent. The one step this cannot do is signing in to somebody's own ChatGPT
+    account, which it starts and then waits to be told about.
+    """
+    step = str(body.get("step") or "")
+    if step not in ai_settings.RUNNABLE:
+        return JSONResponse(
+            {"error": f"{step!r} is not a step this can run"}, status_code=400)
+    if not _settings_lock.acquire(timeout=2):
+        return JSONResponse(
+            {"error": "a plan is in flight; try again once it finishes"},
+            status_code=409)
+    try:
+        return ai_settings.run_setup_step(step)
+    except Exception as exc:                       # a failed step, not a 500
+        return {"ok": False, "output": "", "detail": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _settings_lock.release()
+
+
 @app.post("/api/ai-settings")
 def api_ai_settings(body: dict):
     """Save the choice and make it effective for the next prompt.
