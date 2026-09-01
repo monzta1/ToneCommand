@@ -4501,6 +4501,7 @@ let chatStarted = 0;           // when this turn began
 let chatLastByte = 0;          // when a word last arrived
 let chatAlive = 0;             // when the server last said it is still there
 let chatAbort = null;          // lets you stop waiting
+let chatBuilding = false;      // a build, not a conversation turn
 
 // A line in the transcript that this tool wrote about itself, rather than
 // something either party said. Rendered, and NEVER sent back to the model:
@@ -4561,6 +4562,13 @@ function waitLine() {
          + `press STOP and try again.`;
   }
   if (chatStream) return `writing... ${secs}s`;
+  if (chatBuilding) {
+    // Minutes, not seconds. A four-scene build is genuinely a few minutes of
+    // work, and saying so is the difference between patience and giving up.
+    return `working out the changes... ${secs}s`
+         + (secs > 45 ? '. A build with several scenes takes a few minutes.'
+                      : '');
+  }
   if (quiet > 12000) return `still working, ${secs}s. Longer than usual.`;
   return `thinking... ${secs}s`;
 }
@@ -4763,18 +4771,35 @@ async function engage(prompt, name) {
   b.disabled = true;
   const was = b.textContent;
   b.innerHTML = '<span class="spin">◍</span> BUILDING';
-  // Said in the transcript, where the reader is. Working this out takes tens
-  // of seconds and the answer lands in a panel further down the page, so
-  // without this the button was the only sign anything was happening at all.
-  chatWorking = 'working out the changes...';
-  renderChat();
   log(`interpreting: "${prompt}"`);
+  // A four-scene build measured 283 seconds and produced 71 actions. It was
+  // not stuck, but the panel said "working out the changes..." and kept
+  // saying it, unchanged, for five minutes, so the only reasonable reading
+  // was that the button did nothing. Same treatment as a conversation turn:
+  // count the seconds, listen for a heartbeat, and offer a way out.
+  chatBusy = true;
+  chatStarted = Date.now();
+  chatAlive = Date.now();
+  chatLastByte = 0;
+  chatStream = '';
+  chatBuilding = true;
+  chatAbort = new AbortController();
+  renderChat();
+  const tick = setInterval(renderChat, 1000);
   try {
-    const r = await fetch('/api/plan', {
+    const r = await fetch('/api/plan/stream', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
+      signal: chatAbort.signal,
       body: JSON.stringify({prompt, name: name || null}),
     });
-    const plan = await r.json();
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let plan = null;
+    for await (const [ev, d] of sseFrom(r)) {
+      if (ev === 'ping') { chatAlive = Date.now(); renderChat(); }
+      else if (ev === 'error') throw new Error(d);
+      else if (ev === 'plan') { plan = d; break; }
+    }
+    if (!plan) throw new Error('the build ended before it produced anything');
     if (plan.error) throw new Error(plan.error);
     if (plan.clarification) {
       // The planner asking a question is not an error, and printing it in red
@@ -4783,6 +4808,8 @@ async function engage(prompt, name) {
       chatLog.push({role: 'assistant', content: plan.clarification});
       chatReady = false;
       chatWorking = '';
+      chatBusy = false;
+      chatBuilding = false;
       renderChat();
       $('planbox').style.display = 'none';
       clearAffected();
@@ -4794,19 +4821,28 @@ async function engage(prompt, name) {
     // indistinguishable from nothing happening.
     const n = (plan.actions || []).length;
     chatWorking = '';
+    chatBusy = false;
+    chatBuilding = false;
     chatNote(n
       ? `Proposed ${n} change${n === 1 ? '' : 's'}, below. Nothing has been `
         + `sent yet: review them and press TRANSMIT.`
       : 'That produced no changes to make.');
     if (n) $('planbox').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (e) {
-    log(`plan failed: ${e.message}`, 'err');
+    const stopped = e.name === 'AbortError';
+    log(stopped ? 'build stopped' : `plan failed: ${e.message}`,
+        stopped ? 'warn' : 'err');
     chatWorking = '';
-    chatNote(`I could not build that: ${e.message}`);
+    chatBusy = false; chatBuilding = false;
+    chatNote(stopped ? 'Stopped. Nothing was built and nothing was sent.'
+                     : `I could not build that: ${e.message}`);
   } finally {
+    clearInterval(tick);
     chatWorking = '';
-    b.disabled = false;
-    b.textContent = was;
+    chatBusy = false;
+    chatBuilding = false;
+    chatAbort = null;
+    if (document.body.contains(b)) { b.disabled = false; b.textContent = was; }
   }
 }
 

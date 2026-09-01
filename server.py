@@ -757,6 +757,21 @@ def _name_the_build(result: dict, name: str | None) -> None:
 
 @app.post("/api/plan")
 def api_plan(body: PromptBody):
+    """The plan, in one request. Kept for callers that cannot hold a stream."""
+    result = _plan_for(body)
+    if isinstance(result, dict) and "error" in result and len(result) == 1:
+        return JSONResponse(result, status_code=502)
+    return result
+
+
+def _plan_for(body: PromptBody):
+    """Everything /api/plan does, so the streaming twin cannot drift from it.
+
+    One body, two deliveries. The alternative was a second copy of the
+    profile precedence, the validation loop, the splice consequences and the
+    blast-radius maths, which is exactly the kind of duplication that goes
+    subtly wrong six months later on one path only.
+    """
     # A loaded profile outranks both the live device and the remembered
     # reading: you asked to design for someone else's rig, so designing for
     # your own instead would be answering a different question.
@@ -768,7 +783,7 @@ def api_plan(body: PromptBody):
                                       rigprofile.as_state_text(prof),
                                       PARAM_REFERENCE)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=502)
+            return {"error": str(e)}
         result["device"] = {"preset": {"name": prof.get("preset_name"),
                                        "label": "shared profile"},
                             "scene": None}
@@ -864,7 +879,7 @@ def api_plan(body: PromptBody):
                     drop_fm9()
         return result
     except Exception as e:
-        return JSONResponse({"error": f"planner failed: {e}"}, status_code=502)
+        return {"error": f"planner failed: {e}"}
 
 
 TEMPO_RANGE = (30, 250)   # Fractal tempo limits
@@ -2369,6 +2384,56 @@ def api_chat(body: ChatBody):
             return planner.converse(body.messages, context, PARAM_REFERENCE)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=502)
+
+
+@app.post("/api/plan/stream")
+def api_plan_stream(body: PromptBody):
+    """The same plan, with proof of life while it is being worked out.
+
+    A four-scene build measured 283 seconds and produced 71 actions. It was
+    not stuck, but nothing on screen could tell you that: the panel said
+    "working out the changes..." and kept saying it, unchanged, for five
+    minutes. Somebody reasonably concluded the button was broken.
+
+    Planning is one call that either answers or does not, so there is nothing
+    partial to show. What there is, is a heartbeat. Ping every few seconds
+    while the worker is busy, and the browser can count seconds out loud and
+    tell "still going" apart from "the connection died", which is the whole
+    difference between waiting and being stuck.
+    """
+    import queue
+    import threading as _th
+
+    def events():
+        out: queue.Queue = queue.Queue()
+
+        def work():
+            try:
+                out.put(("plan", _plan_for(body)))
+            except Exception as exc:
+                out.put(("error", str(exc)))
+            finally:
+                out.put((None, None))
+
+        _th.Thread(target=work, daemon=True).start()
+        started = time.monotonic()
+        while True:
+            try:
+                kind, payload = out.get(timeout=3)
+            except Exception:
+                yield ("event: ping\ndata: "
+                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
+                       + "\n\n")
+                continue
+            if kind is None:
+                return
+            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+            if kind in ("plan", "error"):
+                return
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"cache-control": "no-cache",
+                                      "x-accel-buffering": "no"})
 
 
 @app.post("/api/chat/stream")

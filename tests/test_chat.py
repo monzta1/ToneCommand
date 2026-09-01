@@ -383,9 +383,16 @@ def test_the_explaining_shrank_to_one_line():
 # "nothing happened" looked identical.
 
 def test_building_says_so_where_the_reader_is_looking():
+    """It used to be a static string, which is how a 283-second build read as
+    a dead button. It is a counting line now, via the same waitLine the
+    conversation uses."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
-    assert "chatWorking = 'working out the changes...'" in fn
+    assert "chatBuilding = true;" in fn
+    assert "setInterval(renderChat, 1000)" in fn
+    wait = ui.split("function waitLine()")[1].split("\n}\n")[0]
+    assert "working out the changes..." in wait
+    assert "takes a few minutes" in wait
 
 
 def test_a_finished_plan_announces_itself_and_scrolls_into_view():
@@ -656,3 +663,67 @@ def test_the_name_survives_a_reload_with_the_rest():
     assert "name: chatName" in ui
     load = ui.split("function loadChat()")[1].split("\n}\n")[0]
     assert "chatName = typeof d.name === 'string'" in load
+
+
+# --- a five-minute build that looks like a dead button --------------------
+#
+# Measured: a four-scene Van Halen request took 283 seconds and produced 71
+# actions. It was not stuck. The panel said "working out the changes..." and
+# kept saying it, unchanged, for five minutes, so the only reasonable reading
+# was that BUILD THIS did nothing.
+
+def test_planning_has_a_heartbeat_too(client):
+    paths = {r.path for r in server.app.routes}
+    assert "/api/plan" in paths and "/api/plan/stream" in paths
+    src = inspect.getsource(server.api_plan_stream)
+    assert "event: ping" in src
+    assert "out.get(timeout=3)" in src
+
+
+def test_one_body_two_deliveries():
+    """A second copy of the profile precedence, the validation loop, the
+    splice consequences and the blast-radius maths is exactly the duplication
+    that goes subtly wrong on one path only."""
+    assert "_plan_for(body)" in inspect.getsource(server.api_plan)
+    assert "_plan_for(body)" in inspect.getsource(server.api_plan_stream)
+
+
+def test_the_shared_body_returns_data_not_http():
+    """One of its two callers writes server-sent events, where a
+    JSONResponse is not serialisable."""
+    src = inspect.getsource(server._plan_for)
+    assert "JSONResponse" not in src
+
+
+def test_a_planner_failure_still_reaches_the_old_route_as_502(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope")))
+    r = client.post("/api/plan", json={"prompt": "x"})
+    assert r.status_code == 502
+    assert "nope" in r.json()["error"]
+
+
+def test_a_long_build_can_be_left():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    assert "chatAbort = new AbortController()" in fn
+    assert "signal: chatAbort.signal" in fn
+    assert "e.name === 'AbortError'" in fn
+    assert "Stopped. Nothing was built and nothing was sent." in fn
+
+
+def test_stopping_a_build_leaves_nothing_running():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    tail = fn.split("finally {")[-1]
+    for cleared in ("clearInterval(tick)", "chatBusy = false",
+                    "chatBuilding = false", "chatAbort = null"):
+        assert cleared in tail, cleared
+
+
+def test_the_button_is_not_touched_after_it_is_gone():
+    """renderChat rewrites the transcript, so the BUILD THIS element the
+    handler started with is detached by the time it finishes."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
+    assert "document.body.contains(b)" in fn
