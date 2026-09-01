@@ -50,7 +50,8 @@ def test_the_endpoint_only_talks(client, monkeypatch):
 
 
 def test_the_chat_schema_cannot_express_an_action():
-    assert set(planner.CHAT_SCHEMA["properties"]) == {"reply", "ready", "request"}
+    assert set(planner.CHAT_SCHEMA["properties"]) == {
+        "reply", "ready", "request", "name"}
     assert planner.CHAT_SCHEMA["additionalProperties"] is False
 
 
@@ -179,8 +180,8 @@ def test_building_takes_the_sentence_rather_than_the_input_box():
     """Pasting a long agreed sentence into a one-line box showed the reader
     the middle of their own request, scrolled sideways, and nothing else."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "$('cbuild').onclick = () => engage(chatRequest);" in ui
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    assert "$('cbuild').onclick = () => engage(chatRequest, chatName);" in ui
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "$('prompt').value" not in fn, "building must not touch the input"
     assert "/api/plan" in fn, "and it still goes through the ordinary planner"
 
@@ -190,7 +191,7 @@ def test_a_planner_question_lands_in_the_conversation_not_in_red():
     The UI printed the question as an error and hid the panel, leaving it
     nowhere to be answered. The conversation is where a question belongs."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "chatLog.push({role: 'assistant', content: plan.clarification})" in fn
     assert "needs clarification" not in fn, "no longer logged as an error"
 
@@ -383,13 +384,13 @@ def test_the_explaining_shrank_to_one_line():
 
 def test_building_says_so_where_the_reader_is_looking():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "chatWorking = 'working out the changes...'" in fn
 
 
 def test_a_finished_plan_announces_itself_and_scrolls_into_view():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "Proposed ${n} change" in fn
     assert "Nothing has been " in fn and "press TRANSMIT" in fn
     assert "$('planbox').scrollIntoView" in fn
@@ -397,13 +398,13 @@ def test_a_finished_plan_announces_itself_and_scrolls_into_view():
 
 def test_a_plan_with_no_actions_still_says_something():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "That produced no changes to make." in fn
 
 
 def test_a_failed_build_is_not_silence():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(prompt, name)")[1].split("\n}\n")[0]
     assert "I could not build that:" in fn
 
 
@@ -445,7 +446,7 @@ def test_notes_look_different_from_what_either_party_said():
 def test_the_working_line_is_always_cleared():
     """A spinner that outlives its request is a hang that never resolves."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    for name in ("async function engage(prompt)", "async function apply()"):
+    for name in ("async function engage(prompt, name)", "async function apply()"):
         fn = ui.split(name)[1].split("\n}\n")[0]
         tail = fn.split("finally {")[-1]
         assert "chatWorking = ''" in tail, name
@@ -569,3 +570,89 @@ def test_which_model_answered_is_on_the_reply_it_produced():
     assert "model: d.model || ''" in ui
     fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
     assert "m.model ? `<i>${esc(m.model)}</i>`" in fn
+
+
+# --- naming what gets built -----------------------------------------------
+#
+# Ask for a Marco Sfogli tone and the preset kept whatever name was already on
+# it. A store writes the buffer's CURRENT name, and that name is the only
+# label anybody has afterwards.
+
+def test_the_conversation_decides_the_name():
+    """Picking it needs the judgement to tell a player from an amp model. A
+    first attempt with capitalised-word runs named a Sfogli build "Fender
+    Twin", and saw nothing at all in "i want a marco sfogli style lead",
+    which is how people actually type."""
+    assert "name" in planner.CHAT_SCHEMA["properties"]
+    assert "Marco Sfogli" in planner.CHAT_SYSTEM
+    assert "never the amp you chose to get there" in planner.CHAT_SYSTEM
+    assert "Leave `name` EMPTY" in planner.CHAT_SYSTEM
+
+
+def test_the_heuristic_that_did_not_work_is_gone():
+    assert not hasattr(planner, "name_from_request")
+
+
+def test_reply_is_still_first_so_streaming_survives_the_new_field():
+    assert list(planner.CHAT_SCHEMA["properties"])[0] == "reply"
+    assert '"name": string' in planner.chat_shape_line()
+
+
+def test_applying_the_name_is_code_not_a_request(client, monkeypatch):
+    """A model that is merely asked to emit a rename will sometimes not."""
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None,
+        "actions": [{"kind": "set_param", "block": "amp", "instance": 1,
+                     "param": "DISTORT_MID", "value": 6, "reason": "x"}]})
+    r = client.post("/api/plan", json={"prompt": "a sfogli lead",
+                                       "name": "Marco Sfogli"}).json()
+    first = r["actions"][0]
+    assert first["kind"] == "rename_preset"
+    assert first["type_name"] == "Marco Sfogli"
+    assert not first["validation_errors"]
+
+
+def test_an_adjustment_is_never_renamed(client, monkeypatch):
+    """That is the same preset with a change. Renaming it would be wrong."""
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None,
+        "actions": [{"kind": "set_param", "block": "amp", "instance": 1,
+                     "param": "DISTORT_MID", "value": 6, "reason": "x"}]})
+    for body in ({"prompt": "more presence"},
+                 {"prompt": "more presence", "name": ""},
+                 {"prompt": "more presence", "name": "   "}):
+        r = client.post("/api/plan", json=body).json()
+        assert not any(a["kind"] == "rename_preset" for a in r["actions"]), body
+
+
+def test_a_planner_that_named_it_itself_is_left_alone(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None,
+        "actions": [{"kind": "rename_preset", "block": "PRESET", "instance": 1,
+                     "type_name": "Sfogli Singing Lead", "reason": "x"}]})
+    r = client.post("/api/plan", json={"prompt": "x", "name": "Marco Sfogli"}).json()
+    renames = [a for a in r["actions"] if a["kind"] == "rename_preset"]
+    assert len(renames) == 1
+    assert renames[0]["type_name"] == "Sfogli Singing Lead"
+
+
+def test_a_long_name_still_fits_after_the_prefix(client, monkeypatch):
+    """run_action prepends "FM9AI-" and truncates at 32."""
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {
+        "summary": "s", "clarification": None, "actions": []})
+    r = client.post("/api/plan", json={"prompt": "x", "name": "N" * 60}).json()
+    assert len("FM9AI-" + r["actions"][0]["type_name"]) <= 32
+
+
+def test_the_browser_says_what_it_will_be_called_before_you_build():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
+    assert "FM9AI-${esc(chatName)}" in fn
+    assert "$('cbuild').onclick = () => engage(chatRequest, chatName);" in ui
+
+
+def test_the_name_survives_a_reload_with_the_rest():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "name: chatName" in ui
+    load = ui.split("function loadChat()")[1].split("\n}\n")[0]
+    assert "chatName = typeof d.name === 'string'" in load

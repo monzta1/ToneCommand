@@ -59,6 +59,15 @@ def isolated_env(tmp_path, monkeypatch):
     # is pinned here for every module whether the test asks or not.
     monkeypatch.setenv("TONECOMMAND_STORE_SLOTS_FILE",
                        str(tmp_path / "store_slots.json"))
+    # Fourth time, same lesson, and this one hangs rather than corrupts. Tests
+    # reach get_fm9(), which opens the real MIDI port when one is there. With
+    # the app running and holding that port, the whole suite blocks: it ran
+    # for ten minutes and was killed, with nothing to say which test was
+    # stuck. A test suite must not need the developer to quit their own
+    # program first, and it must never write to the rig it happens to find.
+    # The simulator is a real implementation, so nothing is lost by pinning
+    # it here for every module whether the test asks or not.
+    monkeypatch.setenv("TONECOMMAND_SIM", "1")
     for name in ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
                  "PLANNER_API_KEY", "PLANNER_TIMEOUT", "PLANNER_MAX_TOKENS",
                  "GROK_CLI_MODEL", "ANTHROPIC_API_KEY",

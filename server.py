@@ -436,6 +436,9 @@ def state_text(snap: dict) -> str:
 
 class PromptBody(BaseModel):
     prompt: str
+    #: What the conversation decided this preset should be called, when it
+    #: decided anything. Empty for an adjustment to what is already loaded.
+    name: str | None = None
 
 
 class Action(BaseModel):
@@ -722,6 +725,36 @@ def api_describe_build(body: BuildBody):
     return result
 
 
+def _name_the_build(result: dict, name: str | None) -> None:
+    """Give a built tone its own name, when the conversation decided on one.
+
+    A store writes the buffer's CURRENT name, and the buffer keeps the name of
+    whatever preset was loaded until something changes it. So asking for a
+    Marco Sfogli tone and saving it left a preset called whatever was there
+    before, which is the only label anybody has for it afterwards.
+
+    The NAME comes from the conversation, not from here: picking it needs the
+    judgement to tell a player from an amp model, and a first attempt at doing
+    that with capitalised-word runs named a Sfogli build "Fender Twin" and saw
+    nothing at all in "i want a marco sfogli style lead". Applying it is the
+    part code should do, because a model that is merely asked to emit a rename
+    will sometimes not.
+
+    An adjustment to the loaded preset gets no name and no rename: that is the
+    same preset with a change, and renaming it would be wrong.
+    """
+    want = (name or "").strip()[:26]        # run_action prefixes "FM9AI-"
+    if not want:
+        return
+    actions = result.get("actions") or []
+    if any(a.get("kind") == "rename_preset" for a in actions):
+        return                               # the planner already named it
+    actions.insert(0, {"kind": "rename_preset", "block": "PRESET",
+                       "instance": 1, "type_name": want,
+                       "reason": "naming what this preset is for"})
+    result["actions"] = actions
+
+
 @app.post("/api/plan")
 def api_plan(body: PromptBody):
     # A loaded profile outranks both the live device and the remembered
@@ -789,6 +822,7 @@ def api_plan(body: PromptBody):
         result["anchored_at"] = _last_snapshot["at"] if offline else None
         result["no_state"] = snap is None
         result["values"] = snap.get("values", {}) if snap else {}
+        _name_the_build(result, body.name)
         for a in result.get("actions", []):
             errs, warns = validate_action(Action(**a))
             a["validation_errors"] = errs

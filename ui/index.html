@@ -1199,6 +1199,7 @@
   padding: 11px 13px; font-size: 13px; line-height: 1.6;
 }
 #chat .cagreed .cwho { color: var(--accent, #6ea8fe); opacity: .9; }
+#chat .cname { margin-top: 7px; font-size: 12px; opacity: .7; }
 #chat .cagreed + .cbtns { margin-top: 2px; }
 #chat .cbtns { display: flex; gap: 8px; margin: 4px 0 0; }
 #chat .cbtns button {
@@ -4492,6 +4493,7 @@ function spliceNote(a) {
 let chatLog = [];              // {role, content}
 let chatReady = false;         // the model thinks it has enough to go on
 let chatRequest = '';          // the agreed instruction, in its words
+let chatName = '';             // what it decided to call the preset
 let chatBusy = false;          // a turn is in flight
 let chatWorking = '';          // what it is doing, said where you are looking
 let chatStream = '';           // the reply so far, mid-flight
@@ -4521,7 +4523,8 @@ function saveChat() {
     // is gone rather than present and holding an empty list.
     if (!chatLog.length) { localStorage.removeItem(CHAT_KEY); return; }
     localStorage.setItem(CHAT_KEY, JSON.stringify(
-      {log: chatLog, ready: chatReady, request: chatRequest}));
+      {log: chatLog, ready: chatReady, request: chatRequest,
+       name: chatName}));
   } catch (e) { /* private window, or storage full: not worth a message */ }
 }
 
@@ -4537,8 +4540,9 @@ function loadChat() {
                              && ['user', 'assistant', 'note'].includes(m.role));
     chatReady = !!d.ready;
     chatRequest = typeof d.request === 'string' ? d.request : '';
+    chatName = typeof d.name === 'string' ? d.name : '';
   } catch (e) {
-    chatLog = []; chatReady = false; chatRequest = '';
+    chatLog = []; chatReady = false; chatRequest = ''; chatName = '';
   }
 }
 
@@ -4597,7 +4601,9 @@ function renderChat() {
   // handler ends up bound to whichever copy rendered last.
   + (chatReady && chatRequest
       ? `<div class="cagreed"><span class="cwho">AGREED</span>${
-          esc(chatRequest)}</div>`
+          esc(chatRequest)}${chatName
+            ? `<div class="cname">Saved as <b>FM9AI-${esc(chatName)}</b> when
+                you store it.</div>` : ''}</div>`
       : '')
   + `<div class="cbtns">${
       chatBusy ? '<button id="cstop">STOP</button>' : ''
@@ -4608,7 +4614,7 @@ function renderChat() {
   // somebody back down while they are reading something further up is worse
   // than making them scroll.
   if (wasAtBottom) box.scrollTop = box.scrollHeight;
-  if ($('cbuild')) $('cbuild').onclick = () => engage(chatRequest);
+  if ($('cbuild')) $('cbuild').onclick = () => engage(chatRequest, chatName);
   // Waiting is a thing you can leave. Without this, a wedged backend meant
   // reloading the page, which until recently also lost the conversation.
   if ($('cstop')) $('cstop').onclick = () => {
@@ -4619,7 +4625,7 @@ function renderChat() {
     // thing you learn to fear next to BUILD THIS.
     if (chatLog.length > 1 && !window.confirm(
           'Clear this conversation? It cannot be brought back.')) return;
-    chatLog = []; chatReady = false; chatRequest = '';
+    chatLog = []; chatReady = false; chatRequest = ''; chatName = '';
     try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing to undo */ }
     renderChat();
     $('prompt').focus();
@@ -4722,6 +4728,7 @@ async function talk() {
                       model: d.model || '', backend: d.backend || ''});
         chatReady = !!d.ready;
         chatRequest = d.request || '';
+        chatName = d.name || '';
         landed = true;
       }
     }
@@ -4749,7 +4756,7 @@ async function talk() {
 // Build the agreed tone. Takes the sentence rather than reading the input:
 // pasting a long agreed sentence into a one-line box showed the reader the
 // middle of their own request, scrolled sideways, and nothing else.
-async function engage(prompt) {
+async function engage(prompt, name) {
   prompt = String(prompt || '').trim();
   if (!prompt) return;
   const b = $('cbuild') || $('engage');
@@ -4765,7 +4772,7 @@ async function engage(prompt) {
   try {
     const r = await fetch('/api/plan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt}),
+      body: JSON.stringify({prompt, name: name || null}),
     });
     const plan = await r.json();
     if (plan.error) throw new Error(plan.error);

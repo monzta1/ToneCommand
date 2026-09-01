@@ -175,6 +175,7 @@ Scenes and multi-scene requests:
 - Adding blocks: use add_block (block name + optional position "pre"/"post" relative to the amp) when a requested effect has no block in the preset. It places the block on a free pass-through point in the signal chain; if the executor reports there is no free spot, relay that honestly. Freshly added blocks may need a set_type and parameter settings next.
 - Expression pedal: use bind_pedal (block + param + optional value = floor percent 0-100) to put a continuous parameter under Pedal 2, and unbind_pedal (block + param) to take it back off. Pedal 1 is the player's global volume and must NEVER be referenced or rebound. unbind_pedal only removes Pedal 2 bindings; anything driven by another source was set up on the FM9 itself and is refused.
 - rename_preset / rename_scene (new name in type_name; scene number in value). Tool-created presets are prefixed FM9AI- automatically.
+- NAME WHAT YOU BUILD. If the request is for a tone with an identity - a named player, a band, a song, a style, or a whole rig with several scenes - include a rename_preset naming it after that, and rename_scene for each scene you set up, after what the scene is for. A preset built for one player's sound and left carrying the previous preset's name is how somebody ends up with a Petrucci build saved as "Devs Gift Of Tone". Do NOT rename for an adjustment to the tone already loaded ("a bit more presence", "tighten the gate"): that is the same preset, adjusted.
 - store (slot number in value) persists the edit buffer to a preset slot. Only the slots listed as storable in the reference are allowed; every other slot is refused by the hardware layer, and if the reference says storing is disabled, never propose store. Only propose store when the user explicitly asks to save, and the UI will ask the user to confirm the overwrite separately.
 - If a requested change is impossible, say so in the summary. Never silently substitute a different effect without saying so."""
 
@@ -501,7 +502,9 @@ How to be useful:
 - When they describe something you can already act on, say what you would change in plain terms and ask if that is the idea. Do not list parameter values.
 - If they are clearly ready, say so plainly and stop asking questions.
 
-Set `ready` true only when you could write a concrete plan right now without guessing at anything that matters. Put in `request` a single clear sentence describing the agreed tone change, written as an instruction, capturing everything decided in the conversation."""
+Set `ready` true only when you could write a concrete plan right now without guessing at anything that matters. Put in `request` a single clear sentence describing the agreed tone change, written as an instruction, capturing everything decided in the conversation.
+
+Put in `name` what this preset should be CALLED, when the conversation is about a tone with an identity: a player, a band, a song, or a distinctive style. Two or three words, the identity itself and not a description of it ("Marco Sfogli", "Van Halen Brown", "Comfortably Numb"). Name the player or the song, never the amp you chose to get there. Leave `name` EMPTY when the conversation is about adjusting the preset already loaded, because that is the same preset with a change, not a new one."""
 
 CHAT_SCHEMA = {
     "type": "object",
@@ -509,8 +512,9 @@ CHAT_SCHEMA = {
         "reply": {"type": "string"},
         "ready": {"type": "boolean"},
         "request": {"type": "string"},
+        "name": {"type": "string"},
     },
-    "required": ["reply", "ready", "request"],
+    "required": ["reply", "ready", "request", "name"],
     "additionalProperties": False,
 }
 
@@ -592,7 +596,8 @@ class ReplyStreamer:
 
 
 def chat_shape_line() -> str:
-    return ('{"reply": string, "ready": boolean, "request": string}')
+    return ('{"reply": string, "ready": boolean, "request": string, '
+            '"name": string}')
 
 
 def _full_prompt(prompt: str, device_state: str, param_reference: str,
@@ -1114,6 +1119,7 @@ def converse_stream(messages: list[dict], device_state: str,
         "reply": reply,
         "ready": bool(raw.get("ready")),
         "request": str(raw.get("request") or "").strip(),
+        "name": str(raw.get("name") or "").strip()[:26],
         "backend": "openai", "model": model,
         "attempts": [Attempt("openai", base, model).as_dict()],
     })
@@ -1142,6 +1148,7 @@ def converse(messages: list[dict], device_state: str,
     return {"reply": reply,
             "ready": bool(raw.get("ready")),
             "request": str(raw.get("request") or "").strip(),
+            "name": str(raw.get("name") or "").strip()[:26],
             "backend": name, "model": model,
             "attempts": [a.as_dict() for a in attempts]}
 
