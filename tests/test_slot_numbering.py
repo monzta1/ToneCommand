@@ -39,14 +39,21 @@ def test_a_store_action_carries_a_dual_numbered_label(client, monkeypatch):
 
 
 def test_every_place_a_store_slot_is_shown_uses_the_label():
-    """Two of them: the plan card and the TRANSMIT confirmation."""
+    """The plan card, the TRANSMIT confirmation, and the headline warning
+    above the button. A store is the one irreversible thing in the product,
+    so the slot it names must match what the owner sees in FM9-Edit
+    everywhere it appears, not in two places out of three."""
     shown = [line for line in UI.splitlines()
              if "OVERWRITES slot" in line or "STORES to preset" in line
-             or "stores.map" in line]
-    assert len(shown) == 3, shown
+             or "OVERWRITES preset slot" in line or "stores.map" in line]
+    assert shown, "no store slot is shown anywhere, which cannot be right"
+    # The property, not a count. This used to assert an exact number of lines
+    # and had to be edited every time a surface was added or a line wrapped,
+    # which teaches the next person to bump the number rather than check the
+    # rule. The rule is that a raw wire number never reaches the reader.
     for line in shown:
         assert "a.value" not in line or "slot_label" in line, line
-    assert UI.count("a.slot_label || a.value") == 2
+        assert ".value}" not in line or "slot_label" in line, line
 
 
 # --- the live readout matches the panel the owner is looking at ---

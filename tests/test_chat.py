@@ -981,3 +981,78 @@ def test_the_scene_names_survive_a_reload():
     assert "scenes: chatScenes" in ui
     load = ui.split("function loadChat()")[1].split("\n}\n")[0]
     assert "chatScenes = Array.isArray(d.scenes)" in load
+
+
+# --- the plan panel, when the plan is 114 changes long ---------------------
+#
+# Reported as: "this is a LOT of scrolling before i can see the transmit
+# button". An eight-scene Metallica build is 114 cards, and TRANSMIT was
+# underneath all of them.
+
+def test_the_buttons_come_before_the_changes():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    panel = ui.split('id="planbox"')[1].split("</div>\n\n")[0]
+    assert panel.index('class="plan-actions"') < panel.index('id="plandetail"')
+    assert panel.index('id="apply"') < panel.index('id="plancards"')
+
+
+def test_the_changes_are_collapsed_and_say_how_many():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<details id="plandetail">' in ui
+    fn = ui.split("function planHeadline(plan)")[1].split("\n}\n")[0]
+    assert "d.open = false" in fn
+    assert "show all ${n} change" in fn
+
+
+def test_the_headline_says_what_the_plan_does():
+    """The things that matter were findable only by reading 114 cards."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function planHeadline(plan)")[1].split("\n}\n")[0]
+    assert "change${n === 1 ? '' : 's'}" in fn
+    assert "preset renamed to" in fn
+    assert "scene${" in fn and "renamed" in fn
+
+
+def test_an_overwrite_is_shouted_not_filed_at_the_bottom():
+    """The one irreversible thing in the product was a card among 114, last."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function planHeadline(plan)")[1].split("\n}\n")[0]
+    assert "OVERWRITES preset slot" in fn
+    assert "UNDO covers it; this part it does not" in fn
+    assert "#planhead .planwarn {" in ui
+
+
+# --- an indicator that cannot be scrolled away from -----------------------
+
+def test_there_is_a_working_indicator_fixed_to_the_window():
+    """The build banner lives in the COMMAND panel, which is fine while you
+    are looking at it and useless the moment you scroll down to watch for the
+    plan. A five-minute operation reported itself only somewhere you can
+    scroll away from."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert '<div id="working" hidden></div>' in ui
+    css = ui.split("#working {")[1].split("}")[0]
+    assert "position: fixed" in css
+
+
+def test_it_mirrors_whatever_is_actually_running():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "chatBusy || planSending" in fn, "one source of truth, not two"
+    assert "BUILDING" in fn and "SENDING" in fn and "THINKING" in fn
+
+
+def test_it_offers_a_way_out_and_a_way_back():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "chatAbort.abort()" in fn
+    assert "scrollIntoView" in fn, "SHOW ME has to take you to the thing"
+
+
+def test_transmitting_feeds_the_same_indicator():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "planSending = true" in fn
+    assert "renderWorking()" in fn
+    tail = fn.split("finally {")[-1]
+    assert "planSending = false" in tail, "it must go away when the send ends"
