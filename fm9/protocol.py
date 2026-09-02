@@ -532,13 +532,21 @@ def editor_number(wire_preset: int) -> int:
 
 
 def slot_label(wire_preset: int) -> str:
-    """Both numbers, for anything a person reads.
+    """Both numbers, the owner's first, for anything a person reads.
 
     Printing the wire number alone invites clearing the wrong preset: the
     owner checks the editor, sees a different number, and has to work out
     which of us is off by one.
+
+    The EDITOR number leads. It is the number on the front panel, in
+    FM9-Edit, and in the header pill, so it is the one every other number
+    gets compared against. Leading with the wire number had the header
+    saying 159 while the panel below said "158 (FM9-Edit 159)", which reads
+    as the app disagreeing with itself about which preset is loaded
+    (Moncy, 2026-09-01). The wire number rides in the bracket, named for
+    what it is, because configs and MIDI tools still speak it.
     """
-    return f"{wire_preset} (FM9-Edit {editor_number(wire_preset)})"
+    return f"{editor_number(wire_preset)} (wire {wire_preset})"
 
 
 def slot_set_label(slots) -> str:
@@ -559,8 +567,10 @@ def slot_set_label(slots) -> str:
         if len(run) == 1:
             parts.append(slot_label(run[0]))
         else:
-            parts.append(f"{run[0]}-{run[-1]} (FM9-Edit "
-                         f"{editor_number(run[0])}-{editor_number(run[-1])})")
+            # Editor numbers lead, same as slot_label: every number a person
+            # compares this against comes from the front panel.
+            parts.append(f"{editor_number(run[0])}-{editor_number(run[-1])} "
+                         f"(wire {run[0]}-{run[-1]})")
     return ", ".join(parts)
 
 

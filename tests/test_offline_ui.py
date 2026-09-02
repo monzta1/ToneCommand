@@ -184,7 +184,9 @@ def test_the_state_endpoint_turns_that_into_a_clean_disconnect(monkeypatch):
     monkeypatch.setattr(server, "drop_fm9",
                         lambda: dropped.update(n=dropped["n"] + 1))
     d = TestClient(server.app).get("/api/state").json()
-    assert d == {"connected": False}
+    # gig_mode rides along even unplugged, so the header pill stays true
+    # while the rig is off.
+    assert d == {"connected": False, "gig_mode": False}
     assert dropped["n"] == 1
 
 

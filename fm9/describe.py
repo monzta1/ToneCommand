@@ -78,6 +78,28 @@ class SourceError(RuntimeError):
     """A source that could not be read, with something useful to say."""
 
 
+class SourceCancelled(RuntimeError):
+    """The person stopped waiting, so the reading was stopped too.
+
+    Its own class rather than a SourceError, because "you stopped it" and
+    "it failed" must never share an error message.
+    """
+
+
+def _say(on_stage, key: str, note: str) -> None:
+    """Report where the reading is, when anyone is listening.
+
+    Progress is a courtesy and the reading is the point: a listener that
+    raises must not take the transcript down with it.
+    """
+    if on_stage is None:
+        return
+    try:
+        on_stage(key, note)
+    except Exception:
+        pass
+
+
 def looks_like_url(text: str) -> bool:
     t = (text or "").strip()
     return t.startswith(("http://", "https://")) and " " not in t.split("\n")[0]
@@ -143,7 +165,7 @@ def whisper_model_name() -> str:
     return os.environ.get("TONECOMMAND_WHISPER_MODEL", "").strip() or WHISPER_MODEL
 
 
-def read_youtube(url: str) -> dict:
+def read_youtube(url: str, on_stage=None) -> dict:
     """Everything the video will give us, cheapest source first.
 
     The order is the whole design:
@@ -174,6 +196,7 @@ def read_youtube(url: str) -> dict:
     notes, parts = [], []
     workdir = tempfile.mkdtemp(prefix="tonecommand-src-")
     try:
+        _say(on_stage, "fetch", "fetching the video's description and captions")
         info = _yt_info(yt_dlp, url, workdir)
         title = info.get("title") or ""
         duration = info.get("duration") or 0
@@ -188,7 +211,8 @@ def read_youtube(url: str) -> dict:
         if subs:
             parts.append(f"SPOKEN TRANSCRIPT:\n{subs}")
         else:
-            spoken, note = _whisper_transcript(yt_dlp, url, workdir, duration)
+            spoken, note = _whisper_transcript(yt_dlp, url, workdir, duration,
+                                               on_stage=on_stage)
             if spoken:
                 parts.append(f"SPOKEN TRANSCRIPT (transcribed here):\n{spoken}")
             if note:
@@ -268,7 +292,7 @@ def whisper_ready() -> tuple[bool, str]:
 
 
 def _whisper_transcript(yt_dlp, url: str, workdir: str,
-                        duration: int) -> tuple[str, str]:
+                        duration: int, on_stage=None) -> tuple[str, str]:
     """Download the audio and transcribe it locally. The last resort.
 
     Returns (text, note). A note without text is the reason there is none, and
@@ -296,6 +320,11 @@ def _whisper_transcript(yt_dlp, url: str, workdir: str,
                     f"{duration // 60} minutes, which is too long to "
                     f"transcribe here. Paste the part that describes the tone "
                     f"instead.")
+    mins = max(1, round(duration / 60)) if duration else 0
+    _say(on_stage, "audio",
+         "this video has no captions, so its audio is being downloaded to "
+         "transcribe here" + (f" ({mins} minute{'s' if mins != 1 else ''})"
+                              if mins else ""))
     audio = os.path.join(workdir, "audio.mp3")
     opts = {"quiet": True, "no_warnings": True, "noprogress": True,
             "format": "bestaudio/best",
@@ -314,8 +343,13 @@ def _whisper_transcript(yt_dlp, url: str, workdir: str,
         # First run downloads the model, about 150MB for base, with no output
         # of its own. Silence for two minutes on a fresh clone reads as a
         # hang, so the caller is told before it starts rather than after.
+        _, cache_note = whisper_ready()
+        _say(on_stage, "model",
+             cache_note or "loading the whisper model")
         model = WhisperModel(whisper_model_name(), device="cpu",
                              compute_type="int8")
+        _say(on_stage, "transcribe",
+             "transcribing the audio; a long video takes a few minutes")
         # NO vad_filter. It silently returned zero segments for a whole video
         # here, which reads as "this video has no speech" and is a far worse
         # failure than transcribing a few seconds of music.
@@ -350,13 +384,16 @@ def read_page(url: str) -> dict:
             "kind": "page", "url": url}
 
 
-def read_source(raw: str) -> dict:
+def read_source(raw: str, on_stage=None) -> dict:
     """A URL or pasted text becomes source text, or an error worth reading."""
     raw = (raw or "").strip()
     if not raw:
         raise SourceError("paste a link or some text describing the tone")
     if looks_like_url(raw):
-        return read_youtube(raw) if youtube_id(raw) else read_page(raw)
+        if youtube_id(raw):
+            return read_youtube(raw, on_stage=on_stage)
+        _say(on_stage, "fetch", "fetching the page")
+        return read_page(raw)
     if len(raw.split()) < 12:
         raise SourceError(
             "that is too short to build from. Paste a link, or enough text to "
@@ -397,29 +434,54 @@ SOURCE:
 """
 
 
-def extract(source_text: str) -> dict:
+def extract(source_text: str, cancel=None) -> dict:
     """Turn a noisy source into a compact spec, with stated and vague split.
 
     Runs on the configured planner backend, because it is the same kind of
     work: read text, return structured JSON. It does NOT go through
     planner.plan, which exists to produce device actions and would be the
     wrong shape for this.
+
+    `cancel` is a threading.Event. Set, it kills the reader subprocess and
+    raises SourceCancelled: a STOP button that leaves a minute of model time
+    running in the background is only pretending to stop.
     """
     cli = planner.find_claude_cli()
     if not cli:
         raise SourceError(
             "reading a source needs a planner backend. Install the claude CLI "
             "or configure one in AI settings.")
+    import time as _time
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [cli, "-p", EXTRACT_TASK + source_text, "--output-format", "json",
              "--model", planner.cli_model()],
-            capture_output=True, text=True, timeout=timeout_s(), cwd="/tmp",
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd="/tmp",
             env={**planner.cli_env(planner.CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
-    except subprocess.TimeoutExpired:
-        raise SourceError(f"reading that source took longer than "
-                          f"{timeout_s()}s. Try a shorter extract of it.")
+    except OSError as exc:
+        raise SourceError(f"the reader could not start: {exc}")
+    deadline = _time.monotonic() + timeout_s()
+    while True:
+        try:
+            # communicate with a short timeout is the poll: it returns the
+            # full output when the process ends and raises in between, which
+            # is where the cancel and the deadline get their look-in.
+            stdout, stderr = proc.communicate(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            if cancel is not None and cancel.is_set():
+                proc.kill()
+                proc.wait()
+                raise SourceCancelled("stopped while reading the source")
+            if _time.monotonic() > deadline:
+                proc.kill()
+                proc.wait()
+                raise SourceError(f"reading that source took longer than "
+                                  f"{timeout_s()}s. Try a shorter extract of it.")
+    proc = subprocess.CompletedProcess(proc.args, proc.returncode,
+                                       stdout, stderr)
     if proc.returncode != 0:
         raise SourceError(f"the reader failed: {(proc.stderr or '').strip()[:200]}")
     try:

@@ -35,7 +35,7 @@ def test_a_store_action_carries_a_dual_numbered_label(client, monkeypatch):
         "actions": [{"kind": "store", "value": 133, "instance": 1,
                      "reason": "asked to save"}]})
     plan = client.post("/api/plan", json={"prompt": "save this"}).json()
-    assert plan["actions"][0]["slot_label"] == "133 (FM9-Edit 134)"
+    assert plan["actions"][0]["slot_label"] == "134 (wire 133)"
 
 
 def test_every_place_a_store_slot_is_shown_uses_the_label():
@@ -85,7 +85,7 @@ def test_the_text_snapshot_uses_the_label_too():
     snap = {"preset": {"number": 386, "editor": 387,
                        "label": p.slot_label(386), "name": "TEST"},
             "scene": None, "blocks": [], "values": {}}
-    assert "386 (FM9-Edit 387)" in server.state_text(snap)
+    assert "387 (wire 386)" in server.state_text(snap)
 
 
 # --- the save button: the one destructive control in the product ---
@@ -105,7 +105,7 @@ def test_every_offered_slot_carries_both_numbers(client):
     out here overwrites the wrong preset, which is the definition of a prompt
     that has to be unambiguous."""
     for s in client.get("/api/store-slots").json()["slots"]:
-        assert s["label"] == f"{s['number']} (FM9-Edit {s['editor']})"
+        assert s["label"] == f"{s['editor']} (wire {s['number']})"
 
 
 def test_the_slot_list_says_what_each_slot_currently_holds():

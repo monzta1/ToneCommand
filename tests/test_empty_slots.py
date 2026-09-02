@@ -133,10 +133,14 @@ def test_editor_numbering_is_one_based():
     assert p.editor_number(511) == p.PRESET_COUNT == 512
 
 
-def test_slot_label_shows_both_numbers():
-    assert p.slot_label(386) == "386 (FM9-Edit 387)"
+def test_slot_label_shows_both_numbers_owners_first():
+    """The editor number leads: it is the one on the front panel, in
+    FM9-Edit and in the header pill, so every label agrees with them on
+    which number comes first (reordered 2026-09-01 after the header said
+    159 over a panel saying 158)."""
+    assert p.slot_label(386) == "387 (wire 386)"
     got = p.SlotName(386, "<EMPTY>", "Phat Time")
-    assert got.editor == 387 and got.label == "386 (FM9-Edit 387)"
+    assert got.editor == 387 and got.label == "387 (wire 386)"
 
 
 def test_out_of_range_slots_are_refused_not_believed():
@@ -163,5 +167,5 @@ def test_range_refusal_names_both_numbering_schemes():
 def test_an_occupied_slot_refusal_carries_the_editor_number():
     dev = SimFM9(Registry())
     with dev:
-        with pytest.raises(ValueError, match=r"preset 0 \(FM9-Edit 1\)"):
+        with pytest.raises(ValueError, match=r"preset 1 \(wire 0\)"):
             dev.require_empty_slot(0)

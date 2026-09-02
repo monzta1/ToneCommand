@@ -144,6 +144,15 @@
                background: currentColor; margin-right: 7px; animation: pulse 2s infinite; }
   @keyframes pulse { 50% { opacity: 0.25; } }
 
+  /* The performance lockout. Amber when armed, because it is the one state
+     that changes what every other control on this page will do, and a mode
+     that silent is a mode you forget you are in. */
+  #gig { font: inherit; cursor: pointer; }
+  #gig:hover { border-color: var(--amber); color: var(--amber); }
+  #gig.on { border-color: var(--amber); color: var(--amber);
+            background: rgba(255,180,84,0.12);
+            box-shadow: 0 0 12px rgba(255,180,84,0.35); }
+
   /* Scene switcher: shaped like the footswitches it stands in for, because
      this is the one control that gets used while playing. */
   .scenes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
@@ -210,6 +219,8 @@
   .pillbtn .caret { margin-left: 9px; }
   .pillbtn:hover { border-color: var(--cyan-dim); }
   .pillbtn.open { border-color: var(--cyan); color: var(--cyan); }
+  .pillbtn.busy { border-color: var(--amber); }
+  .pillbtn.busy b { color: var(--amber); }
 
   .pop {
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
@@ -445,6 +456,11 @@
   .srcprog .step.now::before { content: '\25b8  '; }
   .srcprog .step.done::before { content: '\2713  '; }
   .srcprog .found { margin-top: 8px; color: var(--fg); }
+  .srcprog .srctime { color: var(--cyan); font-variant-numeric: tabular-nums; }
+  /* the global button rule pads for ENGAGE; a stop inside a progress box is
+     a small out, not a headline action */
+  .srcprog #srcstop { margin-top: 10px; padding: 4px 12px;
+                      font-size: var(--fs-label); }
   /* What the source said, versus what this tool chose. The whole honesty of
      the feature is in keeping these two visually separate. */
   .srcask {
@@ -1219,6 +1235,19 @@
 }
 #working .wwhat { color: var(--cyan); font-weight: 600; }
 #working .wtime { opacity: .55; font-variant-numeric: tabular-nums; }
+/* The verdict, once work ends. Green is the announcement Moncy asked for:
+   "transmit was complete and the preset is ready", said in the one place
+   that cannot be scrolled away from. The dot stops pulsing: done is not a
+   kind of busy. */
+#working.done-ok { border-color: #2f7d52; }
+#working.done-ok .wwhat { color: var(--green); }
+#working.done-ok .wdot { background: var(--green); animation: none; }
+#working.done-part { border-color: #8a6a2a; }
+#working.done-part .wwhat { color: var(--amber); }
+#working.done-part .wdot { background: var(--amber); animation: none; }
+#working.done-bad { border-color: #7d2f2f; }
+#working.done-bad .wwhat { color: var(--red); }
+#working.done-bad .wdot { background: var(--red); animation: none; }
 #working button {
   font: inherit; font-size: 10.5px; letter-spacing: .12em; padding: 4px 11px;
   border-radius: 999px; cursor: pointer; background: transparent;
@@ -1240,6 +1269,10 @@
   line-height: 1.6; border: 1px solid var(--line);
 }
 .planres.busy { border-color: var(--cyan-dim); color: var(--cyan); }
+/* The build's finish line: green because it is a success, instructive
+   because the next step was the thing nobody was told. */
+.planres.ready { border-color: #2f7d52; background: rgba(61,255,160,0.06); }
+.planres.ready b { color: var(--green); }
 .planres.ok   { border-color: #2f7d52; background: rgba(90,209,138,0.07); }
 .planres.part { border-color: #8a6a2a; background: rgba(224,163,74,0.07); }
 .planres.bad  { border-color: #7d2f2f; background: rgba(209,90,90,0.07); }
@@ -1479,6 +1512,12 @@
       </span>
       <button class="pill off" id="link" title="click to look for the FM9 again">
         <span class="dot"></span><span id="linktext">LINK</span></button>
+      <!-- The performance lockout, visible and pressable. It used to exist
+           only as an environment variable and an API: with it on, the page
+           looked completely normal and every control just failed one refusal
+           at a time, and the refusal then told a guitarist to POST JSON. -->
+      <button class="pill" id="gig"
+              title="performance lockout: while on, only scene changes reach the FM9">GIG MODE</button>
       <div class="textsize" role="group" aria-label="text size">
         <button id="tsdown" title="smaller text" aria-label="smaller text">A</button>
         <button id="tsup" title="larger text" aria-label="larger text">A</button>
@@ -2054,7 +2093,13 @@ function renderPresets(scrollToCurrent) {
     `<button class="prow${s.number === currentPresetNumber ? ' on' : ''}` +
     `${s.empty ? ' empty' : ''}${i === popCursor ? ' cursor' : ''}" data-preset="${s.number}">` +
     `<span class="num">${s.editor}</span><span class="nm">${esc(s.name)}</span></button>`
-  ).join('') || '<div class="hint" style="padding:10px">nothing matches</div>';
+  ).join('') || `<div class="hint" style="padding:10px">${presetScan
+    // "nothing matches" over an empty list mid-scan reads as "your unit is
+    // empty", which is a false statement about somebody's rig.
+    // No time estimate: measured 3s on real hardware against a 15s guess,
+    // and the live counter says more than any estimate could.
+    ? `reading slot names from the FM9... ${presetScan.read}/${presetScan.total}`
+    : 'nothing matches'}</div>`;
   if (scrollToCurrent) {
     const on = $('plist').querySelector('.prow.on');
     // centre it, so the neighbours above and below are both visible
@@ -2076,15 +2121,61 @@ function closePop() {
   $('preset').classList.remove('open');
 }
 
-async function loadPresets(refresh) {
+//: A slot scan in flight: {read, total}. Reading all 512 names is about
+//: fifteen seconds of MIDI, which used to happen behind a popover saying
+//: "nothing matches" and a RESCAN button that showed nothing at all.
+let presetScan = null;
+
+function renderPresetScan() {
+  const on = !!presetScan;
+  $('prescan').disabled = on;
+  $('prescan').textContent = on
+    ? `READING ${presetScan.read}/${presetScan.total}` : 'RESCAN';
+  // The NAMES button in SAVE TO PRESET waits on the same scan, so it counts
+  // along too, and gets its own label back when the scan ends.
+  if (on) {
+    $('savescan').textContent = `READING ${presetScan.read}/${presetScan.total}`;
+  } else if (/^READING /.test($('savescan').textContent)) {
+    $('savescan').textContent = 'NAMES';
+  }
+  if (!$('ppop').hidden) renderPresets(false);
+}
+
+//: The in-flight scan, shared. A second caller (NAMES while the popover is
+//: already scanning) waits for the same result instead of being turned away
+//: with a stale cache.
+let presetScanPromise = null;
+
+function loadPresets(refresh) {
+  if (presetScanPromise) return presetScanPromise;
+  presetScanPromise = _loadPresets(refresh)
+    .finally(() => { presetScanPromise = null; });
+  return presetScanPromise;
+}
+
+async function _loadPresets(refresh) {
+  presetScan = {read: 0, total: 512};
+  renderPresetScan();
   try {
-    const r = await fetch('/api/presets' + (refresh ? '?refresh=true' : ''));
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    allSlots = d.slots || [];
+    const r = await fetch('/api/presets/stream' + (refresh ? '?refresh=true' : ''));
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let got = null;
+    for await (const [ev, d] of sseFrom(r)) {
+      if (ev === 'progress') {
+        presetScan = {read: d.read, total: d.total};
+        renderPresetScan();
+      }
+      else if (ev === 'error') throw new Error(d);
+      else if (ev === 'result') { got = d; break; }
+    }
+    if (!got) throw new Error('the scan ended before it finished');
+    allSlots = got.slots || [];
     if (!$('ppop').hidden) renderPresets(true);
   } catch (e) {
     $('plist').innerHTML = `<div class="hint" style="padding:10px">could not read presets: ${esc(e.message)}</div>`;
+  } finally {
+    presetScan = null;
+    renderPresetScan();
   }
 }
 
@@ -2092,6 +2183,9 @@ async function gotoPreset(n) {
   if (presetBusy) return;
   presetBusy = true;
   closePop();
+  // The popover closes at once, so without this the click answers with a
+  // beat of nothing while the unit switches.
+  $('preset').classList.add('busy');
   try {
     const r = await fetch('/api/preset', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2106,6 +2200,7 @@ async function gotoPreset(n) {
     log(`preset ${n} failed: ${e.message}`, 'err');
   } finally {
     presetBusy = false;
+    $('preset').classList.remove('busy');
     await refresh();
   }
 }
@@ -2157,7 +2252,17 @@ async function loadShared(presetNumber) {
     const r = await fetch('/api/shared');
     const d = await r.json();
     if (d.error) return;                 // a hint is never worth an error
+    // Gig mode refused the sweep (it is audible); ask again after the set.
+    if (d.gig) return;
     sharedMap = d.shared; sharedFor = d.preset;
+    // The sweep steps the rig through all eight scenes, audibly. Naming it
+    // is what keeps the noises from reading as the tool doing something it
+    // was not asked to.
+    if (d.swept) {
+      log('mapped which scenes share each block’s channel, for the '
+          + 'blast-radius hints. The quick scene-stepping you may have '
+          + 'heard was that read.');
+    }
   } catch (e) { /* silent: this only ever adds information */ }
 }
 
@@ -2565,6 +2670,11 @@ async function holdSlot(slot) {
 async function recallSlot(slot) {
   const btns = ['undo', 'holda', 'reca', 'holdb', 'recb'];
   btns.forEach(b => $(b).disabled = true);
+  // A restore can legitimately write forty values and take seconds. The
+  // button doing it says so; the others just wait.
+  const active = slot === 'undo' ? 'undo' : (slot === 'a' ? 'reca' : 'recb');
+  const was = $(active).textContent;
+  $(active).textContent = slot === 'undo' ? 'UNDOING...' : 'RECALLING...';
   try {
     const r = await fetch('/api/restore', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2588,6 +2698,11 @@ async function recallSlot(slot) {
   } catch (e) {
     log(`restore failed: ${e.message}`, 'err');
   } finally {
+    $(active).textContent = was;
+    // Everything back on; refreshSnaps then re-disables what has nothing to
+    // recall. Leaving this to refreshSnaps alone kept HOLD A and HOLD B
+    // dead for the rest of the session, because it never touches them.
+    btns.forEach(b => $(b).disabled = false);
     await refresh();
     await refreshSnaps();
   }
@@ -2733,6 +2848,83 @@ async function reconnect() {
 }
 
 $('link').onclick = reconnect;
+
+// --- the performance lockout, on the page --------------------------------
+// While on, only scene changes reach the FM9: no parameter writes, no
+// restores, no scans, no preset loads, no stores. It changes what every
+// control on the page will do, so it lives in the header where the state
+// can be seen, and the refusals point here rather than at an API call.
+let gigOn = null;                // null until the first poll answers
+
+function renderGig(on) {
+  if (on === gigOn) return;
+  const was = gigOn;
+  gigOn = on;
+  const el = $('gig');
+  el.classList.toggle('on', on);
+  el.textContent = on ? 'GIG MODE ON' : 'GIG MODE';
+  el.title = on
+    ? 'GIG MODE: only scene changes reach the FM9. Click to switch it off.'
+    : 'performance lockout: click to allow nothing but scene changes, for '
+      + 'playing live';
+  // Said in the log on every real transition, including one made outside
+  // this page (the TONECOMMAND_GIG_MODE variable, or another browser tab),
+  // because a lockout that arrives silently reads as the app breaking.
+  if (on) {
+    log('GIG MODE is on: only scene changes reach the FM9. Everything else '
+        + 'will refuse until it is switched off in the header.', 'warn');
+  } else if (was === true) {
+    log('GIG MODE off: full control restored.', 'ok');
+  }
+}
+
+async function toggleGig() {
+  try {
+    const d = await (await fetch('/api/gig', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({on: !gigOn})})).json();
+    renderGig(!!d.gig_mode);
+  } catch (e) {
+    log(`could not switch gig mode: ${e.message}`, 'err');
+  }
+}
+
+$('gig').onclick = toggleGig;
+
+// --- the cable, live -------------------------------------------------------
+// The five second poll answers "what is the rig doing"; this answers "is it
+// even there", within about a second of the cable moving, because a light
+// that reacts five seconds after the plug does not read as connected to it.
+// The server emits only on change; losing the stream (a server restart)
+// retries quietly and the poll still stands underneath as the fallback.
+async function watchLink() {
+  for (;;) {
+    try {
+      const r = await fetch('/api/link/stream');
+      if (!r.ok || !r.body) throw new Error('no stream');
+      for await (const [ev, d] of sseFrom(r)) {
+        if (ev !== 'link') continue;
+        if (d.present) {
+          // Present is a cue, not a verdict: the full state read is what
+          // proves the rig answers, and it is what turns the light green.
+          await refresh();
+        } else {
+          $('link').className = 'pill off';
+          setRigOff(true);
+        }
+      }
+    } catch (e) { /* stream dropped; try again in a moment */ }
+    await new Promise(res => setTimeout(res, 2000));
+  }
+}
+watchLink();
+// Answered from its own endpoint once at startup, so the pill is truthful
+// before the first full state poll lands (and with the rig unplugged).
+(async () => {
+  try {
+    renderGig(!!(await (await fetch('/api/gig')).json()).gig_mode);
+  } catch (e) { /* the poll will get it */ }
+})();
 
 // --- folding panels ------------------------------------------------------
 // The page grew from four panels to nine, and the tone panel from five groups
@@ -3205,7 +3397,10 @@ async function loadSaveSlots(withNames) {
     if (withNames) {
       $('savescan').disabled = true;
       $('savescan').textContent = 'READING...';
-      await fetch('/api/presets');        // fills the cache the endpoint reads
+      // Through the streaming loader, so this button counts n/512 along
+      // with the popover instead of saying READING... for fifteen silent
+      // seconds. It fills the same cache the endpoint reads.
+      await loadPresets(true);
     }
     const d = await (await fetch('/api/store-slots')).json();
     saveSlots = d.slots || [];
@@ -3253,8 +3448,20 @@ function aimAtLoadedPreset() {
   if (hit) {
     $('saveslot').value = String(cur.number);
     el.className = 'savenow';
-    el.innerHTML = `Loaded: <b>${esc(cur.label)}</b> ` +
-      `${cur.name ? '"' + esc(cur.name) + '"' : ''}. SAVE writes back to it.`;
+    // The slot's FLASH name and the BUFFER's name are different facts, and
+    // after an unsaved build they legitimately differ: the dropdown says
+    // what the slot holds, this line said the buffer's name as though it
+    // were the slot's, and the two read as the app contradicting itself
+    // (reported 2026-09-01, Pink Floyd build sitting unsaved on a
+    // Princeton slot). When they differ, name both and say which is which.
+    const flash = (hit.name || '').trim();
+    const buffer = (cur.name || '').trim();
+    el.innerHTML = (flash && buffer && flash !== buffer)
+      ? `Loaded: <b>${esc(cur.label)}</b>. The slot holds "${esc(flash)}"; `
+        + `your unsaved edits on it are named <b>"${esc(buffer)}"</b>. SAVE `
+        + `overwrites the slot with your edits, under your edits' name.`
+      : `Loaded: <b>${esc(cur.label)}</b> `
+        + `${buffer ? '"' + esc(buffer) + '"' : ''}. SAVE writes back to it.`;
   } else {
     el.className = 'savenow blocked';
     el.innerHTML = `Loaded: <b>${esc(cur.label)}</b> ` +
@@ -3345,18 +3552,25 @@ $('clearslot').onclick = async () => {
   const n = Number($('saveslot').value);
   const slot = saveSlots.find(s => s.number === n);
   if (!slot || !slot.name) return;
+  // ONE confirmation, with the name in it. The typed-name echo was tried
+  // and retired the same evening: it refused legitimate attempts over
+  // invisible double spaces, then over a machine-built title, then got fed
+  // the slot number, and retyping thirty characters is a typing test, not
+  // a safety check. What survives is the part that protects: ERASE only
+  // arms once the slot's name was READ and shown, this dialog shows it
+  // again, and the server matches the name this page displayed against
+  // flash, so a slot that changed since it was shown refuses rather than
+  // erasing the wrong thing.
   if (!window.confirm(
-        `Permanently erase slot ${slot.label}?\n\n`
-        + `It holds "${slot.name}".\n\n`
+        `Permanently erase ${slot.label}?\n\n`
+        + `It holds:  ${slot.name}\n\n`
         + `The slot will read <EMPTY> on the unit afterwards. There is no `
         + `copy of that preset anywhere in this app, UNDO does not cover it, `
         + `and it cannot be brought back.`)) {
     log('erase cancelled', 'warn');
     return;
   }
-  const typed = window.prompt(
-    `Type the preset's name exactly to confirm erasing ${slot.label}:`, '');
-  if (typed === null) { log('erase cancelled', 'warn'); return; }
+  const typed = slot.name;
   const b = $('clearslot');
   b.disabled = true;
   const was = b.textContent;
@@ -3369,9 +3583,14 @@ $('clearslot').onclick = async () => {
     if (!d.ok) throw new Error(d.detail || d.error || 'refused');
     for (const step of d.steps || []) log(step);
     log(d.detail, 'ok');
+    workAnnounce(`ERASED ${slot.label}. It reads <EMPTY> on the unit now.`,
+                 'ok');
     await loadSaveSlots(true);        // that slot's name has just changed
   } catch (e) {
     log(`erase failed: ${e.message}`, 'err');
+    // Said in the strip too: the refusal used to land only in the LOG
+    // panel, far from the button, and read as "erase does nothing".
+    workAnnounce(`ERASE REFUSED: ${String(e.message).slice(0, 140)}`, 'bad');
   } finally {
     b.textContent = was;
     updateSaveButton();
@@ -3412,7 +3631,10 @@ async function saveToSlot() {
     const res = (d.results || []).slice(-1)[0];
     if (!res || !res.ok) throw new Error(res ? res.detail : 'refused');
     log(`saved to ${slot.label}: ${res.detail}`, 'ok');
-    await loadSaveSlots(true);          // that slot's name has just changed
+    // The server corrects its name cache in place when a store lands, so
+    // this is instant; the full rescan it used to force cost seconds of
+    // MIDI to learn a name the store result already carried.
+    await loadSaveSlots(false);
   } catch (e) {
     log(`save failed: ${e.message}`, 'err');
   } finally {
@@ -3433,10 +3655,26 @@ async function scanPreset() {
   btn.disabled = true;
   const was = btn.textContent;
   btn.textContent = 'SCANNING...';
-  $('hout').innerHTML = '<div class="hint">walking the scenes...</div>';
+  $('hout').innerHTML = '<div class="hint">walking the scenes (you will '
+    + 'hear the rig step through them)...</div>';
   try {
-    const r = await fetch('/api/health', {method: 'POST'});
-    const d = await r.json();
+    // The stream names each scene as the rig stands on it. The scan makes
+    // real noises; a page that cannot say which noise is which is a page
+    // that reads as doing something it was not asked to.
+    const r = await fetch('/api/health/stream', {method: 'POST'});
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let d = null;
+    for await (const [ev, p] of sseFrom(r)) {
+      if (ev === 'scene') {
+        btn.textContent = `SCENE ${p.n}/8`;
+        $('hout').innerHTML = `<div class="hint">standing on scene ${p.n}`
+          + `${p.name ? ' “' + esc(p.name) + '”' : ''}, reading `
+          + `it... the scene-stepping you hear is the scan.</div>`;
+      } else if (ev === 'error') {
+        throw new Error(p);
+      } else if (ev === 'result') { d = p; break; }
+    }
+    if (!d) throw new Error('the scan ended before it finished');
     if (d.error) throw new Error(d.error);
     renderHealth(d);
     const bad = d.findings.length;
@@ -3483,11 +3721,13 @@ async function fixAll() {
       btn.textContent = 'ASKING...';
       log(`asking the planner to fix ${asks.length} finding` +
           `${asks.length > 1 ? 's' : ''}...`);
-      const r = await fetch('/api/plan', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({prompt: asks.map(f => f.fix.prompt).join('\n\n')})});
-      const got = await r.json();
-      if (got.error) throw new Error(got.error);
+      // Through streamPlan, not the blocking endpoint. A taste fix is a full
+      // planner call and can run for minutes on the CLI backend; this one
+      // used to sit behind a bare "ASKING..." with no seconds, no heartbeat
+      // and no STOP, which is the frozen-spinner failure rebuilt on a third
+      // button.
+      const got = await streamPlan(
+        {prompt: asks.map(f => f.fix.prompt).join('\n\n')});
       if (got.clarification) throw new Error(got.clarification);
       // the planner's actions first, then the arithmetic, so a level we
       // computed is not overwritten by one it guessed at
@@ -3501,7 +3741,10 @@ async function fixAll() {
     showPlan(plan);
     $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
   } catch (e) {
-    log(`could not build a fix: ${e.message}`, 'err');
+    const stopped = e.name === 'AbortError' || e.message === 'stopped';
+    log(stopped ? 'fix stopped; nothing was proposed and nothing was sent'
+                : `could not build a fix: ${e.message}`,
+        stopped ? 'warn' : 'err');
   } finally {
     btn.disabled = false;
     btn.textContent = was;
@@ -3641,6 +3884,9 @@ async function refresh() {
   try {
     const r = await fetch('/api/state');
     const s = await r.json();
+    // Before the connected check: the lockout state rides along even when
+    // the rig is unplugged, and the pill has to stay true either way.
+    if (typeof s.gig_mode === 'boolean') renderGig(s.gig_mode);
     if (!s.connected) throw new Error(s.error || 'no link');
     if (!$('link').classList.contains('busy')) $('link').className = 'pill on';
     setRigOff(false);
@@ -4175,14 +4421,43 @@ const SRC_STEPS = [
   ['build', 'Building it against your rig'],
 ];
 
+// The latest stage the server named, and when it last said anything. The
+// stage notes come off the wire ("downloading the audio", "transcribing"),
+// so this panel narrates what is genuinely happening rather than guessing.
+let srcStage = '';
+let srcAlive = 0;
+
 function srcProgress(active, note) {
   const box = $('srcprogress');
   box.hidden = false;
   const at = SRC_STEPS.findIndex(s => s[0] === active);
+  let live = '';
+  if (srcWork) {
+    const secs = Math.max(0, Math.round((Date.now() - srcWork.started) / 1000));
+    const heard = Date.now() - Math.max(srcAlive, srcWork.started);
+    // Same three states the chat wait distinguishes: working, and the count
+    // of seconds says so; stuck, and it says press STOP. A spinner renders
+    // both identically, which is how a four minute transcription got read
+    // as a broken button.
+    live = heard > 25000
+      ? `<div class="found">No word from the server for `
+        + `${Math.round(heard / 1000)}s. It may be stuck; press STOP `
+        + `and try again.</div>`
+      : `<div class="found">${srcStage ? esc(srcStage) + ' ' : ''}`
+        + `<span class="srctime">${secs}s</span>`
+        + (srcWork.count
+            ? `, ${srcWork.count} change${srcWork.count === 1 ? '' : 's'} written`
+            : '')
+        + `</div>`;
+  }
   box.innerHTML = SRC_STEPS.map(([key, label], i) => {
     const cls = i < at ? 'done' : (i === at ? 'now' : '');
     return `<span class="step ${cls}">${esc(label)}${i === at ? '...' : ''}</span>`;
-  }).join('') + (note ? `<div class="found">${note}</div>` : '');
+  }).join('') + live + (note ? `<div class="found">${note}</div>` : '')
+    + (srcWork ? `<button id="srcstop">STOP</button>` : '');
+  if ($('srcstop')) $('srcstop').onclick = () => {
+    if (srcWork) srcWork.abort.abort();
+  };
 }
 
 // The honest half: what the source actually said, kept apart from what this
@@ -4209,13 +4484,41 @@ async function analyzeSource() {
   btn.disabled = true;
   const was = btn.textContent;
   btn.textContent = 'READING...';
+  // A video with no captions is minutes of downloading and transcribing,
+  // and the first run downloads a whisper model on top. All of it used to
+  // hide behind one frozen line of text. The server narrates each stage
+  // now; this counts the seconds, listens for the heartbeat, and offers a
+  // STOP that reaches the reader subprocess.
+  srcWork = {what: 'READING THE SOURCE', started: Date.now(), count: 0,
+             abort: new AbortController()};
+  srcStage = '';
+  srcAlive = Date.now();
+  renderWorking();
+  const tick = setInterval(() => { srcProgress('read'); renderWorking(); },
+                           1000);
   try {
     srcProgress('read');
-    const r = await fetch('/api/describe/read', {
+    const r = await fetch('/api/describe/read/stream', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
+      signal: srcWork.abort.signal,
       body: JSON.stringify({source: raw})});
-    const spec = await r.json();
-    if (spec.error) throw new Error(spec.error);
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let spec = null;
+    for await (const [ev, d] of sseFrom(r)) {
+      if (ev === 'ping') { srcAlive = Date.now(); srcProgress('read'); }
+      else if (ev === 'stage') {
+        srcStage = (d && d.note) || '';
+        srcAlive = Date.now();
+        if (srcStage) workSay(srcStage);
+        srcProgress('read');
+      }
+      else if (ev === 'error') throw new Error(d);
+      else if (ev === 'spec') { spec = d; break; }
+    }
+    if (!spec) throw new Error('the reading ended before it finished');
+    srcWork = null;
+    srcStage = '';
+    renderWorking();
 
     const scenes = (spec.scenes || []).length;
     const note = `<b>${esc(spec.summary || '')}</b>`
@@ -4231,9 +4534,16 @@ async function analyzeSource() {
     // calling it an interpretation is not the same as asking.
     askAboutBuild(spec, note);
   } catch (e) {
+    const stopped = e.name === 'AbortError';
     $('srcprogress').hidden = true;
-    log(`could not build from that: ${e.message}`, 'err');
+    log(stopped ? 'reading stopped; the reader was cancelled on the backend too'
+                : `could not build from that: ${e.message}`,
+        stopped ? 'warn' : 'err');
   } finally {
+    clearInterval(tick);
+    srcWork = null;
+    srcStage = '';
+    renderWorking();
     btn.disabled = false;
     btn.textContent = was;
   }
@@ -4406,13 +4716,49 @@ async function runBuild(spec, note) {
   const btn = $('analyze');
   btn.disabled = true;
   btn.textContent = 'BUILDING...';
+  // This call measured 226 seconds for a four scene build and used to show
+  // a static step line the whole way: the exact frozen-spinner failure the
+  // COMMAND box was cured of, rebuilt behind a different button. Same cure:
+  // the count of changes as the model writes them, seconds, a heartbeat,
+  // and a STOP that cancels the planner subprocess.
+  srcWork = {what: 'BUILDING FROM THE SOURCE', started: Date.now(), count: 0,
+             abort: new AbortController()};
+  srcStage = '';
+  srcAlive = Date.now();
+  workLog = [];
+  renderWorking();
+  const tick = setInterval(() => { srcProgress('build', note); renderWorking(); },
+                           1000);
   srcProgress('build', note);
   try {
-    const b = await fetch('/api/describe/build', {
+    const b = await fetch('/api/describe/build/stream', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
+      signal: srcWork.abort.signal,
       body: JSON.stringify({spec, scenes: srcAnswers.scenes,
                             name: srcAnswers.name})});
-    const plan = await b.json();
+    if (!b.ok || !b.body) throw new Error(`the server said ${b.status}`);
+    let plan = null;
+    for await (const [ev, d] of sseFrom(b)) {
+      if (ev === 'ping') { srcAlive = Date.now(); srcProgress('build', note); }
+      else if (ev === 'status') {
+        srcStage = (d && d.note) || 'waiting for a previous request';
+        srcAlive = Date.now();
+        workSay(srcStage);
+        srcProgress('build', note);
+      }
+      else if (ev === 'count') {
+        srcStage = '';
+        srcWork.count = typeof d === 'number' ? d : d.n;
+        const kind = (d && d.kind) || '';
+        if (kind) workSay(`${srcWork.count}. ${kind.replace(/_/g, ' ')}`);
+        srcAlive = Date.now();
+        srcProgress('build', note);
+        renderWorking();
+      }
+      else if (ev === 'error') throw new Error(d);
+      else if (ev === 'plan') { plan = d; break; }
+    }
+    if (!plan) throw new Error('the build ended before it produced anything');
     if (plan.error) throw new Error(plan.error);
     $('srcprogress').hidden = true;
     showPlan(plan);
@@ -4423,9 +4769,16 @@ async function runBuild(spec, note) {
           + `source may not write to a preset slot`, 'warn');
     }
   } catch (e) {
+    const stopped = e.name === 'AbortError' || e.message === 'stopped';
     $('srcprogress').hidden = true;
-    log(`could not build from that: ${e.message}`, 'err');
+    log(stopped ? 'build stopped; it was cancelled on the backend too'
+                : `could not build from that: ${e.message}`,
+        stopped ? 'warn' : 'err');
   } finally {
+    clearInterval(tick);
+    srcWork = null;
+    srcStage = '';
+    renderWorking();
     btn.disabled = false;
     btn.textContent = 'ANALYZE';
   }
@@ -4478,6 +4831,9 @@ function describe(a) {
   // by Brian on an empty preset, where add_block legitimately refuses.
   if (!a) return 'plan halted';
   if (a.kind === 'snapshot') return 'undo snapshot';
+  // The server's own row for auto-provisioning an empty slot; there is no
+  // card for it, and the filters below know to skip it.
+  if (a.kind === 'build_chain') return 'Starting chain: Input, Amp, Cab, Output';
   if (a.kind === 'set_scene') return `Scene select: ${a.value}`;
   if (a.kind === 'set_bypass') return `${a.block} ${a.instance}: ${a.bypassed ? 'bypass' : 'engage'}`;
   if (a.kind === 'set_channel') return `${a.block} ${a.instance}: channel ${'ABCD'[a.value]}`;
@@ -4584,6 +4940,29 @@ function showPlan(plan) {
   const blocked = plan.actions.filter(a => (a.validation_errors || []).length).length;
   if (blocked) log(`validation blocked ${blocked} action(s); they will not be transmitted`, 'err');
   $('planbox').style.display = 'block';
+  // Said HERE, not only in the chat. The completion note used to live in
+  // the transcript while the page scrolled you down to this panel, so the
+  // one line saying "the build worked, TRANSMIT is next" sat exactly where
+  // you no longer were, and a finished build read as nothing happening.
+  const n = plan.actions.length;
+  const willStore = plan.actions.some(a => a.kind === 'store'
+                                      && !(a.validation_errors || []).length);
+  planResult(
+    `<b>Plan ready: ${n} change${n === 1 ? '' : 's'} proposed.</b> `
+    + `Nothing has been sent to the FM9 yet.`
+    + (blocked ? ` ${blocked} ${blocked === 1 ? 'is' : 'are'} marked BLOCKED `
+                 + `and will not transmit.` : '')
+    + ` If it reads right, press TRANSMIT TO FM9 to hear it`
+    + (willStore
+        // No false comfort: UNDO never covers a store, and this plan has one.
+        ? `. This plan also STORES to a preset slot; you will be asked again `
+          + `before that happens, and UNDO does not cover it.`
+        : `; it lands in the edit buffer only, and UNDO puts it back.`),
+    'ready');
+  // And in the strip, which is the only place guaranteed to be on screen
+  // wherever the reader has scrolled to while the build ran.
+  workAnnounce(`BUILD COMPLETE: ${n} change${n === 1 ? '' : 's'} proposed. `
+               + `Review and TRANSMIT below.`, 'ok');
   log(`plan ready: ${plan.actions.length} change(s). Confirm to transmit.`, 'ok');}
 
 // A splice moves blocks the user did not ask about, and may spend a
@@ -4634,10 +5013,15 @@ let chatAlive = 0;             // when the server last said it is still there
 let chatAbort = null;          // lets you stop waiting
 let chatBuilding = false;      // a build, not a conversation turn
 let chatCount = 0;             // changes written so far, counted for real
+let chatQueued = '';           // waiting behind a previous request, says the server
 let planSending = false;       // a transmit is in flight
 let planSent = 0, planTotal = 0;
 let workLog = [];              // a running account, when you open it
 let workOpen = false;          // whether the strip is expanded
+// A source read or build in flight: {what, started, count, abort}. Its own
+// state rather than borrowing chatBusy, because that would draw a building
+// banner inside a conversation this work has nothing to do with.
+let srcWork = null;
 
 // A line in the transcript that this tool wrote about itself, rather than
 // something either party said. Rendered, and NEVER sent back to the model:
@@ -4695,6 +5079,9 @@ function loadChat() {
 function buildNote() {
   const secs = Math.max(0, Math.round((Date.now() - chatStarted) / 1000));
   const heard = Date.now() - Math.max(chatAlive, chatStarted);
+  // Queued outranks everything: "working out the changes" over work that has
+  // not started is the one lie this banner exists to stop telling.
+  if (chatQueued) return chatQueued + '.';
   if (heard > 25000) {
     return `No word from the server for ${Math.round(heard / 1000)}s. `
          + `It may be stuck; press STOP and try again.`;
@@ -4711,6 +5098,7 @@ function waitLine() {
   const secs = Math.max(0, Math.round((now - chatStarted) / 1000));
   const quiet = now - Math.max(chatLastByte, chatStarted);
   const heard = now - Math.max(chatAlive, chatStarted);
+  if (chatQueued) return `${chatQueued}... ${secs}s`;
   if (heard > 20000) {
     return `no answer for ${Math.round(heard / 1000)}s. It may be stuck; `
          + `press STOP and try again.`;
@@ -4738,38 +5126,88 @@ function workSay(line) {
   renderWorking();
 }
 
+//: The strip's verdict once work ends: {text, cls}. The strip is the one
+//: indicator that cannot be scrolled away from, and it used to vanish the
+//: instant a transmit finished, so completion looked like nothing. It holds
+//: the outcome for a few seconds now, loudly, then stands down.
+let workDone = null;
+
+function workAnnounce(text, cls) {
+  workDone = {text, cls: cls || 'ok'};
+  renderWorking();
+  clearTimeout(workAnnounce._t);
+  // Long enough to be read from across the room, gone before it nags; a
+  // click on the strip dismisses it early.
+  workAnnounce._t = setTimeout(() => { workDone = null; renderWorking(); },
+                               12000);
+}
+
 function renderWorking() {
   const el = $('working');
   if (!el) return;
-  const on = chatBusy || planSending;
+  const busy = chatBusy || planSending || !!srcWork;
+  const on = busy || !!workDone;
   el.hidden = !on;
   el.classList.toggle('open', on && workOpen);
-  if (!on) { el.innerHTML = ''; return; }
-  const secs = Math.max(0, Math.round((Date.now() - chatStarted) / 1000));
-  const what = planSending
-    ? `SENDING ${planSent}/${planTotal} to the FM9`
-    : (chatBuilding
-        ? (chatCount ? `BUILDING ${chatCount} change${chatCount === 1 ? '' : 's'} written`
-                     : 'BUILDING')
-        : 'THINKING');
-  el.innerHTML = `<span class="wdot"></span>`
-    + `<span class="wwhat">${esc(what)}</span>`
-    + `<span class="wtime">${planSending ? '' : secs + 's'}</span>`
-    + (chatAbort ? `<button id="wstop">STOP</button>` : '')
-    // It said SHOW ME and only scrolled, so the first question it got was
-    // what it was supposed to do. It opens the running account now: what has
-    // actually been written, in order, which is the thing somebody watching a
-    // five-minute build wants and could not get anywhere.
-    + `<button id="wlog">${workOpen ? 'HIDE LOG' : 'SHOW LOG'}</button>`
-    + (workOpen
-        ? `<div class="wlines">${workLog.length
-             ? workLog.slice(-200).map(l => `<div>${esc(l)}</div>`).join('')
-             : '<div class="wnone">nothing written yet</div>'}</div>`
-        : '');
-  if ($('wstop')) $('wstop').onclick = () => { if (chatAbort) chatAbort.abort(); };
-  $('wlog').onclick = () => { workOpen = !workOpen; renderWorking(); };
+  if (!on) return;
+  // Built ONCE and updated in place. Rebuilding innerHTML every second
+  // destroyed the very button being pressed between mousedown and mouseup,
+  // which is why SHOW LOG sometimes took several clicks to land.
+  if (!el.dataset.built) {
+    el.dataset.built = '1';
+    el.innerHTML = '<span class="wdot"></span><span class="wwhat"></span>'
+      + '<span class="wtime"></span>'
+      + '<button id="wstop">STOP</button>'
+      // It said SHOW ME and only scrolled, so the first question it got was
+      // what it was supposed to do. It opens the running account: what has
+      // actually been written, in order, which is the thing somebody
+      // watching a five-minute build wants and could not get anywhere.
+      + '<button id="wlog"></button>'
+      + '<div class="wlines" hidden></div>';
+    $('wstop').onclick = () => {
+      if (chatAbort) chatAbort.abort();
+      else if (srcWork && srcWork.abort) srcWork.abort.abort();
+    };
+    $('wlog').onclick = () => { workOpen = !workOpen; renderWorking(); };
+    el.addEventListener('click', e => {
+      if (workDone && !e.target.closest('button')) {
+        workDone = null;
+        renderWorking();
+      }
+    });
+  }
+  const startedAt = (chatBusy || planSending) ? chatStarted
+                    : (srcWork ? srcWork.started : 0);
+  const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  const what = !busy
+    ? workDone.text
+    : planSending
+      ? `SENDING ${planSent}/${planTotal} to the FM9`
+      : chatBusy
+        ? (chatBuilding
+            ? (chatQueued ? 'QUEUED'
+               : chatCount ? `BUILDING ${chatCount} change${chatCount === 1 ? '' : 's'} written`
+                           : 'BUILDING')
+            : 'THINKING')
+        : (srcWork.what + (srcWork.count
+            ? `: ${srcWork.count} change${srcWork.count === 1 ? '' : 's'} written`
+            : ''));
+  el.classList.toggle('done-ok', !busy && workDone.cls === 'ok');
+  el.classList.toggle('done-part', !busy && workDone.cls === 'part');
+  el.classList.toggle('done-bad', !busy && workDone.cls === 'bad');
+  el.querySelector('.wwhat').textContent = what;
+  el.querySelector('.wtime').textContent =
+    (planSending || !busy) ? '' : secs + 's';
+  $('wstop').hidden = !(chatAbort || (srcWork && srcWork.abort));
+  $('wlog').textContent = workOpen ? 'HIDE LOG' : 'SHOW LOG';
   const lines = el.querySelector('.wlines');
-  if (lines) lines.scrollTop = lines.scrollHeight;
+  lines.hidden = !workOpen;
+  if (workOpen) {
+    lines.innerHTML = workLog.length
+      ? workLog.slice(-200).map(l => `<div>${esc(l)}</div>`).join('')
+      : '<div class="wnone">nothing written yet</div>';
+    lines.scrollTop = lines.scrollHeight;
+  }
 }
 
 function renderChat() {
@@ -4983,6 +5421,68 @@ async function talk() {
   }
 }
 
+// The one way any plan is asked for. Owns the banner, the elapsed count,
+// the heartbeat, the queued notice and STOP, so a second caller (FIX IT was
+// one) can never grow a quieter copy that leaves somebody staring at a dead
+// button for minutes. Returns the plan; throws on error or STOP.
+async function streamPlan(payload) {
+  chatBusy = true;
+  chatStarted = Date.now();
+  chatAlive = Date.now();
+  chatLastByte = 0;
+  chatStream = '';
+  chatBuilding = true;
+  chatQueued = '';
+  chatCount = 0;
+  workLog = [];
+  chatAbort = new AbortController();
+  renderChat();
+  const tick = setInterval(renderChat, 1000);
+  try {
+    const r = await fetch('/api/plan/stream', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      signal: chatAbort.signal,
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
+    let plan = null;
+    for await (const [ev, d] of sseFrom(r)) {
+      if (ev === 'ping') { chatAlive = Date.now(); renderChat(); }
+      else if (ev === 'status') {
+        // The server is waiting for the settings lock behind an earlier
+        // request. Saying "working out the changes" over work that has not
+        // started is the lie the banner exists to stop, so it says QUEUED.
+        chatQueued = (d && d.note) || 'waiting for a previous request';
+        workSay(chatQueued);
+        chatAlive = Date.now();
+        renderChat();
+      }
+      else if (ev === 'count') {
+        // A real measurement, not a percentage invented from elapsed time,
+        // and it says WHAT was written rather than only how many.
+        chatQueued = '';
+        chatCount = typeof d === 'number' ? d : d.n;
+        const kind = (d && d.kind) || '';
+        if (kind) workSay(`${chatCount}. ${kind.replace(/_/g, ' ')}`);
+        chatAlive = Date.now();
+        renderChat();
+      }
+      else if (ev === 'error') throw new Error(d);
+      else if (ev === 'plan') { plan = d; break; }
+    }
+    if (!plan) throw new Error('the build ended before it produced anything');
+    if (plan.error) throw new Error(plan.error);
+    return plan;
+  } finally {
+    clearInterval(tick);
+    chatBusy = false;
+    chatBuilding = false;
+    chatQueued = '';
+    chatAbort = null;
+    renderChat();
+  }
+}
+
 // Build the agreed tone. Takes the sentence rather than reading the input:
 // pasting a long agreed sentence into a one-line box showed the reader the
 // middle of their own request, scrolled sideways, and nothing else.
@@ -4997,44 +5497,11 @@ async function engage(prompt, name, scenes) {
   // A four-scene build measured 283 seconds and produced 71 actions. It was
   // not stuck, but the panel said "working out the changes..." and kept
   // saying it, unchanged, for five minutes, so the only reasonable reading
-  // was that the button did nothing. Same treatment as a conversation turn:
-  // count the seconds, listen for a heartbeat, and offer a way out.
-  chatBusy = true;
-  chatStarted = Date.now();
-  chatAlive = Date.now();
-  chatLastByte = 0;
-  chatStream = '';
-  chatBuilding = true;
-  chatCount = 0;
-  workLog = [];
-  chatAbort = new AbortController();
-  renderChat();
-  const tick = setInterval(renderChat, 1000);
+  // was that the button did nothing. streamPlan carries the seconds, the
+  // heartbeat, the count and the way out.
   try {
-    const r = await fetch('/api/plan/stream', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      signal: chatAbort.signal,
-      body: JSON.stringify({prompt, name: name || null,
-                            scenes: scenes || null}),
-    });
-    if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
-    let plan = null;
-    for await (const [ev, d] of sseFrom(r)) {
-      if (ev === 'ping') { chatAlive = Date.now(); renderChat(); }
-      else if (ev === 'count') {
-        // A real measurement, not a percentage invented from elapsed time,
-        // and it says WHAT was written rather than only how many.
-        chatCount = typeof d === 'number' ? d : d.n;
-        const kind = (d && d.kind) || '';
-        if (kind) workSay(`${chatCount}. ${kind.replace(/_/g, ' ')}`);
-        chatAlive = Date.now();
-        renderChat();
-      }
-      else if (ev === 'error') throw new Error(d);
-      else if (ev === 'plan') { plan = d; break; }
-    }
-    if (!plan) throw new Error('the build ended before it produced anything');
-    if (plan.error) throw new Error(plan.error);
+    const plan = await streamPlan({prompt, name: name || null,
+                                   scenes: scenes || null});
     if (plan.clarification) {
       // The planner asking a question is not an error, and printing it in red
       // under a hidden panel left it nowhere to be answered. It belongs in the
@@ -5042,8 +5509,6 @@ async function engage(prompt, name, scenes) {
       chatLog.push({role: 'assistant', content: plan.clarification});
       chatReady = false;
       chatWorking = '';
-      chatBusy = false;
-      chatBuilding = false;
       renderChat();
       $('planbox').style.display = 'none';
       clearAffected();
@@ -5055,27 +5520,24 @@ async function engage(prompt, name, scenes) {
     // indistinguishable from nothing happening.
     const n = (plan.actions || []).length;
     chatWorking = '';
-    chatBusy = false;
-    chatBuilding = false;
     chatNote(n
       ? `Proposed ${n} change${n === 1 ? '' : 's'}, below. Nothing has been `
         + `sent yet: review them and press TRANSMIT.`
       : 'That produced no changes to make.');
     if (n) $('planbox').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (e) {
-    const stopped = e.name === 'AbortError';
+    const stopped = e.name === 'AbortError' || e.message === 'stopped';
     log(stopped ? 'build stopped' : `plan failed: ${e.message}`,
         stopped ? 'warn' : 'err');
     chatWorking = '';
-    chatBusy = false; chatBuilding = false;
-    chatNote(stopped ? 'Stopped. Nothing was built and nothing was sent.'
+    // Truthful now, not just reassuring: the server kills the planner
+    // subprocess when the stream is abandoned, so nothing keeps burning in
+    // the background and the next build starts clean.
+    chatNote(stopped ? 'Stopped. The build was cancelled on the backend too; '
+                       + 'nothing was built and nothing was sent.'
                      : `I could not build that: ${e.message}`);
   } finally {
-    clearInterval(tick);
     chatWorking = '';
-    chatBusy = false;
-    chatBuilding = false;
-    chatAbort = null;
     if (document.body.contains(b)) { b.disabled = false; b.textContent = was; }
   }
 }
@@ -5544,7 +6006,9 @@ function planResult(html, how) {
   const el = $('planresult');
   if (!el) return;
   el.className = 'planres ' + (how || '');
-  el.innerHTML = html + (how && how !== 'busy'
+  // No DISMISS on the ready strip: its dismiss hides the whole plan box,
+  // which is the right offer after a transmit and a terrible one before it.
+  el.innerHTML = html + (how && how !== 'busy' && how !== 'ready'
     ? ' <button id="planclose">DISMISS</button>' : '');
   el.hidden = false;
   if ($('planclose')) $('planclose').onclick = () => {
@@ -5625,7 +6089,8 @@ async function apply() {
     // every card after an extra result is marked with the wrong outcome.
     let card = 0;
     out.results.forEach(res => {
-      const isAction = res.action && res.action.kind && res.action.kind !== 'snapshot';
+      const isAction = res.action && res.action.kind
+        && res.action.kind !== 'snapshot' && res.action.kind !== 'build_chain';
       if (isAction && cards[card]) cards[card].classList.add(res.ok ? 'done' : 'fail');
       if (isAction) card++;
       const extra = res.before !== undefined && res.before !== null
@@ -5637,16 +6102,51 @@ async function apply() {
     // what was asked for. A partial failure that reports "sent" is worse than
     // no report at all.
     const acted = out.results.filter(
-      r => r.action && r.action.kind && r.action.kind !== 'snapshot');
+      r => r.action && r.action.kind && r.action.kind !== 'snapshot'
+        && r.action.kind !== 'build_chain');
     const good = acted.filter(r => r.ok).length;
     const bad = acted.length - good;
+    // NAME the failures. The old banner pointed at one card folded inside
+    // a hundred, twice in one evening, and the player had to go hunting
+    // for a sentence the app was already holding.
+    const failures = acted.filter(r => !r.ok).slice(0, 3).map(r =>
+      `${describe(r.action)} (${String(r.detail || 'refused').slice(0, 160)})`);
+    const failLine = bad
+      ? ` Did not apply: ${failures.join('; ')}`
+        + (bad > failures.length ? `; and ${bad - failures.length} more.` : '.')
+      : '';
+    if (bad) {
+      // And take the reader to the evidence: open the fold and land on the
+      // first failed card rather than describing where it could be found.
+      $('plandetail').open = true;
+      const firstFail = document.querySelector('.plan-card.fail, .plan-card.vfail');
+      if (firstFail) firstFail.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+    // Whether a STORE landed changes what is true afterwards, so it changes
+    // what may be said. The old copy assumed every plan was edit-buffer only
+    // and told someone whose plan had just written flash that their presets
+    // were untouched and UNDO covered it: false on both counts, caught live
+    // on a Metallica build stored to slot 159 (2026-09-01). A confirmation
+    // that overstates teaches the reader to stop believing confirmations.
+    const stored = acted.filter(r => r.ok && r.action.kind === 'store');
+    const storedWhere = stored.map(r => {
+      const n = Number(r.action.value);
+      const s = allSlots.find(x => x.number === n);
+      return s ? s.label : String(n);
+    }).join(', ');
+    const bufferNote = stored.length
+      ? ` The plan STORED to slot ${storedWhere}: that slot is now `
+        + `overwritten in flash, and UNDO does not cover a store.`
+      : ' It is in the edit buffer only.';
     chatWorking = '';
     chatNote(bad
       ? `Sent ${good} of ${acted.length} change${acted.length === 1 ? '' : 's'} `
-        + `to the FM9. ${bad} did not apply; the log below says which.`
-      : `Sent ${good} change${good === 1 ? '' : 's'} to the FM9. It is in the `
-        + `edit buffer, so play it. Nothing is saved to the preset until you `
-        + `press SAVE.`);
+        + `to the FM9.${failLine}`
+        + bufferNote
+      : `Sent ${good} change${good === 1 ? '' : 's'} to the FM9. Play it.`
+        + (stored.length ? bufferNote
+                         : ` Nothing is saved to the preset until you press `
+                           + `SAVE, and UNDO puts it back.`));
     // Transmits, not downloads. This is the moment a recipe actually reached
     // somebody's rig, which is a far better signal than a fetch and much
     // harder to inflate by refreshing a page. Queued locally, so a gig with
@@ -5657,17 +6157,39 @@ async function apply() {
         body: JSON.stringify({name: planRecipe})}).catch(() => {});
       planRecipe = null;
     }
+    // A landed store changed a slot's name. The server corrected its cache
+    // in place, so these re-pulls are instant and touch no MIDI; without
+    // them the preset dropdown kept offering the overwritten preset's name
+    // as though it were still there.
+    if (stored.length) {
+      loadPresets(false);
+      loadSaveSlots(false);
+    }
+    // Said in the strip that cannot be scrolled away from, not only in the
+    // plan panel: the transmit's own indicator used to simply vanish at the
+    // finish, and a vanishing indicator reads as nothing having happened.
+    workAnnounce(bad
+      ? `SENT ${good} OF ${acted.length}. Failed: ${failures[0] || 'see the plan panel'}`
+      : (stored.length
+          ? `DONE: ${good} change${good === 1 ? '' : 's'} sent and stored to slot ${storedWhere}. The preset is ready; play it.`
+          : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
+      bad ? 'part' : 'ok');
     const rescan = fixPending;
     fixPending = false;
     // The panel used to hide itself 1.5 seconds after finishing, which threw
     // away the one place the outcome was visible: the per-action ticks and
     // crosses on the cards. It stays until it is dismissed.
     planResult(bad
-      ? `<b>Sent ${good} of ${acted.length}.</b> ${bad} did not apply, `
-        + `marked above. Your presets are untouched; UNDO covers what landed.`
+      ? `<b>Sent ${good} of ${acted.length}.</b>${esc(failLine)} `
+        + `The failed card${bad === 1 ? ' is' : 's are'} marked below.`
+        + (stored.length
+            ? esc(bufferNote)
+            : ` Nothing was stored to flash; UNDO covers what landed.`)
       : `<b>Sent ${good} change${good === 1 ? '' : 's'} to the FM9.</b> `
-        + `It is in the edit buffer, so play it. Nothing is written to the `
-        + `preset until you press SAVE, and UNDO puts it back.`,
+        + (stored.length
+            ? `Play it.` + esc(bufferNote)
+            : `It is in the edit buffer, so play it. Nothing is written to `
+              + `the preset until you press SAVE, and UNDO puts it back.`),
       bad ? 'part' : 'ok');
     clearAffected();
     refresh();
@@ -5677,6 +6199,7 @@ async function apply() {
     chatWorking = '';
     planResult(`<b>Nothing was sent.</b> ${esc(e.message)}`, 'bad');
     chatNote(`Nothing was sent: ${e.message}`);
+    workAnnounce(`NOTHING SENT: ${String(e.message).slice(0, 120)}`, 'bad');
   } finally {
     chatWorking = '';
     planSending = false;
@@ -5746,7 +6269,10 @@ $('aibackend').onchange = () => {
 
 loadAiSettings();
 refresh();
-loadPresets(false);      // cached server side, so this is cheap after the first read
+// Cached server side, so this is cheap after the first read. The SAVE panel
+// renders before the scan finishes and would say "name not read" until
+// somebody pressed NAMES, so it is refreshed from the filled cache after.
+loadPresets(false).then(() => loadSaveSlots(false));
 // --- the two ways to work -------------------------------------------------
 //
 // Saying what you want and turning a knob are different activities. One wants

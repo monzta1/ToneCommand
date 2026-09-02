@@ -183,7 +183,11 @@ def test_building_takes_the_sentence_rather_than_the_input_box():
     assert "engage(chatRequest, chatName, chatScenes)" in ui
     fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "$('prompt').value" not in fn, "building must not touch the input"
-    assert "/api/plan" in fn, "and it still goes through the ordinary planner"
+    # The fetch moved into streamPlan, the one way any plan is asked for, so
+    # FIX IT could share it instead of growing a quieter copy.
+    assert "streamPlan(" in fn, "and it still goes through the ordinary planner"
+    plan_fn = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
+    assert "/api/plan/stream" in plan_fn
 
 
 def test_a_planner_question_lands_in_the_conversation_not_in_red():
@@ -389,7 +393,7 @@ def test_building_says_so_where_the_reader_is_looking():
     a dead button. It is a counting line now, via the same waitLine the
     conversation uses."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
     assert "chatBuilding = true;" in fn
     assert "setInterval(renderChat, 1000)" in fn
     wait = ui.split("function waitLine()")[1].split("\n}\n")[0]
@@ -432,7 +436,7 @@ def test_the_count_is_what_landed_not_what_was_asked_for():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
     assert "acted.filter(r => r.ok).length" in fn
-    assert "did not apply" in fn
+    assert "Did not apply:" in fn
 
 
 def test_a_note_is_never_fed_back_to_the_model():
@@ -505,6 +509,7 @@ def test_the_streamer_is_not_fooled_by_earlier_fields():
 def test_a_backend_that_cannot_stream_still_answers(monkeypatch):
     """Streaming must not become a feature only some configurations have."""
     monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: None)
     monkeypatch.setattr(planner, "converse",
                         lambda *a, **k: {"reply": "hi", "ready": False,
                                          "request": "", "backend": "cli",
@@ -512,6 +517,67 @@ def test_a_backend_that_cannot_stream_still_answers(monkeypatch):
     out = list(planner.converse_stream([{"role": "user", "content": "x"}], "s", "r"))
     assert out == [("done", {"reply": "hi", "ready": False, "request": "",
                              "backend": "cli", "model": "m", "attempts": []})]
+
+
+def test_the_claude_cli_streams_the_chat_reply(monkeypatch):
+    """The zero-configuration default must stream words, not just answer.
+
+    _cli_stream_text is mocked: this asserts the wiring, and the wire format
+    it stands in for was verified against the real CLI separately.
+    """
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: "/bin/claude")
+
+    def fake_stream(full_prompt, on_text=None, cancel=None):
+        for piece in ['{"reply": "war', 'm so far", "ready": false,',
+                      ' "request": "", "name": "", "scenes": []}']:
+            on_text(piece)
+        return ('{"reply": "warm so far", "ready": false, "request": "", '
+                '"name": "", "scenes": []}', "test-model")
+
+    monkeypatch.setattr(planner, "_cli_stream_text", fake_stream)
+    out = list(planner.converse_stream(
+        [{"role": "user", "content": "x"}], "s", "r"))
+    text = "".join(p for k, p in out if k == "text")
+    assert text == "warm so far"
+    kind, done = out[-1]
+    assert kind == "done"
+    assert done["reply"] == "warm so far"
+    assert done["backend"] == "cli" and done["model"] == "test-model"
+
+
+def test_a_cli_stream_failure_falls_back_to_the_blocking_chain(monkeypatch):
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: "/bin/claude")
+
+    def broken(full_prompt, on_text=None, cancel=None):
+        raise planner.BackendFailure("cli", "backend_error", "boom")
+
+    monkeypatch.setattr(planner, "_cli_stream_text", broken)
+    monkeypatch.setattr(planner, "converse",
+                        lambda *a, **k: {"reply": "hi", "ready": False,
+                                         "request": "", "backend": "api",
+                                         "model": "m", "attempts": []})
+    out = list(planner.converse_stream(
+        [{"role": "user", "content": "x"}], "s", "r"))
+    assert out[-1][0] == "done" and out[-1][1]["reply"] == "hi"
+
+
+def test_a_cancelled_cli_stream_does_not_burn_the_other_backends(monkeypatch):
+    """STOP must never hand the person a fresh multi-minute attempt on the
+    next candidate."""
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: "/bin/claude")
+
+    def cancelled(full_prompt, on_text=None, cancel=None):
+        raise planner.PlanCancelled("stopped")
+
+    monkeypatch.setattr(planner, "_cli_stream_text", cancelled)
+    monkeypatch.setattr(planner, "converse",
+                        lambda *a, **k: pytest.fail("fallthrough ran"))
+    with pytest.raises(planner.PlanCancelled):
+        list(planner.converse_stream([{"role": "user", "content": "x"}],
+                                     "s", "r"))
 
 
 def test_the_stream_endpoint_exists_beside_the_plain_one(client):
@@ -531,10 +597,15 @@ def test_both_chat_paths_describe_the_same_rig():
 
 def test_the_stream_pings_while_it_is_quiet():
     """The only thing that separates "still thinking" from "the connection
-    died". No amount of spinner animation answers that."""
-    src = inspect.getsource(server.api_chat_stream)
-    assert "event: ping" in src
-    assert "out.get(timeout=3)" in src
+    died". No amount of spinner animation answers that.
+
+    The plumbing lives in ONE place now, so every stream inherits the ping
+    rather than each endpoint hand-rolling its own and drifting.
+    """
+    assert "_stream_response(" in inspect.getsource(server.api_chat_stream)
+    shared = inspect.getsource(server._stream_response)
+    assert "event: ping" in shared
+    assert "out.get(timeout=3)" in shared
 
 
 def test_the_browser_tells_slow_apart_from_stuck():
@@ -677,9 +748,10 @@ def test_the_name_survives_a_reload_with_the_rest():
 def test_planning_has_a_heartbeat_too(client):
     paths = {r.path for r in server.app.routes}
     assert "/api/plan" in paths and "/api/plan/stream" in paths
-    src = inspect.getsource(server.api_plan_stream)
-    assert "event: ping" in src
-    assert "out.get(timeout=3)" in src
+    assert "_stream_response(" in inspect.getsource(server.api_plan_stream)
+    shared = inspect.getsource(server._stream_response)
+    assert "event: ping" in shared
+    assert "out.get(timeout=3)" in shared
 
 
 def test_one_body_two_deliveries():
@@ -687,7 +759,38 @@ def test_one_body_two_deliveries():
     splice consequences and the blast-radius maths is exactly the duplication
     that goes subtly wrong on one path only."""
     assert "_plan_for(body)" in inspect.getsource(server.api_plan)
-    assert "_plan_for(body, on_count=" in inspect.getsource(server.api_plan_stream)
+    src = inspect.getsource(server.api_plan_stream)
+    assert "_plan_for(body," in src and "on_count=" in src
+
+
+def test_every_long_operation_shares_the_stream_plumbing():
+    """One wait experience, not five. A path that grows its own copy of the
+    queue-and-ping loop is a path whose STOP quietly stops working."""
+    for fn in (server.api_plan_stream, server.api_chat_stream,
+               server.api_apply_stream, server.api_describe_build_stream,
+               server.api_describe_read_stream, server.api_health_stream,
+               server.api_presets_stream):
+        assert "_stream_response(" in inspect.getsource(fn), fn.__name__
+
+
+def test_disconnecting_reaches_the_backends():
+    """STOP has to stop the work, not just the watching: an abandoned CLI run
+    used to hold the settings lock for minutes and queue the next request
+    behind a ghost."""
+    shared = inspect.getsource(server._stream_response)
+    assert "cancel.set()" in shared.split("finally:")[-1]
+    assert "cancel" in inspect.getsource(server._plan_for)
+    cli = inspect.getsource(planner._cli_stream_text)
+    assert "proc.kill()" in cli and "PlanCancelled" in cli
+
+
+def test_waiting_for_the_lock_is_said_not_suffered():
+    """A request queued behind a previous plan must say so instead of showing
+    "working out the changes..." over work that has not started."""
+    src = inspect.getsource(server._hold_settings)
+    assert "queued" in src
+    for fn in (server._plan_for, server._describe_build_for):
+        assert "_hold_settings(" in inspect.getsource(fn), fn.__name__
 
 
 def test_the_shared_body_returns_data_not_http():
@@ -707,16 +810,20 @@ def test_a_planner_failure_still_reaches_the_old_route_as_502(client, monkeypatc
 
 def test_a_long_build_can_be_left():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
     assert "chatAbort = new AbortController()" in fn
     assert "signal: chatAbort.signal" in fn
-    assert "e.name === 'AbortError'" in fn
-    assert "Stopped. Nothing was built and nothing was sent." in fn
+    # The catch lives in the caller; the message says the backend was
+    # cancelled too, which became true when the server started killing the
+    # planner subprocess on disconnect.
+    caught = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    assert "e.name === 'AbortError'" in caught
+    assert "nothing was built and nothing was sent" in caught
 
 
 def test_stopping_a_build_leaves_nothing_running():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
     tail = fn.split("finally {")[-1]
     for cleared in ("clearInterval(tick)", "chatBusy = false",
                     "chatBuilding = false", "chatAbort = null"):
@@ -771,11 +878,39 @@ def test_a_split_marker_is_still_counted(monkeypatch):
 
 def test_a_backend_that_cannot_stream_still_plans(monkeypatch):
     monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: None)
     monkeypatch.setattr(planner, "plan",
                         lambda *a, **k: {"summary": "s", "actions": [],
                                          "clarification": None})
     out = list(planner.plan_stream("x", "s", "r"))
     assert [k for k, _ in out] == ["done"]
+
+
+def test_the_claude_cli_streams_the_action_count(monkeypatch):
+    """The count was dead on the default install: plan_stream only counted on
+    the router backend, so the person this feature was measured against (a
+    283 second CLI build) never saw it."""
+    monkeypatch.setattr(planner, "_openai_base_url", lambda: "")
+    monkeypatch.setattr(planner, "find_claude_cli", lambda: "/bin/claude")
+
+    def fake_stream(full_prompt, on_text=None, cancel=None):
+        for piece in ['{"summary": "s", "actions": [{"kind": "set_param"',
+                      ', "block": "amp", "param": "DISTORT_GAIN", "value": 5}',
+                      ', {"kind": "set_scene", "value": 2}]}']:
+            on_text(piece)
+        return ('{"summary": "s", "actions": [{"kind": "set_param", '
+                '"block": "amp", "param": "DISTORT_GAIN", "value": 5}, '
+                '{"kind": "set_scene", "value": 2}]}', "test-model")
+
+    monkeypatch.setattr(planner, "_cli_stream_text", fake_stream)
+    out = list(planner.plan_stream("x", "s", "r"))
+    counts = [p for k, p in out if k == "count"]
+    assert [c["n"] for c in counts] == [1, 2]
+    assert counts[-1]["kind"] == "set_scene"
+    kind, done = out[-1]
+    assert kind == "done"
+    assert done["backend"] == "cli" and done["model"] == "test-model"
+    assert len(done["actions"]) == 2
 
 
 def test_counting_is_a_courtesy_and_the_plan_is_the_point(monkeypatch):
@@ -830,7 +965,7 @@ def test_the_banner_says_when_it_has_stopped_hearing_anything():
 
 def test_the_count_resets_between_builds():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
     assert "chatCount = 0;" in fn
 
 
@@ -850,8 +985,11 @@ def test_transmitting_reports_each_change_as_it_lands():
 
 
 def test_a_progress_callback_cannot_break_the_transmit():
+    """The guard moved into the shared step() helper when refusals started
+    counting as steps too; the property is unchanged."""
     src = inspect.getsource(server._apply_for)
-    step = src.split("if on_step is not None:")[1].split("if not res.get")[0]
+    step = src.split("def step(")[1].split("for a in body.actions:")[0]
+    assert "if on_step is None:" in step
     assert "except Exception:" in step
 
 
@@ -888,7 +1026,8 @@ def test_the_outcome_stays_until_it_is_dismissed():
 def test_the_outcome_says_what_landed_and_what_did_not():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "did not apply" in fn
+    # Strengthened 2026-09-01: failures are NAMED, not merely counted.
+    assert "Did not apply:" in fn
     assert "UNDO puts it back" in fn
     assert "Nothing was sent." in fn
 
@@ -1113,7 +1252,7 @@ def test_the_strip_opens_into_a_log():
 
 def test_both_halves_feed_the_same_log():
     ui = (ROOT / "ui" / "index.html").read_text()
-    build = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    build = ui.split("async function streamPlan(payload)")[1].split("\n}\n")[0]
     send = ui.split("async function apply()")[1].split("\n}\n")[0]
     assert "workSay(" in build and "workSay(" in send
 
@@ -1133,7 +1272,7 @@ def test_the_log_does_not_grow_without_bound():
 
 def test_each_run_starts_a_fresh_log():
     ui = (ROOT / "ui" / "index.html").read_text()
-    for name in ("async function engage(prompt, name, scenes)",
+    for name in ("async function streamPlan(payload)",
                  "async function apply()"):
         fn = ui.split(name)[1].split("\n}\n")[0]
         assert "workLog = []" in fn, name
@@ -1152,3 +1291,87 @@ def test_the_strip_stops_being_a_pill_once_it_is_a_panel():
     assert "#working.open { border-radius: 12px" in ui
     fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
     assert "classList.toggle('open', on && workOpen)" in fn
+
+
+def test_the_outcome_copy_knows_whether_a_store_landed():
+    """Caught live on 2026-09-01: a plan whose store had just overwritten
+    slot 159 was answered with "Your presets are untouched; UNDO covers what
+    landed", false on both counts. What is true after a transmit depends on
+    whether a store landed, so the copy has to check before it claims."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "r.action.kind === 'store'" in fn
+    assert "UNDO does not cover a store" in fn
+    assert "Your presets are untouched" not in fn
+    assert "overwritten in flash" in fn
+
+
+def test_a_finished_build_says_so_where_you_land():
+    """The completion note lived in the chat transcript while the page
+    scrolled you to the plan panel, so a finished build read as nothing
+    happening (Moncy, 2026-09-01: "it doesnt give any indication that build
+    was completed successfully"). The verdict now renders inside the plan
+    panel itself, from showPlan, so every proposing path gets it."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function showPlan(plan)")[1].split("\n}\n")[0]
+    assert "'ready'" in fn
+    assert "Plan ready" in fn
+    assert "TRANSMIT TO FM9" in fn
+    # No false comfort on store plans: UNDO never covers a store.
+    assert "a.kind === 'store'" in fn
+    assert "UNDO does not cover it" in fn
+    # And DISMISS must not be offered on the ready strip: its dismiss hides
+    # the whole plan box.
+    pr = ui.split("function planResult(html, how)")[1].split("\n}\n")[0]
+    assert "how !== 'ready'" in pr
+
+
+def test_the_strip_is_built_once_so_its_buttons_survive_the_tick():
+    """SHOW LOG sometimes took several presses: the strip rebuilt its whole
+    innerHTML every second, so the button being pressed was destroyed
+    between mousedown and mouseup and the click fell into the gap (Moncy,
+    2026-09-01). The skeleton is built once and only text updates."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "el.dataset.built" in fn
+    assert "textContent" in fn, "updates must be text, not innerHTML"
+    # the one innerHTML write for the buttons sits behind the built guard
+    guard = fn.split("if (!el.dataset.built)")[1].split("\n  }")[0]
+    assert 'id="wlog"' in guard and 'id="wstop"' in guard
+
+
+def test_completion_is_announced_where_it_cannot_be_scrolled_away_from():
+    """"the app should announce loudly that transmit was complete and the
+    preset is ready. didnt see that." The strip used to vanish the instant
+    work ended; it holds a green verdict now, and a transmit or a finished
+    build says so there, wherever the reader has scrolled."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "workDone" in fn
+    send = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "workAnnounce(" in send
+    assert "The preset is ready" in send
+    assert "NOTHING SENT" in send, "failure must be as loud as success"
+    built = ui.split("function showPlan(plan)")[1].split("\n}\n")[0]
+    assert "workAnnounce(" in built and "BUILD COMPLETE" in built
+
+
+def test_a_failed_action_is_named_not_pointed_at():
+    """"1 did not apply, marked above" sent the player hunting through a
+    hundred folded cards, twice in one evening, for a sentence the app was
+    already holding. The banner names the failure, the fold opens itself,
+    and the first failed card is scrolled into view."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "Did not apply:" in fn
+    assert "describe(r.action)" in fn
+    assert "$('plandetail').open = true" in fn
+    assert ".plan-card.fail" in fn
+    assert "marked above" not in fn
+
+
+def test_failed_actions_reach_the_server_log_too():
+    """Diagnosing a failure meant asking the player to read their browser
+    back; the server now records what it refused and why."""
+    src = inspect.getsource(server._apply_for)
+    assert src.count("log.warning") >= 2, "both refusal paths must log"

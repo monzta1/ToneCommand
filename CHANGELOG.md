@@ -2,7 +2,146 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## 0.7.0 (2026-09-01)
+## 0.8.0 (2026-09-02)
+
+One wait experience, everywhere. The COMMAND box learned to count seconds,
+listen for a heartbeat and offer a way out months before the rest of the app
+did; every other path that could run for more than a few seconds still hid
+behind a frozen line of text. This release moves all of them onto the same
+machinery, and makes STOP mean stop.
+
+### Added
+- **The claude CLI backend streams.** Plans stream their action count and
+  chat streams its words through `--output-format stream-json`, so the
+  "31 changes written" counter finally fires on the zero-configuration
+  default install instead of only behind an OpenAI-compatible router. The
+  wire format was verified against the real CLI, not assumed.
+- **STOP stops the backend.** Abandoning a plan, chat, build or source read
+  kills the planner subprocess on the server instead of leaving it burning
+  for minutes while holding the settings lock. A request that does have to
+  wait behind an earlier one now says QUEUED instead of pretending to work.
+- **BUILD FROM A SOURCE streams.** Reading narrates its stages off the wire
+  (fetching, downloading audio, the first-run whisper model, transcribing,
+  extracting) with an elapsed count and STOP; building shows the same
+  changes-written counter as the COMMAND box. Both used to be a static line
+  over minutes of work, the exact failure the plan stream was built to end.
+- **FIX IT goes through the streaming planner**, with the banner, the count
+  and STOP, instead of a bare ASKING... over a multi-minute call.
+- **The preset scan counts.** Reading all 512 slot names is about fifteen
+  seconds of MIDI; the popover, RESCAN and NAMES now count n/512 through it
+  instead of showing "nothing matches" over an empty list, which read as
+  "your unit is empty".
+- **The health scan names the scene it is standing on**, so the noises the
+  rig makes during a scan are narrated rather than left unexplained, and the
+  button counts SCENE n/8.
+- **GIG MODE is on the page.** A header pill shows the performance lockout
+  and toggles it; it used to exist only as an environment variable and an
+  API, so the page looked normal while every control failed one refusal at a
+  time, and the refusal then told a guitarist to POST JSON.
+- The blast-radius sweep says so: mapping which scenes share channels steps
+  the rig through all eight scenes audibly, and the log now names that read
+  when it happens.
+- **The LINK pill tracks the cable, both ways, in about a second.** The
+  server keeps one CoreMIDI client with a real notify callback on a runloop
+  thread, which is the thing that actually keeps a macOS process's view of
+  the MIDI bus alive (two earlier fixes for this are recorded, disproven,
+  in KNOWN_QUIRKS), and `GET /api/link/stream` pushes presence changes to
+  the page the moment they happen. Verified across six live plug/unplug
+  cycles on real hardware.
+
+### Fixed
+- **A build aimed at an empty slot lays its own foundations.** A 135-action
+  plan used to halt at "ADD amp" on a freshly erased slot and tell the
+  player to go and press BUILD A STARTING CHAIN themselves: the tool knew
+  the problem, knew the remedy, owned the code for it, and handed the work
+  back. A transmit containing add_block now builds the starting chain
+  itself when the loaded slot is empty (announced on the plan card before
+  confirmation, reported as its own row in the results), and an add for a
+  block already present counts as satisfied instead of halting everything
+  after it.
+- **Erasing is one confirmation now; the typing test is retired.** The
+  typed-name echo refused legitimate attempts over invisible double
+  spaces, then over a machine-built title, then got fed the slot number,
+  all in one evening. What survives is the part that protects: ERASE only
+  arms once the slot's name has been read and shown, the single dialog
+  names the slot and exactly what it holds, and the page sends the name it
+  displayed for the server to match against flash, so a slot that changed
+  since it was shown still refuses. API callers keep the name contract,
+  spacing and case forgiven, and a typed slot number gets a reply naming
+  the actual ask instead of a bare refusal.
+- **Every slot label now leads with the number on your unit.** The header
+  pill said 159 while every label below said "158 (FM9-Edit 159)", so the
+  app looked like it disagreed with itself about which preset was loaded.
+  Labels are "159 (wire 158)" everywhere now: the front-panel number
+  first, the MIDI wire number named for what it is in the bracket. One
+  function owns the format, so nothing can drift back. The SAVE dropdown
+  also fills its names right after startup instead of saying "name not
+  read" until NAMES was pressed.
+- **The SAVE panel contradicted its own dropdown after an unsaved build.**
+  The "Loaded:" line printed the edit buffer's name as though it were the
+  slot's, directly above a dropdown showing what flash actually holds, and
+  the two read as mismatching data. They are two true facts about two
+  different things; when they differ the panel now names both and says
+  which is which: what the slot holds, what your unsaved edits are called,
+  and that SAVE writes the second over the first.
+- **A refused action was missing from the live transmit count.** The
+  validation branch skipped the progress callback, so the SENDING counter
+  stuck at n-1 of N while the final banner said otherwise. Found by running
+  the stream against the real server, not by reading the code, which had
+  looked fine. Refusals now count as failed steps.
+- **ERASE refused legitimate attempts and looked broken.** The typed-name
+  confirmation demanded an exact match against names that carry internal
+  double spaces the eye cannot see and machine-built titles nobody retypes
+  from memory; two real attempts in a row were refused, and the refusal
+  landed only in the LOG panel, far from the button. Spacing runs and case
+  are forgiven now (the name itself is not), refusals are logged
+  server-side, and both the refusal and the success are announced in the
+  strip. (The typing itself was retired later the same evening; see the
+  one-confirmation entry above.)
+- **A failed action was pointed at, not named.** "1 did not apply, marked
+  above" left the player hunting through a hundred folded cards, twice in
+  one evening. The outcome banner now names each failure with its reason,
+  the card list opens itself and scrolls to the first failed card, and the
+  server logs every refused action so a failure can be diagnosed without
+  asking the player to read their browser back.
+- **SHOW LOG sometimes needed several presses.** The working strip rebuilt
+  its entire HTML every second, so the button being pressed was destroyed
+  between mousedown and mouseup and the click fell into the gap. The strip
+  is built once now and only its text updates.
+- **The strip vanished at the finish, so completion looked like nothing.**
+  It now holds the verdict for a few seconds, in the one place that cannot
+  be scrolled away from: DONE in green with the count (and the stored slot
+  when one was written), partial sends in amber, failures in red, and
+  BUILD COMPLETE when a plan lands. A click dismisses it early.
+- **A finished build looked like nothing happening.** The completion note
+  landed in the chat transcript while the page scrolled you to the plan
+  panel, so the one line saying "the build worked, TRANSMIT is next" sat
+  exactly where you no longer were. The plan panel now opens with its own
+  verdict strip: how many changes, that nothing has been sent, that
+  TRANSMIT is the next step, and the truth about UNDO for store plans.
+- **The preset dropdown kept the overwritten preset's name after a stored
+  plan.** The slot-name cache was only ever invalidated by RESCAN, NAMES,
+  rename and erase; a store inside a transmitted plan never told it. The
+  store result already carries the slot's new name, so the cache entry is
+  now corrected in place (no rescan) and the page re-pulls its lists after
+  any transmit that stored. The SAVE button's full rescan-after-save is
+  gone for the same reason: it spent seconds of MIDI to learn a name the
+  store result had already delivered.
+- **The transmit banner lied after a stored plan.** "Your presets are
+  untouched; UNDO covers what landed" was shown after a plan whose store had
+  just overwritten a flash slot, false on both counts and caught live on the
+  first real build through the new pipeline. The outcome copy now checks
+  whether a store landed and names the overwritten slot when one did.
+- **Gig mode could audibly walk all eight scenes mid-song.** The shared-
+  channel sweep ran automatically when the preset changed and was not gig
+  gated, so a front-panel preset change during a set had the tool stepping
+  scenes while someone played through it. It now refuses during gig mode and
+  answers from cache only.
+- HOLD A and HOLD B stayed dead for the rest of the session after any undo
+  or recall: the recall disabled all five buttons and the refresh only ever
+  re-enabled three.
+- UNDO and RECALL say UNDOING.../RECALLING... while a forty-value restore
+  runs; the preset pill shows a busy state while the unit switches.
 
 Recipe sharing stops being code and starts being a thing that exists. The
 worker and schema had been written and tested since 0.4.x and never deployed,

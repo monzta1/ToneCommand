@@ -60,8 +60,8 @@ def test_a_gappy_whitelist_is_not_described_as_a_range(monkeypatch):
         fm9.store_preset(140)
     msg = str(err.value)
     assert "133-155" not in msg, "the whitelist is not contiguous"
-    assert "133 (FM9-Edit 134)" in msg
-    assert "150-155 (FM9-Edit 151-156)" in msg
+    assert "134 (wire 133)" in msg
+    assert "151-156 (wire 150-155)" in msg
 
 
 def test_the_refused_slot_is_named_in_both_numberings(monkeypatch):
@@ -69,15 +69,15 @@ def test_the_refused_slot_is_named_in_both_numberings(monkeypatch):
     fm9 = SimFM9()
     with pytest.raises(PermissionError) as err:
         fm9.store_preset(509)
-    assert "509 (FM9-Edit 510)" in str(err.value)
+    assert "510 (wire 509)" in str(err.value)
 
 
 def test_slot_set_label_collapses_runs():
     from fm9 import protocol as p
-    assert p.slot_set_label([133]) == "133 (FM9-Edit 134)"
-    assert p.slot_set_label(range(133, 136)) == "133-135 (FM9-Edit 134-136)"
+    assert p.slot_set_label([133]) == "134 (wire 133)"
+    assert p.slot_set_label(range(133, 136)) == "134-136 (wire 133-135)"
     assert p.slot_set_label([5, 133, 134, 135, 200]) == (
-        "5 (FM9-Edit 6), 133-135 (FM9-Edit 134-136), 200 (FM9-Edit 201)")
+        "6 (wire 5), 134-136 (wire 133-135), 201 (wire 200)")
 
 
 # --- the owner can see and change the boundary from the app ---------------
@@ -130,7 +130,7 @@ def test_widening_names_what_it_newly_exposes(monkeypatch, tmp_path):
     c.post("/api/store-slots", json={"spec": "200-201"})
     d = c.post("/api/store-slots", json={"spec": "200-205"}).json()
     assert [s["label"] for s in d["newly_exposed"]] == [
-        f"{n} (FM9-Edit {n + 1})" for n in range(202, 206)]
+        f"{n + 1} (wire {n})" for n in range(202, 206)]
     assert d["count"] == 6
 
 
@@ -196,3 +196,35 @@ def test_the_examples_only_fill_the_box():
     handler = script.split("document.querySelectorAll('.eg')")[1].split("});")[0]
     assert "$('slotspec').value = b.dataset.eg" in handler
     assert "fetch(" not in handler and "saveSlotSpec" not in handler
+
+
+def test_a_landed_store_corrects_the_preset_name_cache(monkeypatch):
+    """Caught live on 2026-09-01: a plan stored a Metallica build over slot
+    159 and the preset dropdown went on offering the overwritten preset's
+    name as though it were still there. The store result carries the slot's
+    new name, so the cache entry is corrected in place, with no rescan."""
+    from fastapi.testclient import TestClient
+    import server
+
+    monkeypatch.setenv("TONECOMMAND_STORE_SLOTS", "133-160")
+    sim = SimFM9(server.reg)
+    monkeypatch.setattr(server, "_fm9", sim)
+    monkeypatch.setitem(server._preset_cache, "slots", [
+        {"number": 140, "editor": 141, "label": "140 (FM9-Edit 141)",
+         "name": "Old Blackface", "empty": False}])
+    r = TestClient(server.app).post("/api/apply", json={"actions": [
+        {"kind": "store", "block": "PRESET", "instance": 1, "value": 140}]})
+    res = r.json()["results"][0]
+    assert res["ok"], res
+    row = server._preset_cache["slots"][0]
+    assert row["name"] != "Old Blackface"
+    assert row["name"] == sim.current_preset()[1]
+
+
+def test_the_page_refreshes_its_slot_lists_after_a_stored_transmit():
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    at = fn.index("if (stored.length) {")
+    block = fn[at:at + 220]
+    assert "loadPresets(false)" in block
+    assert "loadSaveSlots(false)" in block

@@ -214,6 +214,16 @@ class BackendFailure(RuntimeError):
         self.model = model
 
 
+class PlanCancelled(RuntimeError):
+    """The caller stopped waiting, so the work was stopped too.
+
+    Raised by the streaming paths when their `cancel` event is set. It is not
+    a BackendFailure on purpose: a cancelled backend must not trigger the
+    fallthrough chain, because the person who pressed STOP would then be
+    handed a fresh multi-minute attempt on the next candidate.
+    """
+
+
 @dataclass
 class Attempt:
     """One backend's turn: what was tried, and how it went."""
@@ -691,6 +701,130 @@ def _plan_via_cli(prompt: str, device_state: str,
                              target=cli)
 
 
+def _cli_stream_text(full_prompt: str, on_text=None, cancel=None) -> tuple[str, str]:
+    """Run the claude CLI and hand its reply over as it is written.
+
+    Returns (result_text, model). Calls `on_text(piece)` for every text delta
+    the CLI emits, which is what lets a caller count actions or show words
+    while a multi-minute plan is still being thought up. The blocking runner
+    stays untouched: this is only ever entered from the streaming paths, and
+    any failure here raises BackendFailure so those paths can fall back to the
+    ordinary blocking call with its full candidate chain.
+
+    `cancel` is a threading.Event. When it is set, the subprocess is KILLED
+    and PlanCancelled is raised. That is the whole difference between a STOP
+    button that stops and one that only stops watching: before this, an
+    aborted browser request left the CLI running to completion while holding
+    the settings lock, so the very next attempt silently queued behind a
+    ghost.
+
+    Event shapes verified against claude CLI 2.1.255 on this machine, not
+    assumed: text arrives as {"type":"stream_event","event":{"type":
+    "content_block_delta","delta":{"type":"text_delta","text":...}}} and the
+    run closes with a {"type":"result"} envelope carrying the whole reply,
+    is_error and modelUsage, the same envelope the blocking path parses.
+    """
+    import queue as _q
+    import threading as _th
+
+    cli = find_claude_cli()
+    if not cli:
+        raise BackendFailure("cli", "unavailable", "claude binary not found")
+    args = [cli, "-p", full_prompt,
+            "--output-format", "stream-json", "--verbose",
+            "--include-partial-messages", "--model", cli_model()]
+    try:
+        proc = subprocess.Popen(
+            args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd="/tmp",
+            env={**cli_env(CLAUDE_ENV_KEYS),
+                 "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
+    except OSError as exc:
+        raise BackendFailure("cli", "unavailable", str(exc)[:200], target=cli)
+
+    # A pipe read blocks with no timeout, so the deadline and the cancel
+    # check need the reads on their own thread and this one on a queue.
+    lines: _q.Queue = _q.Queue()
+
+    def _read():
+        try:
+            for line in proc.stdout:
+                lines.put(line)
+        finally:
+            lines.put(None)
+
+    _th.Thread(target=_read, daemon=True).start()
+    deadline = time.monotonic() + timeout_s()
+    result_text, model, is_error, err_detail = "", "", False, ""
+    pieces: list[str] = []
+    try:
+        while True:
+            if cancel is not None and cancel.is_set():
+                raise PlanCancelled("stopped while the model was working")
+            if time.monotonic() > deadline:
+                raise BackendFailure("cli", "timeout",
+                                     f"no reply within {timeout_s()}s",
+                                     target=cli)
+            try:
+                line = lines.get(timeout=0.5)
+            except _q.Empty:
+                continue
+            if line is None:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            etype = event.get("type")
+            if etype == "stream_event":
+                inner = (event.get("event") or {})
+                delta = (inner.get("delta") or {})
+                piece = delta.get("text")
+                if isinstance(piece, str) and piece:
+                    pieces.append(piece)
+                    if on_text is not None:
+                        on_text(piece)
+            elif etype == "result":
+                result_text = event.get("result") or ""
+                is_error = bool(event.get("is_error"))
+                model = cli_envelope_model(event)
+                for key in ("result", "api_error_status", "terminal_reason"):
+                    val = event.get(key)
+                    if is_error and isinstance(val, str) and val.strip():
+                        err_detail = val.strip()[:300]
+                        break
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+
+    if is_error:
+        raise BackendFailure("cli", "backend_error",
+                             err_detail or "the CLI reported an error",
+                             target=cli)
+    # The result envelope is authoritative; the accumulated deltas cover a
+    # CLI that streamed the text but died before writing the envelope.
+    text = result_text.strip() or "".join(pieces).strip()
+    if not text:
+        stderr = ""
+        try:
+            stderr = (proc.stderr.read() or "").strip()[:200]
+        except Exception:
+            pass
+        raise BackendFailure("cli", "empty_output",
+                             stderr or "no result and no streamed text",
+                             target=cli)
+    return text, model or cli_model()
+
+
+def _cli_can_stream() -> bool:
+    """Whether the streaming paths should try the claude CLI at all."""
+    return bool(find_claude_cli())
+
+
 def grok_model(envelope: dict, fallback: str = "") -> str:
     """Which model actually answered.
 
@@ -1075,7 +1209,8 @@ _ACTION_MARK = '"kind"'
 _KIND_VALUE = re.compile(r'"kind"\s*:\s*"([a-z_]+)"')
 
 
-def plan_stream(prompt: str, device_state: str, param_reference: str):
+def plan_stream(prompt: str, device_state: str, param_reference: str,
+                cancel=None):
     """Plan, counting the changes as the model writes them.
 
     Yields ("count", n) as actions appear and finally ("done", plan). A plan
@@ -1093,15 +1228,34 @@ def plan_stream(prompt: str, device_state: str, param_reference: str):
     There is no total, so there is no percentage. Saying "31 changes so far"
     is worth more than a bar that lies about how much is left.
 
-    Only the OpenAI-compatible backend can do this. Everything else falls
-    through to the ordinary blocking plan, which is why this yields the same
-    ("done", plan) either way.
+    The OpenAI-compatible backend and the claude CLI both stream. The CLI
+    matters most: it is the zero-configuration default, so before it could
+    stream the count never fired on exactly the installs this feature was
+    built for. Everything else falls through to the ordinary blocking plan,
+    which is why this yields the same ("done", plan) either way.
+
+    `cancel` is a threading.Event; setting it stops the streaming backends
+    for real (the CLI subprocess is killed) and raises PlanCancelled.
     """
     import urllib.error
     import urllib.request
 
+    pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
-    if not base or (_env("PLANNER_BACKEND").lower() not in ("", "openai")):
+    if not base or (pinned not in ("", "openai")):
+        if pinned in ("", "cli") and _cli_can_stream():
+            # Streaming beats fallthrough here: in auto order the CLI is the
+            # next candidate after a router anyway, and a cancelled run must
+            # not burn the remaining candidates (see PlanCancelled).
+            try:
+                yield from _plan_stream_cli(prompt, device_state,
+                                            param_reference, cancel)
+                return
+            except PlanCancelled:
+                raise
+            except BackendFailure as exc:
+                log.info("planner: cli streaming failed (%s); "
+                         "falling back to the blocking chain", exc)
         yield ("done", plan(prompt, device_state, param_reference))
         return
 
@@ -1129,6 +1283,8 @@ def plan_stream(prompt: str, device_state: str, param_reference: str):
     try:
         with urllib.request.urlopen(req, timeout=limit) as resp:
             for line in resp:
+                if cancel is not None and cancel.is_set():
+                    raise PlanCancelled("stopped while the model was working")
                 if time.monotonic() > deadline:
                     raise TimeoutError(f"no complete plan within {limit}s")
                 line = line.decode("utf-8", "replace").strip()
@@ -1184,25 +1340,94 @@ def plan_stream(prompt: str, device_state: str, param_reference: str):
     yield ("done", plan_obj)
 
 
+def _plan_stream_cli(prompt: str, device_state: str, param_reference: str,
+                     cancel=None):
+    """The claude CLI half of plan_stream: same events, same counting.
+
+    A generator cannot hand text out of a callback, so the pieces land in a
+    list the loop drains: _cli_stream_text runs on its own thread and this
+    thread turns accumulated text into ("count", ...) events as they appear.
+    """
+    import queue as _q
+    import threading as _th
+
+    full_prompt = _full_prompt(prompt, device_state, param_reference)
+    out: _q.Queue = _q.Queue()
+
+    def _work():
+        try:
+            got = _cli_stream_text(full_prompt,
+                                   on_text=lambda p: out.put(("text", p)),
+                                   cancel=cancel)
+            out.put(("done", got))
+        except Exception as exc:
+            out.put(("raise", exc))
+
+    _th.Thread(target=_work, daemon=True).start()
+    whole, seen = [], 0
+    text, model = "", ""
+    while True:
+        kind, payload = out.get()
+        if kind == "raise":
+            raise payload
+        if kind == "done":
+            text, model = payload
+            break
+        whole.append(payload)
+        kinds = _KIND_VALUE.findall("".join(whole))
+        if len(kinds) > seen:
+            seen = len(kinds)
+            yield ("count", {"n": seen, "kind": kinds[-1]})
+
+    cli = find_claude_cli()
+    try:
+        raw = _extract_json(text)
+        plan_obj = _validate(raw)
+    except Exception as exc:
+        # A malformed reply is this backend failing to deliver, exactly as it
+        # is in _ask_backends, so the caller may fall back to the full chain.
+        raise BackendFailure("cli", "unreadable_output", str(exc)[:200],
+                             target=cli)
+    plan_obj["backend"] = "cli"
+    plan_obj["model"] = model
+    plan_obj["plan_quality"] = _plan_quality(plan_obj)
+    plan_obj["attempts"] = [Attempt("cli", cli, model).as_dict()]
+    log.info("planner: %s answered via cli stream (model %s, %d action(s))",
+             plan_obj["plan_quality"], model,
+             len(plan_obj.get("actions") or []))
+    yield ("done", plan_obj)
+
+
 def converse_stream(messages: list[dict], device_state: str,
-                    param_reference: str):
+                    param_reference: str, cancel=None):
     """Converse, yielding words as they arrive.
 
     Yields ("text", chunk) as the reply forms and finally ("done", result)
     carrying the same dict `converse` returns. Raises the same way it does.
 
-    Only the OpenAI-compatible backend streams, because it is the only one
-    that speaks a wire protocol we drive directly; the CLI backends shell out
-    to a binary that answers once. So this streams when it can and yields the
-    whole thing in one piece when it cannot, rather than offering a different
-    feature depending on somebody's configuration.
+    The OpenAI-compatible backend and the claude CLI both stream words; the
+    CLI does it through --output-format stream-json, so the default install
+    no longer watches "thinking..." while a reply it could be reading forms.
+    Anything else yields the whole thing in one piece, rather than offering a
+    different feature depending on somebody's configuration.
     """
     import urllib.error
     import urllib.request
 
     prompt = _chat_prompt(messages)
+    pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
-    if not base or (_env("PLANNER_BACKEND").lower() not in ("", "openai")):
+    if not base or (pinned not in ("", "openai")):
+        if pinned in ("", "cli") and _cli_can_stream():
+            try:
+                yield from _converse_stream_cli(prompt, device_state,
+                                                param_reference, cancel)
+                return
+            except PlanCancelled:
+                raise
+            except BackendFailure as exc:
+                log.info("chat: cli streaming failed (%s); "
+                         "falling back to the blocking chain", exc)
         yield ("done", converse(messages, device_state, param_reference))
         return
 
@@ -1232,6 +1457,8 @@ def converse_stream(messages: list[dict], device_state: str,
     try:
         with urllib.request.urlopen(req, timeout=limit) as resp:
             for line in resp:
+                if cancel is not None and cancel.is_set():
+                    raise PlanCancelled("stopped while the model was replying")
                 if time.monotonic() > deadline:
                     raise TimeoutError(f"no complete reply within {limit}s")
                 line = line.decode("utf-8", "replace").strip()
@@ -1278,6 +1505,63 @@ def converse_stream(messages: list[dict], device_state: str,
         "scenes": _scene_names(raw.get("scenes")),
         "backend": "openai", "model": model,
         "attempts": [Attempt("openai", base, model).as_dict()],
+    })
+
+
+def _converse_stream_cli(prompt: str, device_state: str,
+                         param_reference: str, cancel=None):
+    """The claude CLI half of converse_stream: same events, same reply.
+
+    The reply streams through ReplyStreamer exactly as the router path does,
+    so only the transport differs, never what the reader sees.
+    """
+    import queue as _q
+    import threading as _th
+
+    full_prompt = _full_prompt(prompt, device_state, param_reference,
+                               CHAT_SYSTEM, chat_shape_line())
+    out: _q.Queue = _q.Queue()
+
+    def _work():
+        try:
+            got = _cli_stream_text(full_prompt,
+                                   on_text=lambda p: out.put(("text", p)),
+                                   cancel=cancel)
+            out.put(("done", got))
+        except Exception as exc:
+            out.put(("raise", exc))
+
+    _th.Thread(target=_work, daemon=True).start()
+    streamer = ReplyStreamer()
+    text, model = "", ""
+    while True:
+        kind, payload = out.get()
+        if kind == "raise":
+            raise payload
+        if kind == "done":
+            text, model = payload
+            break
+        shown = streamer.feed(payload)
+        if shown:
+            yield ("text", shown)
+
+    cli = find_claude_cli()
+    try:
+        raw = _extract_json(text)
+    except ValueError as exc:
+        raise BackendFailure("cli", "unreadable_output", str(exc)[:200],
+                             target=cli)
+    reply = str(raw.get("reply") or "").strip()
+    if not reply:
+        raise RuntimeError("the model replied with nothing to say")
+    yield ("done", {
+        "reply": reply,
+        "ready": bool(raw.get("ready")),
+        "request": str(raw.get("request") or "").strip(),
+        "name": str(raw.get("name") or "").strip()[:26],
+        "scenes": _scene_names(raw.get("scenes")),
+        "backend": "cli", "model": model,
+        "attempts": [Attempt("cli", cli, model).as_dict()],
     })
 
 

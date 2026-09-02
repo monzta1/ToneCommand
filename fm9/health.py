@@ -144,11 +144,16 @@ def _levels(fm9, reg, status) -> dict:
     return out
 
 
-def scan(fm9, reg, read_levels: bool = True) -> dict:
+def scan(fm9, reg, read_levels: bool = True, on_scene=None) -> dict:
     """Walk every named scene of the LOADED preset and report on it.
 
     AUDIBLE, and slow enough to be felt: eight scene changes plus a read each.
     Only ever call this because someone asked for it.
+
+    `on_scene(n, name)` is called as each scene is entered, so a watcher can
+    say which scene the rig is standing on instead of a bare "scanning...".
+    A callback that raises is ignored: progress is a courtesy, the scan is
+    the point.
 
     The scene that was loaded on entry is restored on the way out, including
     when a read raises, so a failed scan does not leave the rig somewhere the
@@ -170,6 +175,11 @@ def scan(fm9, reg, read_levels: bool = True) -> dict:
             name = got[1] if got else None
             if _blank(name):
                 continue
+            if on_scene is not None:
+                try:
+                    on_scene(n, name)
+                except Exception:
+                    pass
             fm9.set_scene(n)
             time.sleep(SETTLE)
             status = fm9.status_dump() or []

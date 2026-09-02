@@ -22,13 +22,18 @@ def client(monkeypatch):
 
 # --- the skipped marker is a contract, and the UI has to implement it ---
 
-def test_a_refused_add_block_still_reports_a_null_action(client):
+def test_a_refused_add_block_still_reports_a_null_action(client, monkeypatch):
     """The server appends a marker with action None so later actions are not
     run against a block that never landed. Pinned here as well as in
-    test_builder_actions, because the UI reads this shape."""
+    test_builder_actions, because the UI reads this shape. The trigger is a
+    genuine placement failure: a duplicate no longer fails (it is the goal
+    state already, 2026-09-02)."""
+    monkeypatch.setattr(server, "_add_block",
+                        lambda fm9, a: {"ok": False, "detail": "no room"})
     body = {"actions": [
         {"kind": "add_block", "block": "amp", "instance": 1},
-        {"kind": "add_block", "block": "amp", "instance": 1},
+        {"kind": "set_param", "block": "amp", "param": "DISTORT_DRIVE",
+         "value": 5},
     ]}
     results = client.post("/api/apply", json=body).json()["results"]
     assert any(r["action"] is None for r in results)
@@ -61,23 +66,20 @@ def test_the_ui_guards_the_null_action_before_touching_kind():
 
 # --- a refusal names the wall it actually hit ---
 
-def test_an_empty_preset_is_not_described_as_having_no_free_cell(client,
-                                                                 monkeypatch):
+def test_an_empty_grid_is_provisioned_not_lectured(client, monkeypatch):
     """An empty FM9 slot has no grid cells at all, not even shunts (finding
-    18), so "no free pass-through cell" describes a packed preset and tells
-    the owner of a blank one nothing they can act on."""
+    18). The answer went from a terminal (issue #36) to a button, and now to
+    the transmit doing it ITSELF: the first row is the chain build, and
+    whether it succeeded or not, nobody is told about free pass-through
+    cells they could never have had."""
     monkeypatch.setattr(server._fm9, "read_grid", lambda: [])
     monkeypatch.setattr(server._fm9, "status_dump", lambda: [])
     results = client.post("/api/apply", json={
         "actions": [{"kind": "add_block", "block": "amp", "instance": 1}]}).json()["results"]
-    detail = results[0]["detail"]
-    assert results[0]["ok"] is False
-    assert "this preset is empty" in detail
-    # The answer used to be a terminal, which is what issue #36 was about.
-    # It is now a button, and the point of the assertion is unchanged: a
-    # refusal has to say what the way forward IS, not only that this is not it.
-    assert "BUILD A STARTING CHAIN" in detail, "say what the answer actually is"
-    assert "no free pass-through cell" not in detail
+    first = results[0]
+    assert first["action"]["kind"] == "build_chain"
+    assert "starting chain" in first["detail"]
+    assert all("no free pass-through cell" not in r["detail"] for r in results)
 
 
 @pytest.mark.parametrize("pos,phrase", [
@@ -141,9 +143,12 @@ def test_a_one_action_plan_is_not_told_its_remaining_actions_were_skipped(
 
 
 def test_a_multi_action_plan_still_says_what_it_skipped(client, monkeypatch):
-    """The contract this marker exists for is unchanged, and now it counts."""
-    monkeypatch.setattr(server._fm9, "read_grid", lambda: [])
-    monkeypatch.setattr(server._fm9, "status_dump", lambda: [])
+    """The contract this marker exists for is unchanged, and now it counts.
+    Triggered by a genuine placement failure; an empty grid no longer fails
+    (it gets provisioned) and a duplicate no longer fails (it is the goal
+    state already)."""
+    monkeypatch.setattr(server, "_add_block",
+                        lambda fm9, a: {"ok": False, "detail": "no room"})
     results = client.post("/api/apply", json={"actions": [
         {"kind": "add_block", "block": "wah", "instance": 1},
         {"kind": "set_param", "block": "wah", "param": "WAH_LEVEL", "value": 0},
@@ -152,3 +157,19 @@ def test_a_multi_action_plan_still_says_what_it_skipped(client, monkeypatch):
     assert results[-1]["action"] is None
     assert "remaining actions skipped (2)" in results[-1]["detail"]
     assert len(results) == 2, "the later actions must not have run"
+
+
+def test_a_refused_action_still_counts_as_a_step(client):
+    """The validation branch skipped the progress callback, so the live
+    SENDING counter stuck at n-1 of N while the final banner said otherwise.
+    Found by running the stream against the real server (2026-09-01), not by
+    reading the code, which had looked fine."""
+    with client.stream("POST", "/api/apply/stream", json={"actions": [
+            {"kind": "set_param", "block": "amp", "instance": 1,
+             "param": "NO_SUCH_PARAM", "value": 1}]}) as r:
+        body = "".join(r.iter_text())
+    steps = [ln for ln in body.splitlines()
+             if ln.startswith("data:") and '"what"' in ln]
+    assert len(steps) == 1, body
+    assert '"ok": false' in steps[0]
+    assert '"done": 1' in steps[0] and '"total": 1' in steps[0]

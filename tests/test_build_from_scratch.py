@@ -53,7 +53,7 @@ def test_the_refusal_says_how_to_find_a_slot():
 def test_it_picks_an_empty_slot_by_itself(sim, capsys):
     assert main([]) == 0
     out = capsys.readouterr().out
-    assert "target: slot 386" in out and "'<EMPTY>'" in out
+    assert "target: slot 387 (wire 386)" in out and "'<EMPTY>'" in out
     assert "live signal path confirmed" in out
 
 
@@ -73,7 +73,7 @@ def test_it_refuses_an_occupied_slot_given_explicitly(sim, capsys):
 
 def test_an_explicit_empty_slot_is_honoured(sim, capsys):
     assert main(["--slot", "449"]) == 0
-    assert "target: slot 449" in capsys.readouterr().out
+    assert "target: slot 450 (wire 449)" in capsys.readouterr().out
 
 
 def test_no_force_flag_exists(sim):
@@ -161,7 +161,7 @@ def test_the_tool_prints_the_editor_number_too(sim, capsys):
     wrong preset gets cleared."""
     assert main([]) == 0
     out = capsys.readouterr().out
-    assert "386 (FM9-Edit 387)" in out
+    assert "387 (wire 386)" in out
 
 
 def test_the_build_leaves_no_undecoded_geometry_on_the_sim():

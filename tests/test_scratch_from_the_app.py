@@ -180,3 +180,46 @@ def test_no_free_slot_is_a_refusal_that_says_what_to_do(client, monkeypatch):
     r = client.post("/api/build-scratch", json={})
     assert r.status_code == 409
     assert "refusing to build" in r.json()["detail"]
+
+
+# --- a build aimed at an empty slot lays its own foundations ---------------
+#
+# The tool used to halt a 135-action plan at "ADD amp" and tell the player
+# to go and press BUILD A STARTING CHAIN themselves: it knew the problem,
+# knew the remedy, owned the code, and handed the work back (Moncy,
+# 2026-09-02). A transmit containing add_block now provisions the chain
+# itself when the loaded slot is empty, and an add for a block the chain
+# already carries counts as satisfied rather than halting everything after.
+
+def test_a_transmit_onto_an_empty_slot_builds_the_chain_first(client):
+    with server._fm9 as dev:
+        dev.select_preset(386)
+    r = client.post("/api/apply", json={"actions": [
+        {"kind": "add_block", "block": "amp", "instance": 1},
+        {"kind": "add_block", "block": "delay", "instance": 1}]}).json()
+    rows = r["results"]
+    assert rows[0]["action"]["kind"] == "build_chain"
+    assert rows[0]["ok"], rows[0]["detail"]
+    assert "starting chain" in rows[0]["detail"]
+    # amp 1 arrived with the chain, so the add is satisfied, not a failure
+    amp = rows[1]
+    assert amp["ok"], amp["detail"]
+    assert "already in this preset" in amp["detail"]
+    # and the plan CONTINUES: the delay places instead of being skipped
+    delay = rows[2]
+    assert delay["action"]["kind"] == "add_block"
+    assert delay["ok"], delay["detail"]
+
+
+def test_an_occupied_slot_gets_no_chain(client):
+    r = client.post("/api/apply", json={"actions": [
+        {"kind": "add_block", "block": "delay", "instance": 2}]}).json()
+    kinds = [row["action"]["kind"] for row in r["results"] if row.get("action")]
+    assert "build_chain" not in kinds
+
+
+def test_the_plan_warns_about_the_provisioning_up_front():
+    import inspect
+    src = inspect.getsource(server._plan_for)
+    assert "starting chain" in src
+    assert "validation_warnings" in src.split("read_grid() == []")[1][:400]

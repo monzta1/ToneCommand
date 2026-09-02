@@ -8,6 +8,7 @@ nothing is ever written to a preset slot on the unit.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 import json
@@ -33,6 +34,12 @@ from fm9.signal_path import resolve_aliases
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="FM9 Tone Control")
+
+#: WARNING and above reach stderr even with no handler configured (Python's
+#: last-resort handler), which is exactly the bar: a failed action inside a
+#: hundred-change transmit was visible only in the browser, so diagnosing it
+#: meant asking the player to read their screen back.
+log = logging.getLogger("tonecommand.server")
 
 reg = Registry()
 _lock = threading.Lock()
@@ -176,9 +183,15 @@ def rescan_midi() -> None:
     device was plugged in, visible to every other process on the machine, and
     invisible to this one until it was restarted.
 
-    Reloading the backend builds a new client, which is the only way to pick
-    up a port that arrived after startup.
+    Reloading the backend was believed to fix that and DOES NOT (proven live
+    2026-09-01: FM9 on the bus, fresh process saw it, this process refused to
+    however many times it reloaded). On macOS the device list a process sees
+    is a CoreMIDI snapshot, and CoreMIDI only refreshes it while the process
+    runs a CFRunLoop, which a uvicorn worker never does. So the fix is to
+    pump the runloop for a moment and let the pending setup notifications
+    land; the backend reload is kept as a harmless second belt.
     """
+    _pump_coremidi()
     try:
         import mido
         mido.set_backend("mido.backends.rtmidi", load=True)
@@ -186,6 +199,77 @@ def rescan_midi() -> None:
         # A backend that will not reload is no worse than before: the next
         # open still tries, it just may not see a newly arrived port.
         pass
+
+
+#: The one CoreMIDI client this process keeps for NOTIFICATIONS, plus the
+#: ctypes callback, which must stay referenced or its trampoline is freed
+#: under CoreMIDI's feet and the process crashes on the next notification.
+_coremidi_watch: dict = {"on": False, "cb": None}
+
+
+def _pump_coremidi() -> None:
+    """Keep this process's view of the MIDI bus alive. macOS only.
+
+    Two wrong fixes are buried here, both proven wrong against the real
+    cable on 2026-09-01, and worth recording so nobody digs them back up:
+
+    1. Reloading the mido backend. New clients in the same process reuse the
+       process-wide device list; only notifications refresh it.
+    2. Pumping CFRunLoopRunInMode before enumerating. rtmidi creates its
+       clients with NO notify callback, so this process has no notification
+       source scheduled: the pump had nothing to run and the list stayed
+       frozen at whatever the first snapshot saw, in both directions
+       (a plugged-in FM9 stayed invisible, an unplugged one stayed present).
+
+    What actually works: create ONE client of our own with a real (no-op)
+    notify callback, on a thread that then keeps its runloop running. The
+    delivery of those notifications is what updates the process-wide device
+    list that every rtmidi enumeration reads.
+    """
+    import sys
+    if sys.platform != "darwin" or _coremidi_watch["on"]:
+        return
+    _coremidi_watch["on"] = True
+
+    def run():
+        try:
+            import ctypes
+            import ctypes.util
+            cm = ctypes.CDLL(ctypes.util.find_library("CoreMIDI"))
+            cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+            cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+            cf.CFStringCreateWithCString.argtypes = [
+                ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+            cf.CFRunLoopRunInMode.restype = ctypes.c_int32
+            cf.CFRunLoopRunInMode.argtypes = [
+                ctypes.c_void_p, ctypes.c_double, ctypes.c_bool]
+            NOTIFY = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)
+            cm.MIDIClientCreate.restype = ctypes.c_int32
+            cm.MIDIClientCreate.argtypes = [
+                ctypes.c_void_p, NOTIFY, ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_uint32)]
+            name = cf.CFStringCreateWithCString(
+                None, b"tonecommand-buswatch", 0x08000100)   # UTF-8
+            cb = NOTIFY(lambda _msg, _ref: None)
+            _coremidi_watch["cb"] = cb
+            client = ctypes.c_uint32(0)
+            # Created on THIS thread on purpose: the notify source attaches
+            # to the creating thread's runloop, and this thread is the one
+            # that will keep that runloop running.
+            if cm.MIDIClientCreate(name, cb, None,
+                                   ctypes.byref(client)) != 0:
+                return
+            mode = ctypes.c_void_p.in_dll(cf, "kCFRunLoopDefaultMode")
+            while True:
+                cf.CFRunLoopRunInMode(mode, 3600.0, False)
+        except Exception:
+            # A watcher that cannot start leaves things exactly as bad as
+            # they were, not worse; the LINK pill then answers only as fast
+            # as a restart, which is the pre-existing behaviour.
+            pass
+
+    threading.Thread(target=run, daemon=True,
+                     name="coremidi-buswatch").start()
 
 
 def drop_fm9():
@@ -411,6 +495,11 @@ def snapshot(fm9: FM9) -> dict:
         # losing the whole page and the port because one modifier read
         # hiccuped is not a trade worth making.
         "mods": _safe_modifiers(fm9),
+        # The lockout changes what every control on the page will do, so the
+        # page has to be able to show it. Before this it was invisible: with
+        # TONECOMMAND_GIG_MODE=1 everything looked normal and every press
+        # failed one refusal at a time.
+        "gig_mode": _gig_mode["on"],
     }
     # Remember the last reading taken from real hardware, so a design can be
     # planned against something true when the rig is off.
@@ -519,6 +608,48 @@ def logo():
     return FileResponse(ROOT / "ui" / "logo.png", media_type="image/png")
 
 
+def _fm9_port_present() -> bool:
+    """Whether an FM9 port is on the MIDI bus right now.
+
+    Enumeration only: no port is opened and nothing touches the wire, so
+    this is safe to ask every second. Same match rule as FM9.__init__
+    (case-insensitive "fm9" in the port name), so the watcher and the
+    connector cannot disagree about what counts as present.
+    """
+    try:
+        _pump_coremidi()
+        import mido
+        return any("fm9" in n.lower() for n in mido.get_input_names())
+    except Exception:
+        return False
+
+
+@app.get("/api/link/stream")
+def api_link_stream():
+    """Push the cable state the moment it changes.
+
+    The five second poll answers "what is the rig doing"; it cannot answer
+    "is the rig even there" fast enough to feel causal when somebody pulls
+    the cable and watches the light. This watches the bus once a second,
+    which costs no MIDI at all, and emits only on change, plus one initial
+    event so a fresh page starts from the truth instead of from grey.
+
+    Presence is not the same as answering: the page treats present as a cue
+    to run a full state read (which is what turns the light green), and
+    absent as red on the spot.
+    """
+    def work(emit, cancel):
+        last = None
+        while not cancel.is_set():
+            present = _fm9_port_present()
+            if present != last:
+                emit("link", {"present": present})
+                last = present
+            cancel.wait(1.0)
+
+    return _stream_response(work, final=())
+
+
 @app.post("/api/reconnect")
 def api_reconnect():
     """Look for the FM9 again, now.
@@ -550,10 +681,13 @@ def api_state():
             return snap
         except FM9NotFound:
             drop_fm9()
-            return {"connected": False}
+            # gig_mode rides along even unplugged, so the pill in the header
+            # stays true while the rig is off.
+            return {"connected": False, "gig_mode": _gig_mode["on"]}
         except Exception as e:
             drop_fm9()
-            return JSONResponse({"connected": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"connected": False, "error": str(e),
+                                 "gig_mode": _gig_mode["on"]}, status_code=500)
 
 
 class DescribeBody(BaseModel):
@@ -611,13 +745,86 @@ def api_describe_read(body: DescribeBody):
     return spec
 
 
+@app.post("/api/describe/read/stream")
+def api_describe_read_stream(body: DescribeBody):
+    """The same reading, narrated while it happens.
+
+    A video with no captions is minutes of downloading and transcribing, and
+    the first run also downloads a whisper model, all of it behind what used
+    to be one frozen line of text. Stage events name each of those as it
+    starts; pings fill the silences; STOP kills the reader subprocess.
+
+    The transcription itself cannot be interrupted mid-file, so a STOP during
+    it stops the waiting and abandons the work, which costs some CPU and
+    holds no lock. The extract pass IS killed.
+    """
+    def work(emit, cancel):
+        try:
+            src = describe.read_source(
+                body.source,
+                on_stage=lambda k, n: emit("stage", {"key": k, "note": n}))
+            if cancel.is_set():
+                return
+            emit("stage", {"key": "extract",
+                           "note": "working out what tone it describes"})
+            spec = describe.extract(src["text"], cancel=cancel)
+        except describe.SourceCancelled:
+            return
+        except describe.SourceError as exc:
+            emit("error", str(exc))
+            return
+        except Exception as exc:
+            emit("error", f"could not read that source: {exc}")
+            return
+        if not spec.get("found"):
+            emit("error", spec.get("why")
+                 or "that source does not describe a tone")
+            return
+        spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
+        spec["words"] = len(src["text"].split())
+        emit("spec", spec)
+
+    return _stream_response(work, final=("spec", "error"))
+
+
 @app.post("/api/describe/build")
 def api_describe_build(body: BuildBody):
+    """Pass two, in one request. Kept for callers that cannot hold a stream."""
+    result = _describe_build_for(body)
+    if isinstance(result, dict) and "error" in result and len(result) == 1:
+        return JSONResponse(result, status_code=502)
+    return result
+
+
+@app.post("/api/describe/build/stream")
+def api_describe_build_stream(body: BuildBody):
+    """The same build, with proof of life while it is being worked out.
+
+    This path measured 226 seconds for a four scene build and used to show a
+    static "Building it against your rig..." line the whole time: the exact
+    frozen-spinner failure /api/plan/stream was built to end, rebuilt behind
+    a different button. Same treatment now: pings, a running action count,
+    and a STOP that reaches the backend.
+    """
+    def work(emit, cancel):
+        result = _describe_build_for(
+            body,
+            on_count=lambda n: emit("count", n),
+            cancel=cancel,
+            on_status=lambda s: emit("status", s))
+        emit("plan", result)
+
+    return _stream_response(work, final=("plan", "error"))
+
+
+def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
+                        on_status=None):
     """Pass two: the spec becomes a plan, through the ordinary planner.
 
     Everything after this point is the existing pipeline. Same planner, same
-    validate_action, same confirm panel, same transmit gate. This endpoint
-    adds no write path and cannot reach hardware.
+    validate_action, same confirm panel, same transmit gate. This adds no
+    write path and cannot reach hardware. One body, two deliveries, so the
+    streaming twin cannot drift from the blocking one.
     """
     spec = body.spec or {}
     brief = describe.brief_from(spec, scenes=body.scenes, name=body.name)
@@ -638,18 +845,24 @@ def api_describe_build(body: BuildBody):
     # /api/plan would inherit this path's much longer timeout, or have its own
     # restored out from under it.
     try:
-        with _settings_lock:
+        if not _hold_settings(cancel, on_status):
+            return {"error": "stopped"}
+        try:
             old = _os.environ.get("PLANNER_TIMEOUT")
             _os.environ["PLANNER_TIMEOUT"] = str(describe.timeout_s())
             try:
-                result = planner.plan(brief, context, PARAM_REFERENCE)
+                result = _plan_counting(brief, context, on_count, cancel)
             finally:
                 if old is None:
                     _os.environ.pop("PLANNER_TIMEOUT", None)
                 else:
                     _os.environ["PLANNER_TIMEOUT"] = old
+        finally:
+            _settings_lock.release()
+    except planner.PlanCancelled:
+        return {"error": "stopped"}
     except Exception as exc:
-        return JSONResponse({"error": f"planner failed: {exc}"}, status_code=502)
+        return {"error": f"planner failed: {exc}"}
 
     # A build assembled out of somebody else's video has no business
     # overwriting a preset slot. Dropped here as well as being asked for in
@@ -785,7 +998,102 @@ def api_plan(body: PromptBody):
     return result
 
 
-def _plan_counting(prompt: str, context: str, on_count=None):
+def _stream_response(work, final: tuple):
+    """The SSE plumbing every long operation here shares.
+
+    `work(emit, cancel)` runs on a worker thread and reports through
+    `emit(kind, payload)`; this generator forwards each event and fills the
+    silences with a ping every three seconds, which is how a browser tells
+    "still going" apart from "the connection died". An event whose kind is in
+    `final` ends the stream.
+
+    `cancel` is set the moment the client goes away, including the STOP
+    button aborting the fetch. That is what makes STOP real: the planner
+    backends check it and kill their subprocesses, so an abandoned request no
+    longer burns minutes of model time while holding the settings lock, and
+    the next request no longer queues silently behind a ghost.
+
+    A JSONResponse handed to emit (a refusal built for the blocking twin) is
+    unwrapped into an error event rather than serialised as an object dump.
+    """
+    import queue
+    import threading as _th
+
+    def events():
+        out: queue.Queue = queue.Queue()
+        cancel = threading.Event()
+
+        def emit(kind, payload):
+            out.put((kind, payload))
+
+        def runner():
+            try:
+                work(emit, cancel)
+            except Exception as exc:
+                out.put(("error", str(exc)))
+            finally:
+                out.put((None, None))
+
+        _th.Thread(target=runner, daemon=True).start()
+        started = time.monotonic()
+        try:
+            while True:
+                try:
+                    kind, payload = out.get(timeout=3)
+                except queue.Empty:
+                    yield ("event: ping\ndata: "
+                           + json.dumps({"waited":
+                                         round(time.monotonic() - started, 1)})
+                           + "\n\n")
+                    continue
+                if kind is None:
+                    return
+                if hasattr(payload, "body"):        # a JSONResponse refusal
+                    detail = json.loads(payload.body.decode())
+                    yield ("event: error\ndata: "
+                           + json.dumps(detail.get("error", "refused"))
+                           + "\n\n")
+                    return
+                yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
+                if kind in final:
+                    return
+        finally:
+            # Reached on normal completion AND on client disconnect (the
+            # GeneratorExit lands here), so the worker's backends always get
+            # the signal to put their subprocesses down.
+            cancel.set()
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"cache-control": "no-cache",
+                                      "x-accel-buffering": "no"})
+
+
+def _hold_settings(cancel=None, on_status=None) -> bool:
+    """Take the settings lock, saying so when that means waiting.
+
+    A previous request that was stopped in the browser can still be finishing
+    on the backend, and it holds this lock while it does. Waiting silently
+    behind it showed the next person "working out the changes..." over a
+    request that had not started, which is the one lie this file exists to
+    stop. Returns False only when `cancel` was set while waiting.
+    """
+    if _settings_lock.acquire(blocking=False):
+        return True
+    if on_status is not None:
+        try:
+            on_status({"state": "queued",
+                       "note": "waiting for a previous AI request to finish "
+                               "before this one can start"})
+        except Exception:
+            pass
+    while True:
+        if cancel is not None and cancel.is_set():
+            return False
+        if _settings_lock.acquire(timeout=0.5):
+            return True
+
+
+def _plan_counting(prompt: str, context: str, on_count=None, cancel=None):
     """planner.plan, reporting each action as the model writes it.
 
     A four-scene build takes 283 seconds and writes 71 actions. With nobody
@@ -799,7 +1107,8 @@ def _plan_counting(prompt: str, context: str, on_count=None):
     if on_count is None:
         return planner.plan(prompt, context, PARAM_REFERENCE)
     result = None
-    for kind, payload in planner.plan_stream(prompt, context, PARAM_REFERENCE):
+    for kind, payload in planner.plan_stream(prompt, context, PARAM_REFERENCE,
+                                             cancel=cancel):
         if kind == "count":
             try:
                 on_count(payload)
@@ -810,7 +1119,7 @@ def _plan_counting(prompt: str, context: str, on_count=None):
     return result
 
 
-def _plan_for(body: PromptBody, on_count=None):
+def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     """Everything /api/plan does, so the streaming twin cannot drift from it.
 
     One body, two deliveries. The alternative was a second copy of the
@@ -824,10 +1133,16 @@ def _plan_for(body: PromptBody, on_count=None):
     if _profile["loaded"]:
         prof = _profile["loaded"]
         try:
-            with _settings_lock:
+            if not _hold_settings(cancel, on_status):
+                return {"error": "stopped"}
+            try:
                 result = _plan_counting(body.prompt,
                                         rigprofile.as_state_text(prof),
-                                        on_count)
+                                        on_count, cancel)
+            finally:
+                _settings_lock.release()
+        except planner.PlanCancelled:
+            return {"error": "stopped"}
         except Exception as e:
             return {"error": str(e)}
         result["device"] = {"preset": {"name": prof.get("preset_name"),
@@ -872,8 +1187,12 @@ def _plan_for(body: PromptBody, on_count=None):
     # empty-looking state and left to assume.
     context = state_text(snap) if snap else rigprofile.as_blank_text()
     try:
-        with _settings_lock:
-            result = _plan_counting(body.prompt, context, on_count)
+        if not _hold_settings(cancel, on_status):
+            return {"error": "stopped"}
+        try:
+            result = _plan_counting(body.prompt, context, on_count, cancel)
+        finally:
+            _settings_lock.release()
         result["device"] = ({"preset": snap["preset"], "scene": snap["scene"]}
                             if snap else {"preset": None, "scene": None})
         # Say so loudly. A plan built against a remembered reading is not the
@@ -921,9 +1240,22 @@ def _plan_for(body: PromptBody, on_count=None):
                             if not intent["ok"]:
                                 a["validation_errors"] = a["validation_errors"] + [
                                     f"cannot place this block: {intent['detail']}"]
+                    # An empty slot is a plan-time fact worth saying at the
+                    # confirm panel: the transmit will lay a starting chain
+                    # (Input, amp, cab, Output) before anything else, and
+                    # consent to "add a block" should include knowing that.
+                    if fm9.read_grid() == []:
+                        adds[0]["validation_warnings"] = (
+                            adds[0]["validation_warnings"] + [
+                                "this slot is empty, so a starting chain "
+                                "(Input, Amp, Cab, Output, cabled end to "
+                                "end) will be built into it before these "
+                                "changes are applied"])
                 except FM9NotFound:
                     drop_fm9()
         return result
+    except planner.PlanCancelled:
+        return {"error": "stopped"}
     except Exception as e:
         return {"error": f"planner failed: {e}"}
 
@@ -1170,7 +1502,13 @@ def _add_block(fm9: FM9, a: Action) -> dict:
     fam, eid = reg.resolve_block(a.block or "", a.instance)
     blocks = fm9.status_dump() or []
     if any(b.effect_id == eid for b in blocks):
-        return {"ok": False, "detail": f"{a.block} {a.instance} already exists in this preset"}
+        # The goal state, not the verb: "add amp 1" asks for amp 1 to be
+        # present, and it is. Halting a build over this turned an
+        # auto-provisioned starting chain (which already carries amp and
+        # cab) into a guaranteed failure on the very next action.
+        return {"ok": True,
+                "detail": f"{a.block} {a.instance} is already in this "
+                          f"preset; nothing to add"}
     cells = fm9.read_grid()
     if cells is None:
         return {"ok": False, "detail": _no_placement_detail(a, a.position or "any", None)}
@@ -1394,7 +1732,19 @@ def run_action(fm9: FM9, a: Action) -> dict:
                 "detail": f"scene {int(a.value)} renamed to {a.type_name.strip()[:32]!r}"}
     if a.kind == "store":
         stored = fm9.store_preset(int(a.value))
-        return {"ok": bool(stored and stored[0] == int(a.value)),
+        ok = bool(stored and stored[0] == int(a.value))
+        # The preset browser reads names from a cache, and one of them just
+        # stopped being true. The store result carries the slot's new name,
+        # so the entry is corrected in place rather than invalidated: exact,
+        # free, and the dropdown stops showing the overwritten preset's name
+        # as though it were still there (caught live, 2026-09-01).
+        if ok and _preset_cache["slots"]:
+            for s in _preset_cache["slots"]:
+                if s["number"] == stored[0]:
+                    s["name"] = stored[1]
+                    s["empty"] = proto.is_empty_slot_name(stored[1])
+                    break
+        return {"ok": ok,
                 "detail": f"stored to slot {int(a.value)}: {stored[1] if stored else '?'}"}
     if a.kind == "set_scene":
         scene_no = int(a.value) if a.value is not None else int(a.instance)
@@ -1629,6 +1979,50 @@ def api_presets(refresh: bool = False):
             return JSONResponse({"error": str(e)}, status_code=500)
     _preset_cache["slots"] = slots
     return {"slots": slots, "cached": False}
+
+
+@app.get("/api/presets/stream")
+def api_presets_stream(refresh: bool = False):
+    """The same scan, counting slots as they answer.
+
+    Reading all 512 names is about fifteen seconds of MIDI, and it used to
+    happen behind a popover that said "nothing matches", which reads as "your
+    unit is empty". The count is real progress, measured off the wire.
+    """
+    def work(emit, cancel):
+        if _preset_cache["slots"] is not None and not refresh:
+            emit("result", {"slots": _preset_cache["slots"], "cached": True})
+            return
+        slots = []
+        with _lock:
+            try:
+                fm9 = get_fm9()
+                for s in fm9.scan_slots(0, 511):
+                    if cancel.is_set():
+                        # Nobody is watching and a partial list must never be
+                        # cached as though it were the unit.
+                        return
+                    slots.append({
+                        "number": s.number,
+                        "editor": proto.editor_number(s.number),
+                        "label": proto.slot_label(s.number),
+                        "name": s.name,
+                        "empty": proto.is_empty_slot_name(s.name),
+                    })
+                    if (s.number + 1) % 16 == 0:
+                        emit("progress", {"read": s.number + 1, "total": 512})
+            except FM9NotFound:
+                drop_fm9()
+                emit("error", "FM9 not connected")
+                return
+            except Exception as e:
+                drop_fm9()
+                emit("error", str(e))
+                return
+        _preset_cache["slots"] = slots
+        emit("result", {"slots": slots, "cached": False})
+
+    return _stream_response(work, final=("result", "error"))
 
 
 class PresetBody(BaseModel):
@@ -1948,13 +2342,36 @@ def api_clear_slot(body: ClearBody):
             found = slotops.describe(fm9, body.slot)
             if not found["ok"]:
                 return JSONResponse(found, status_code=409)
-            if (found.get("name") or "").strip() != body.confirm_name.strip():
-                return JSONResponse(
-                    {"ok": False,
-                     "detail": (f"refusing to clear {found['label']}: it holds "
-                                f"{found.get('name')!r}, not "
-                                f"{body.confirm_name!r}. Nothing was changed.")},
-                    status_code=409)
+            # Spacing runs and case are forgiven; the name itself is not.
+            # Exact match was a trap in practice: preset names carry double
+            # spaces the eye cannot see ("chnl  '25") and machine-built
+            # names nobody can retype from memory, so two legitimate erase
+            # attempts in a row were refused as "not working" (2026-09-01).
+            # The safety property is that the destroyed thing was LOOKED AT,
+            # and normalised typing preserves that; invisible whitespace
+            # does not.
+            def _plain(s: str) -> str:
+                return " ".join((s or "").split()).lower()
+            if _plain(found.get("name")) != _plain(body.confirm_name):
+                log.warning("clear-slot refused: %s holds %r, typed %r",
+                            found["label"], found.get("name"),
+                            body.confirm_name)
+                # A typed slot number is the one wrong answer common enough
+                # to deserve its own reply: the label's big leading number is
+                # what the eye lands on, and "not '160'" reads as the app
+                # being broken rather than as the ask being the NAME.
+                typed = _plain(body.confirm_name)
+                if typed in (str(body.slot),
+                             str(proto.editor_number(body.slot))):
+                    detail = (f"that is the slot number. To erase "
+                              f"{found['label']}, type the NAME it holds: "
+                              f"{found.get('name')!r}. Nothing was changed.")
+                else:
+                    detail = (f"refusing to clear {found['label']}: it holds "
+                              f"{found.get('name')!r}, not "
+                              f"{body.confirm_name!r}. Nothing was changed.")
+                return JSONResponse({"ok": False, "detail": detail},
+                                    status_code=409)
             res = slotops.clear(fm9, body.slot)
         except PermissionError as exc:
             return JSONResponse({"ok": False, "detail": str(exc)},
@@ -2039,12 +2456,48 @@ def api_health():
             return {"error": str(e)}
 
 
+@app.post("/api/health/stream")
+def api_health_stream():
+    """The same scan, naming the scene the rig is standing on as it walks.
+
+    The scan is audible and takes seconds; a page that says only
+    "scanning..." while the rig steps through eight scenes leaves the noises
+    unexplained, and unexplained noises from a tool that can write to the rig
+    are the fastest way to lose someone's trust in it.
+    """
+    def work(emit, cancel):
+        if _gig_mode["on"]:
+            emit("error", "GIG MODE is on: refusing to scan. A scan walks the "
+                          "rig through every scene and is audible, which on "
+                          "stage is exactly what gig mode exists to prevent.")
+            return
+        with _lock:
+            try:
+                res = health.scan(
+                    get_fm9(), reg,
+                    on_scene=lambda n, name: emit("scene",
+                                                  {"n": n, "name": name}))
+            except Exception as e:
+                emit("error", str(e))
+                return
+        emit("result", res)
+
+    return _stream_response(work, final=("result", "error"))
+
+
 @app.get("/api/shared")
 def api_shared():
     """Which scenes share each block's channel, for the blast-radius hint.
 
     Cached per preset because computing it sweeps all eight scenes, which is
     audible. The UI asks for it once per preset, never on a timer.
+
+    Gig mode refuses the SWEEP, quietly. The UI asks for this on its own
+    whenever the preset changes, and a front-panel preset change mid-set
+    would otherwise have this tool audibly walking all eight scenes while
+    somebody is playing through it. A cached answer costs no MIDI and is
+    still served. `swept` marks a fresh sweep so the page can say what the
+    scene-stepping the owner just heard was.
     """
     with _lock:
         try:
@@ -2053,6 +2506,8 @@ def api_shared():
             key = cur[0] if cur else None
             if _shared_cache["preset"] == key and _shared_cache["map"] is not None:
                 return {"preset": key, "shared": _shared_cache["map"], "cached": True}
+            if _gig_mode["on"]:
+                return {"preset": key, "shared": None, "gig": True}
             got = shared_scenes(fm9)
         except FM9NotFound:
             drop_fm9()
@@ -2060,7 +2515,7 @@ def api_shared():
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
     _shared_cache["preset"], _shared_cache["map"] = key, got
-    return {"preset": key, "shared": got, "cached": False}
+    return {"preset": key, "shared": got, "cached": False, "swept": True}
 
 
 @app.post("/api/gig")
@@ -2447,39 +2902,14 @@ def api_plan_stream(body: PromptBody):
     tell "still going" apart from "the connection died", which is the whole
     difference between waiting and being stuck.
     """
-    import queue
-    import threading as _th
+    def work(emit, cancel):
+        result = _plan_for(body,
+                           on_count=lambda n: emit("count", n),
+                           cancel=cancel,
+                           on_status=lambda s: emit("status", s))
+        emit("plan", result)
 
-    def events():
-        out: queue.Queue = queue.Queue()
-
-        def work():
-            try:
-                out.put(("plan", _plan_for(body, on_count=lambda n: out.put(("count", n)))))
-            except Exception as exc:
-                out.put(("error", str(exc)))
-            finally:
-                out.put((None, None))
-
-        _th.Thread(target=work, daemon=True).start()
-        started = time.monotonic()
-        while True:
-            try:
-                kind, payload = out.get(timeout=3)
-            except Exception:
-                yield ("event: ping\ndata: "
-                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
-                       + "\n\n")
-                continue
-            if kind is None:
-                return
-            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
-            if kind in ("plan", "error"):
-                return
-
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"cache-control": "no-cache",
-                                      "x-accel-buffering": "no"})
+    return _stream_response(work, final=("plan", "error"))
 
 
 @app.post("/api/chat/stream")
@@ -2504,45 +2934,19 @@ def api_chat_stream(body: ChatBody):
         return JSONResponse({"error": "nothing to talk about"}, status_code=400)
     context = _chat_context()
 
-    def events():
-        import queue
-        import threading as _th
-        # The generator runs on a worker so the main thread can emit pings
-        # while it is blocked on the network. Without that, "no bytes for
-        # thirty seconds" and "finished quietly" look the same from here.
-        out: queue.Queue = queue.Queue()
+    def work(emit, cancel):
+        if not _hold_settings(cancel, lambda s: emit("status", s)):
+            return
+        try:
+            for kind, payload in planner.converse_stream(
+                    body.messages, context, PARAM_REFERENCE, cancel=cancel):
+                emit(kind, payload)
+        except planner.PlanCancelled:
+            pass                    # the listener left; nobody to tell
+        finally:
+            _settings_lock.release()
 
-        def work():
-            try:
-                with _settings_lock:
-                    for kind, payload in planner.converse_stream(
-                            body.messages, context, PARAM_REFERENCE):
-                        out.put((kind, payload))
-            except Exception as exc:
-                out.put(("error", str(exc)))
-            finally:
-                out.put((None, None))
-
-        worker = _th.Thread(target=work, daemon=True)
-        worker.start()
-        started = time.monotonic()
-        while True:
-            try:
-                kind, payload = out.get(timeout=3)
-            except Exception:
-                yield ("event: ping\ndata: "
-                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
-                       + "\n\n")
-                continue
-            if kind is None:
-                return
-            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
-            if kind in ("done", "error"):
-                return
-
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"cache-control": "no-cache",
-                                      "x-accel-buffering": "no"})
+    return _stream_response(work, final=("done", "error"))
 
 
 @app.post("/api/ai-settings/setup/run")
@@ -2646,45 +3050,16 @@ def api_apply_stream(body: ApplyBody):
     Unlike planning, this is a real loop over real actions, so the progress
     here is not an estimate: it is which change of how many has actually been
     written to the rig.
+
+    Deliberately deaf to the cancel signal. A transmit is writes to hardware:
+    stopping halfway on a dropped connection would leave the rig half changed
+    with nobody told which half, so the work runs to completion and the
+    outcome lands in the log and the undo snapshot either way.
     """
-    import queue
-    import threading as _th
+    def work(emit, cancel):
+        emit("result", _apply_for(body, on_step=lambda s: emit("step", s)))
 
-    def events():
-        out: queue.Queue = queue.Queue()
-
-        def work():
-            try:
-                out.put(("result", _apply_for(body, on_step=lambda s: out.put(("step", s)))))
-            except Exception as exc:
-                out.put(("error", str(exc)))
-            finally:
-                out.put((None, None))
-
-        _th.Thread(target=work, daemon=True).start()
-        started = time.monotonic()
-        while True:
-            try:
-                kind, payload = out.get(timeout=3)
-            except Exception:
-                yield ("event: ping\ndata: "
-                       + json.dumps({"waited": round(time.monotonic() - started, 1)})
-                       + "\n\n")
-                continue
-            if kind is None:
-                return
-            if hasattr(payload, "body"):        # a JSONResponse refusal
-                payload = json.loads(payload.body.decode())
-                kind = "error"
-                yield f"event: error\ndata: {json.dumps(payload.get('error', 'refused'))}\n\n"
-                return
-            yield f"event: {kind}\ndata: {json.dumps(payload)}\n\n"
-            if kind in ("result", "error"):
-                return
-
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"cache-control": "no-cache",
-                                      "x-accel-buffering": "no"})
+    return _stream_response(work, final=("result", "error"))
 
 
 def _apply_for(body: ApplyBody, on_step=None):
@@ -2695,8 +3070,8 @@ def _apply_for(body: ApplyBody, on_step=None):
             return JSONResponse(
                 {"error": f"GIG MODE is on: refusing {sorted(set(blocked))}. "
                           f"Only scene changes are allowed during a "
-                          f"performance. POST /api/gig {{\"on\": false}} "
-                          f"after the set."},
+                          f"performance. Switch GIG MODE off in the header "
+                          f"when the set ends."},
                 status_code=423)
     with _lock:
         try:
@@ -2730,11 +3105,72 @@ def _apply_for(body: ApplyBody, on_step=None):
                     _snaps["undo"] = None
                     results.append({"action": {"kind": "snapshot"}, "ok": False,
                                     "detail": f"could not snapshot for undo: {e}"})
+            def step(ok: bool, a: Action) -> None:
+                """One progress event, refusals included. A step that fails
+                must not take the transmit down with it, and a refused action
+                must still count: skipping it left the live SENDING counter
+                stuck at n-1 of N while the final banner said otherwise."""
+                if on_step is None:
+                    return
+                try:
+                    on_step({"done": len([r for r in results
+                                          if (r.get("action") or {}).get(
+                                              "kind") != "build_chain"
+                                          and r.get("action")]),
+                             "total": len(body.actions),
+                             "ok": ok,
+                             "what": describe_action(a)})
+                except Exception:
+                    pass
+
+            # A build aimed at an EMPTY slot lays its own foundations. The
+            # tool used to halt a 135-action plan at "ADD amp" and tell the
+            # player to go and press BUILD A STARTING CHAIN themselves,
+            # which is the tool knowing the problem, knowing the remedy,
+            # owning the code for it, and handing the work back anyway
+            # (Moncy, 2026-09-02, "what the heck"). Runs BEFORE any action,
+            # because the chain build re-selects the slot and would discard
+            # renames a plan had already landed in the buffer.
+            if any(a.kind == "add_block" for a in body.actions):
+                try:
+                    if fm9.read_grid() == []:      # no cells at all: empty
+                        cur = fm9.current_preset()
+                        chain = (scratch_build.build(fm9, reg, slot=cur[0])
+                                 if cur else
+                                 {"ok": False,
+                                  "detail": "could not read which preset is "
+                                            "loaded, so no chain was built"})
+                        results.append({
+                            "action": {"kind": "build_chain"},
+                            "ok": bool(chain.get("ok")),
+                            "detail": "empty slot, so a starting chain went "
+                                      "in first: " + chain.get("detail", "")})
+                        if on_step is not None:
+                            try:
+                                on_step({"done": 0,
+                                         "total": len(body.actions),
+                                         "ok": bool(chain.get("ok")),
+                                         "what": "starting chain into the "
+                                                 "empty slot"})
+                            except Exception:
+                                pass
+                        if not chain.get("ok"):
+                            # Foundations refused: running the plan on thin
+                            # air would fail action by action less honestly.
+                            return {"results": results}
+                except FM9NotFound:
+                    raise
+                except Exception as exc:
+                    log.warning("apply: starting-chain check failed: %s", exc)
+
             for a in body.actions:
                 errs, warns = validate_action(a)
                 if errs:
+                    log.warning("apply: %s refused by validation: %s",
+                                describe_action(a), "; ".join(errs))
                     results.append({"action": a.model_dump(), "ok": False,
                                     "detail": "validation: " + "; ".join(errs)})
+                    step(False, a)
                     continue
                 try:
                     res = run_action(fm9, a)
@@ -2742,20 +3178,15 @@ def _apply_for(body: ApplyBody, on_step=None):
                     res = {"ok": False, "detail": str(e)}
                 if warns:
                     res["detail"] = (res.get("detail", "") + " | " + "; ".join(warns)).strip(" |")
+                if not res.get("ok"):
+                    log.warning("apply: %s failed: %s", describe_action(a),
+                                res.get("detail", "no detail"))
                 results.append({"action": a.model_dump(), **res})
                 # Said as it happens, not collected and delivered at the end.
                 # A five-change transmit gave no sign of life until it was
                 # over, which for a long plan is indistinguishable from a
                 # button that does nothing.
-                if on_step is not None:
-                    try:
-                        on_step({"done": len([r for r in results
-                                              if r.get("action")]),
-                                 "total": len(body.actions),
-                                 "ok": bool(res.get("ok")),
-                                 "what": describe_action(a)})
-                    except Exception:
-                        pass
+                step(bool(res.get("ok")), a)
                 if not res.get("ok") and a.kind == "add_block":
                     # later actions in the plan target the block that failed
                     # to land; running them would set params and bind pedals
@@ -2781,6 +3212,9 @@ def main():
     # a choice made in the UI has to survive a restart, and the planner reads
     # its configuration from the environment, so push the saved one there
     ai_settings.apply_to_env()
+    # The bus watcher starts before the first enumeration so the process's
+    # very first CoreMIDI snapshot is already backed by notifications.
+    _pump_coremidi()
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8909)
 

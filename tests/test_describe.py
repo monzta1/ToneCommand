@@ -37,11 +37,17 @@ def client(monkeypatch):
 
 def test_it_runs_the_same_validation_as_every_other_plan():
     """Not a lighter version, and not a copy that can drift: the same
-    validate_action, called the same way."""
-    src = inspect.getsource(server.api_describe_build)
+    validate_action, called the same way. The body moved into
+    _describe_build_for so the streaming twin cannot drift from the blocking
+    one, which is the same one-body-two-deliveries rule /api/plan follows."""
+    src = inspect.getsource(server._describe_build_for)
     assert "validate_action(Action(**a))" in src
     assert 'a["validation_errors"] = errs' in src
     assert 'a["validation_warnings"] = warns' in src
+    for endpoint in (server.api_describe_build,
+                     server.api_describe_build_stream):
+        assert "_describe_build_for(" in inspect.getsource(endpoint), \
+            endpoint.__name__
 
 
 def _code_only(src: str) -> str:
@@ -98,11 +104,15 @@ def test_the_store_whitelist_is_untouched_by_this_path():
 def test_the_longer_timeout_is_restored_and_scoped_to_the_lock():
     """Raised for this path only. Left raised, a later /api/plan would inherit
     a fifteen minute timeout; raised outside the lock, a concurrent plan would
-    have its own restored out from under it."""
-    src = inspect.getsource(server.api_describe_build)
-    lock_at = src.index("with _settings_lock:")
+    have its own restored out from under it. The lock is taken through
+    _hold_settings now, so waiting behind a previous request is said instead
+    of suffered, and released in a finally."""
+    src = inspect.getsource(server._describe_build_for)
+    lock_at = src.index("_hold_settings(")
     set_at = src.index('_os.environ["PLANNER_TIMEOUT"]')
-    assert lock_at < set_at, "the timeout must be raised inside the lock"
+    release_at = src.index("_settings_lock.release()")
+    assert lock_at < set_at < release_at, \
+        "the timeout must be raised inside the held lock"
     assert "finally:" in src
     assert '_os.environ.pop("PLANNER_TIMEOUT", None)' in src
 
@@ -558,3 +568,62 @@ def test_saving_says_the_name_it_saves_under():
     assert "It will be saved under the name" in fn
     assert "lastState.preset" in fn
     assert "cancel and rename it first" in fn
+
+
+# --- the wait has a shape now ----------------------------------------------
+#
+# This path measured 226 seconds for a four scene build and used to show a
+# static "Building it against your rig..." the whole way: the exact
+# frozen-spinner failure /api/plan/stream was built to end, rebuilt behind a
+# different button. These prove the streaming twins actually stream.
+
+def test_the_build_stream_counts_and_delivers(client, monkeypatch):
+    monkeypatch.setattr(planner, "plan_stream", lambda *a, **k: iter([
+        ("count", {"n": 1, "kind": "set_param"}),
+        ("done", {"summary": "s", "actions": []})]))
+    with client.stream("POST", "/api/describe/build/stream",
+                       json={"spec": {"summary": "x"}}) as r:
+        body = "".join(r.iter_text())
+    assert "event: count" in body
+    assert '"n": 1' in body
+    assert "event: plan" in body
+
+
+def test_the_read_stream_narrates_its_stages(client, monkeypatch):
+    def fake_read(raw, on_stage=None):
+        on_stage("fetch", "fetching the page")
+        return {"text": "enough words to pass " * 10, "title": "t",
+                "notes": [], "kind": "text", "url": None}
+
+    monkeypatch.setattr(describe, "read_source", fake_read)
+    monkeypatch.setattr(describe, "extract",
+                        lambda text, cancel=None: {
+                            "found": True, "summary": "s", "scenes": [],
+                            "stated": [], "vague": [], "quotes": []})
+    with client.stream("POST", "/api/describe/read/stream",
+                       json={"source": "https://x.example/a"}) as r:
+        body = "".join(r.iter_text())
+    assert "event: stage" in body
+    assert "fetching the page" in body
+    # the extract stage is announced by the endpoint itself
+    assert "working out what tone it describes" in body
+    assert "event: spec" in body
+
+
+def test_a_source_the_reader_refuses_streams_a_readable_error(client, monkeypatch):
+    monkeypatch.setattr(describe, "read_source",
+                        lambda raw, on_stage=None: (_ for _ in ()).throw(
+                            describe.SourceError("nothing readable there")))
+    with client.stream("POST", "/api/describe/read/stream",
+                       json={"source": "https://x.example/a"}) as r:
+        body = "".join(r.iter_text())
+    assert "event: error" in body
+    assert "nothing readable there" in body
+
+
+def test_the_ui_build_goes_through_the_stream(client):
+    build = SCRIPT.split("async function runBuild(spec, note)")[1].split("\n}\n")[0]
+    assert "/api/describe/build/stream" in build
+    assert "srcWork" in build, "the sticky working strip must light"
+    read = SCRIPT.split("async function analyzeSource()")[1].split("\n}\n")[0]
+    assert "/api/describe/read/stream" in read

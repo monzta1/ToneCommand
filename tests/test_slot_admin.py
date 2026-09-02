@@ -181,16 +181,19 @@ def test_it_is_offered_only_for_a_slot_whose_name_was_read():
     assert "$('clearslot').disabled = !named;" in fn
 
 
-def test_it_asks_twice_and_the_second_has_to_be_typed():
+def test_it_asks_once_with_the_name_in_the_dialog():
+    """The typed-name echo was tried and retired the same evening: it
+    refused legitimate attempts over invisible double spaces, then over a
+    machine-built title, then got fed the slot number ("just take the
+    number and go delete", Moncy, 2026-09-02). One confirmation, carrying
+    the name; the page sends the name it DISPLAYED, so the server still
+    refuses a slot that changed since it was shown."""
     fn = SCRIPT.split("$('clearslot').onclick")[1].split("\n};")[0]
-    assert "window.confirm(" in fn and "window.prompt(" in fn
+    assert "window.confirm(" in fn
+    assert "window.prompt(" not in fn, "the typing test is retired"
+    assert "It holds:" in fn
     assert "cannot be brought back" in fn
-    assert "confirm_name: typed" in fn
-
-
-def test_cancelling_the_typed_prompt_erases_nothing():
-    fn = SCRIPT.split("$('clearslot').onclick")[1].split("\n};")[0]
-    assert "if (typed === null) { log('erase cancelled', 'warn'); return; }" in fn
+    assert "const typed = slot.name;" in fn
 
 
 # --- renaming --------------------------------------------------------------
@@ -271,3 +274,63 @@ def test_the_rename_confirms_and_says_it_writes_to_flash():
     fn = SCRIPT.split("$('renameslot').onclick")[1].split("\n};")[0]
     assert "window.confirm(" in fn
     assert "writes the slot" in fn and "tone is unchanged" in fn
+
+
+def test_erase_forgives_spacing_and_case_but_never_the_name(client):
+    """Two legitimate erases in a row were refused as "not working"
+    (2026-09-01): the names on a real unit carry internal double spaces the
+    eye cannot see, and machine-built names nobody retypes exactly. The
+    safety property is that the destroyed thing was looked at; invisible
+    whitespace is not part of that."""
+    real = server._fm9.slot_name(1).name
+    mangled = "  " + real.upper().replace(" ", "  ") + " "
+    r = client.post("/api/clear-slot",
+                    json={"slot": 1, "confirm_name": mangled}).json()
+    assert r["ok"], r
+    wrong = client.post("/api/clear-slot",
+                        json={"slot": 2, "confirm_name": "some other name"})
+    assert wrong.status_code == 409
+
+
+def test_an_erase_refusal_is_announced_not_buried():
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    fn = ui.split("$('clearslot').onclick")[1].split("\n};\n")[0]
+    assert "ERASE REFUSED" in fn, "a refusal must be announced, not buried"
+    assert "ERASED" in fn, "and so must the success"
+
+
+def test_the_save_panel_tells_flash_and_buffer_apart():
+    """An unsaved build on a slot means two true names for one number: what
+    flash holds and what the buffer is called. The panel used to print the
+    buffer's name as though it were the slot's, directly above a dropdown
+    saying otherwise, and the two read as the app contradicting itself
+    (reported 2026-09-01). When they differ, both are named with roles."""
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    fn = ui.split("function aimAtLoadedPreset()")[1].split("\n}\n")[0]
+    assert "flash !== buffer" in fn
+    assert "The slot holds" in fn
+    assert "your unsaved edits" in fn
+
+
+def test_typing_the_slot_number_gets_coached_not_stonewalled(client):
+    """A real erase attempt typed "160" for slot 160 (wire 159): the label's
+    big leading number is what the eye lands on. That one wrong answer is
+    common enough to deserve its own reply naming the actual ask."""
+    r = client.post("/api/clear-slot",
+                    json={"slot": 159, "confirm_name": "160"})
+    assert r.status_code == 409
+    d = r.json()["detail"]
+    assert "that is the slot number" in d
+    assert "type the NAME" in d
+    wire_too = client.post("/api/clear-slot",
+                           json={"slot": 159, "confirm_name": "159"})
+    assert "that is the slot number" in wire_too.json()["detail"]
+
+
+def test_the_ui_sends_the_name_it_displayed():
+    """The server's name check stays as the API contract and as the stale
+    display guard; the page satisfies it with the name it showed rather
+    than with a typing test."""
+    fn = SCRIPT.split("$('clearslot').onclick")[1].split("\n};\n")[0]
+    assert "confirm_name: typed" in fn
+    assert "const typed = slot.name;" in fn
