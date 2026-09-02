@@ -1203,12 +1203,16 @@
    the plan. This one cannot be scrolled away from. */
 #working {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px;
-  z-index: 60; display: flex; align-items: center; gap: 13px;
+  z-index: 60; display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+  max-width: min(760px, calc(100vw - 40px));
   padding: 11px 16px; border-radius: 999px;
+  /* A pill while it is one line. Keeping the pill radius once the log is open
+     turned the panel into an oval with the text tucked inside the curve. */
   background: rgba(8,14,22,0.96); border: 1px solid var(--cyan-dim);
   box-shadow: 0 8px 30px rgba(0,0,0,0.55);
   font-size: 12px; letter-spacing: .06em;
 }
+#working.open { border-radius: 12px; padding: 13px 17px; }
 #working .wdot {
   width: 8px; height: 8px; border-radius: 50%; background: var(--cyan);
   animation: cbpulse 1.3s ease-in-out infinite; flex: none;
@@ -1221,6 +1225,16 @@
   color: var(--text); border: 1px solid var(--line);
 }
 #working button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+/* The running account, when it is opened. */
+#working .wlines {
+  flex: 1 1 100%; max-height: 230px; overflow-y: auto; margin: 4px 0 0;
+  padding-top: 9px; border-top: 1px solid var(--line);
+  font-size: 11.5px; line-height: 1.75; letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+#working .wlines div { opacity: .72; }
+#working .wlines div:last-child { opacity: 1; color: var(--cyan); }
+#working .wnone { opacity: .45; }
 .planres {
   margin-top: 14px; padding: 12px 14px; border-radius: 8px; font-size: 13px;
   line-height: 1.6; border: 1px solid var(--line);
@@ -4622,6 +4636,8 @@ let chatBuilding = false;      // a build, not a conversation turn
 let chatCount = 0;             // changes written so far, counted for real
 let planSending = false;       // a transmit is in flight
 let planSent = 0, planTotal = 0;
+let workLog = [];              // a running account, when you open it
+let workOpen = false;          // whether the strip is expanded
 
 // A line in the transcript that this tool wrote about itself, rather than
 // something either party said. Rendered, and NEVER sent back to the model:
@@ -4714,11 +4730,20 @@ function waitLine() {
 // The one indicator that cannot be scrolled away from. Mirrors whatever the
 // panels are saying, so there is exactly one source of truth about whether
 // something is running.
+// A line in the running account. Capped, because a 114-action build would
+// otherwise grow an unbounded list nobody scrolls to the top of.
+function workSay(line) {
+  workLog.push(line);
+  if (workLog.length > 400) workLog = workLog.slice(-400);
+  renderWorking();
+}
+
 function renderWorking() {
   const el = $('working');
   if (!el) return;
   const on = chatBusy || planSending;
   el.hidden = !on;
+  el.classList.toggle('open', on && workOpen);
   if (!on) { el.innerHTML = ''; return; }
   const secs = Math.max(0, Math.round((Date.now() - chatStarted) / 1000));
   const what = planSending
@@ -4731,12 +4756,20 @@ function renderWorking() {
     + `<span class="wwhat">${esc(what)}</span>`
     + `<span class="wtime">${planSending ? '' : secs + 's'}</span>`
     + (chatAbort ? `<button id="wstop">STOP</button>` : '')
-    + `<button id="wgo">SHOW ME</button>`;
+    // It said SHOW ME and only scrolled, so the first question it got was
+    // what it was supposed to do. It opens the running account now: what has
+    // actually been written, in order, which is the thing somebody watching a
+    // five-minute build wants and could not get anywhere.
+    + `<button id="wlog">${workOpen ? 'HIDE LOG' : 'SHOW LOG'}</button>`
+    + (workOpen
+        ? `<div class="wlines">${workLog.length
+             ? workLog.slice(-200).map(l => `<div>${esc(l)}</div>`).join('')
+             : '<div class="wnone">nothing written yet</div>'}</div>`
+        : '');
   if ($('wstop')) $('wstop').onclick = () => { if (chatAbort) chatAbort.abort(); };
-  $('wgo').onclick = () => {
-    (planSending ? $('planbox') : document.querySelector('.console.command'))
-      .scrollIntoView({behavior: 'smooth', block: 'center'});
-  };
+  $('wlog').onclick = () => { workOpen = !workOpen; renderWorking(); };
+  const lines = el.querySelector('.wlines');
+  if (lines) lines.scrollTop = lines.scrollHeight;
 }
 
 function renderChat() {
@@ -4973,6 +5006,7 @@ async function engage(prompt, name, scenes) {
   chatStream = '';
   chatBuilding = true;
   chatCount = 0;
+  workLog = [];
   chatAbort = new AbortController();
   renderChat();
   const tick = setInterval(renderChat, 1000);
@@ -4988,8 +5022,13 @@ async function engage(prompt, name, scenes) {
     for await (const [ev, d] of sseFrom(r)) {
       if (ev === 'ping') { chatAlive = Date.now(); renderChat(); }
       else if (ev === 'count') {
-        // A real measurement, not a percentage invented from elapsed time.
-        chatCount = d; chatAlive = Date.now(); renderChat();
+        // A real measurement, not a percentage invented from elapsed time,
+        // and it says WHAT was written rather than only how many.
+        chatCount = typeof d === 'number' ? d : d.n;
+        const kind = (d && d.kind) || '';
+        if (kind) workSay(`${chatCount}. ${kind.replace(/_/g, ' ')}`);
+        chatAlive = Date.now();
+        renderChat();
       }
       else if (ev === 'error') throw new Error(d);
       else if (ev === 'plan') { plan = d; break; }
@@ -5545,6 +5584,7 @@ async function apply() {
   // panels down; somebody who has just pressed TRANSMIT is looking at
   // TRANSMIT, and it said nothing at all.
   planSending = true; planSent = 0; planTotal = total;
+  workLog = [];
   const say = (n) => {
     planSent = n;
     $('apply').innerHTML = `<span class="spin">◍</span> SENDING ${n}/${total}`;
@@ -5567,6 +5607,7 @@ async function apply() {
     for await (const [ev, d] of sseFrom(r)) {
       if (ev === 'step') {
         say(d.done);
+        workSay(`${d.done}. ${d.ok ? '' : 'FAILED '}${d.what}`);
         planResult(`<span class="spin">◍</span> Sending ${d.done} of ${d.total}`
                    + `: ${esc(d.what)}`, 'busy');
       } else if (ev === 'error') {

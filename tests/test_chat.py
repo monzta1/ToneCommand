@@ -740,12 +740,22 @@ def test_actions_are_counted_from_the_text_not_guessed():
     assert planner._ACTION_MARK == '"kind"'
 
 
-def test_the_carry_is_one_short_of_the_marker():
-    """Carrying eight characters of a six-character marker left a complete
-    match in the next window too, and every action was counted twice: five
-    reported as ten."""
-    src = inspect.getsource(planner.plan_stream)
-    assert "tail = window[-(len(_ACTION_MARK) - 1):]" in src
+def test_the_count_cannot_double_or_lose_an_action():
+    """Two bugs came from tracking markers across chunk boundaries: a carry
+    longer than the marker counted every action twice (five reported as ten),
+    and a marker arriving split in half was lost. Reading the accumulated text
+    can do neither, whatever the chunking."""
+    import json as _j
+    obj = {"actions": [{"kind": "set_param"}, {"kind": "set_scene"},
+                       {"kind": "store"}]}
+    raw = _j.dumps(obj)
+    for size in (1, 2, 3, 5, 40, len(raw)):
+        acc, counts = "", []
+        for i in range(0, len(raw), size):
+            acc += raw[i:i + size]
+            counts.append(len(planner._KIND_VALUE.findall(acc)))
+        assert counts[-1] == 3, size
+        assert counts == sorted(counts), "a count must never go backwards"
 
 
 def test_a_split_marker_is_still_counted(monkeypatch):
@@ -1042,11 +1052,19 @@ def test_it_mirrors_whatever_is_actually_running():
     assert "BUILDING" in fn and "SENDING" in fn and "THINKING" in fn
 
 
-def test_it_offers_a_way_out_and_a_way_back():
+def test_it_offers_a_way_out():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
     assert "chatAbort.abort()" in fn
-    assert "scrollIntoView" in fn, "SHOW ME has to take you to the thing"
+
+
+def test_the_second_button_does_something_worth_a_button():
+    """It said SHOW ME and only scrolled, so the first question it got was
+    what it was supposed to do. It opens the running account now."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "SHOW LOG" in fn
+    assert "scrollIntoView" not in fn, "scrolling somewhere is not an answer"
 
 
 def test_transmitting_feeds_the_same_indicator():
@@ -1056,3 +1074,81 @@ def test_transmitting_feeds_the_same_indicator():
     assert "renderWorking()" in fn
     tail = fn.split("finally {")[-1]
     assert "planSending = false" in tail, "it must go away when the send ends"
+
+
+# --- a running account, when you open it ----------------------------------
+#
+# Asked for: "cant it show a running log of what its doing, if you expand it?"
+# The strip said BUILDING and a number; what those changes actually were was
+# not available anywhere until the plan arrived.
+
+def test_the_stream_says_what_it_wrote_not_only_how_many():
+    src = inspect.getsource(planner.plan_stream)
+    assert '"kind": kinds[-1]' in src
+    assert planner._KIND_VALUE.findall('{"kind": "set_param", "kind":"store"}') \
+        == ["set_param", "store"]
+
+
+def test_it_counts_completed_actions_so_the_log_is_never_blank():
+    """`"kind"` is written before its value, so counting the marker reported
+    an action a fraction before there was anything to say about it, and the
+    first line of the log was always empty."""
+    src = inspect.getsource(planner.plan_stream)
+    assert "len(kinds) > seen" in src
+    # The bookkeeping that caused two bugs is gone. Matched as a whole word:
+    # an earlier version of this assertion fired on "detail =".
+    import re as _re
+    assert not _re.search(r"\btail\b", src), \
+        "the chunk-boundary bookkeeping caused two bugs"
+
+
+def test_the_strip_opens_into_a_log():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "SHOW LOG" in fn and "HIDE LOG" in fn
+    assert "workLog.slice(-200)" in fn
+    assert "nothing written yet" in fn, "an empty log has to say it is empty"
+    assert "SHOW ME<" not in fn, "the old scroll-somewhere button is gone"
+
+
+def test_both_halves_feed_the_same_log():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    build = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    send = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "workSay(" in build and "workSay(" in send
+
+
+def test_a_failed_step_is_marked_in_the_log():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    assert "d.ok ? '' : 'FAILED '" in fn
+
+
+def test_the_log_does_not_grow_without_bound():
+    """A 114-action build would otherwise grow a list nobody scrolls."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function workSay(line)")[1].split("\n}\n")[0]
+    assert "workLog.length > 400" in fn
+
+
+def test_each_run_starts_a_fresh_log():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    for name in ("async function engage(prompt, name, scenes)",
+                 "async function apply()"):
+        fn = ui.split(name)[1].split("\n}\n")[0]
+        assert "workLog = []" in fn, name
+
+
+def test_the_log_follows_the_newest_line():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "lines.scrollTop = lines.scrollHeight" in fn
+
+
+def test_the_strip_stops_being_a_pill_once_it_is_a_panel():
+    """Keeping the pill radius with the log open turned it into an oval with
+    the text tucked inside the curve."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "#working.open { border-radius: 12px" in ui
+    fn = ui.split("function renderWorking()")[1].split("\n}\n")[0]
+    assert "classList.toggle('open', on && workOpen)" in fn

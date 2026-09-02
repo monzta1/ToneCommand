@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -1070,6 +1071,9 @@ def _chat_prompt(messages: list[dict]) -> str:
 #: raw text are actions written so far.
 _ACTION_MARK = '"kind"'
 
+#: The value that follows it, for saying what was just written.
+_KIND_VALUE = re.compile(r'"kind"\s*:\s*"([a-z_]+)"')
+
 
 def plan_stream(prompt: str, device_state: str, param_reference: str):
     """Plan, counting the changes as the model writes them.
@@ -1121,7 +1125,7 @@ def plan_stream(prompt: str, device_state: str, param_reference: str):
                                  headers=headers, method="POST")
     limit = timeout_s()
     deadline = time.monotonic() + limit
-    whole, seen, tail = [], 0, ""
+    whole, seen = [], 0
     try:
         with urllib.request.urlopen(req, timeout=limit) as resp:
             for line in resp:
@@ -1143,20 +1147,21 @@ def plan_stream(prompt: str, device_state: str, param_reference: str):
                 if not isinstance(piece, str) or not piece:
                     continue
                 whole.append(piece)
-                # Counted over a small overlap, because `"kind"` can be split
-                # across two chunks and a marker on the seam would otherwise
-                # never be counted at all.
+                # Counted by reading the text so far, not by tracking markers
+                # through chunk boundaries. Two earlier bugs came from that
+                # bookkeeping: a carry longer than the marker counted every
+                # action twice, and a marker arriving split in half was lost.
+                # A regex over a growing string cannot do either, and a plan
+                # is tens of kilobytes, so rescanning it costs nothing.
                 #
-                # The carry is one character SHORT of the marker, deliberately.
-                # Carrying eight characters of a six-character marker meant a
-                # complete match sat in the next window too and every action
-                # was counted twice: five actions reported as ten.
-                window = tail + piece
-                found = window.count(_ACTION_MARK)
-                if found:
-                    seen += found
-                    yield ("count", seen)
-                tail = window[-(len(_ACTION_MARK) - 1):]
+                # It counts COMPLETED actions: `"kind"` is written before its
+                # value, so counting the marker reported an action a fraction
+                # before there was anything to say about it, and the first
+                # entry in the log was always blank.
+                kinds = _KIND_VALUE.findall("".join(whole))
+                if len(kinds) > seen:
+                    seen = len(kinds)
+                    yield ("count", {"n": seen, "kind": kinds[-1]})
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace").strip()[:300]
         raise BackendFailure("openai", "http_status",
