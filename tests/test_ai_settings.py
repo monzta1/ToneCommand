@@ -874,15 +874,29 @@ def test_every_step_has_a_command_and_a_way_out():
         assert step["fix"].strip(), step          # what to do when it fails
 
 
-def test_the_commands_are_the_real_ones():
+def test_the_commands_are_the_real_ones(monkeypatch):
     """Verified against homebrew-core's cliproxyapi formula and the project's
     own flag definitions in cmd/server/main.go, then run on a real machine
     end to end. An invented flag would strand somebody at a terminal with no
-    way to tell it was our mistake."""
+    way to tell it was our mistake.
+
+    The setup command depends on whether the connector's config exists on
+    THIS machine, so both shapes are pinned explicitly. Asserting only the
+    installed shape held CI red for four pushes while every laptop that
+    happened to have cliproxyapi installed passed."""
     runs = [s["run"] for s in ai_settings.setup_guide_state()["steps"]]
     assert "brew install cliproxyapi" in runs
     assert "cliproxyapi --codex-login" in runs
-    assert any("brew services restart cliproxyapi" in r for r in runs)
+    # a machine without the connector yet (a fresh clone, and CI):
+    monkeypatch.setattr(ai_settings, "cliproxy_config_path", lambda: "")
+    assert ai_settings.cliproxy_setup_command() == \
+        "brew services start cliproxyapi"
+    # a machine with it installed: bake the key into the config and restart
+    monkeypatch.setattr(ai_settings, "cliproxy_config_path",
+                        lambda: "/opt/homebrew/etc/cliproxyapi.conf")
+    cmd = ai_settings.cliproxy_setup_command()
+    assert "brew services restart cliproxyapi" in cmd
+    assert "sed -i" in cmd, "the key must be baked into the config"
 
 
 def test_the_guide_does_not_lead_with_the_jargon():
