@@ -11,6 +11,26 @@ Balance era tone with the flanger on the expression pedal", review the exact
 parameter changes it proposes, confirm, and they land on the hardware over
 USB MIDI with read-back verification.
 
+## Watch it happen
+
+One sentence, one freshly erased FM9 slot, and six minutes later a complete
+eight-scene Judas Priest preset stands on the hardware: signal chain wired
+from nothing, amps voiced per era, scenes named on the footswitches, stored
+under its own name. Unedited, on a real unit, on version 0.8.0.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=jCNAZyyt5o8">
+    <img src="https://img.youtube.com/vi/jCNAZyyt5o8/maxresdefault.jpg"
+         alt="Watch: one typed sentence becomes an 8-scene Judas Priest FM9 preset in six minutes"
+         width="820">
+  </a>
+</p>
+
+That run used a GPT model through an OpenAI-compatible router. Bring your own
+AI: the Claude CLI, the Claude API, Grok, or anything local; ToneCommand
+translates, verifies against the real unit, and keeps every write behind your
+confirmation.
+
 ## Humans in command
 
 That is not a slogan. It is the constraint every other decision here bends to.
