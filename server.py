@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from fm9.device import FM9, FM9NotFound
 from fm9.registry import Registry
-from fm9 import (ai_settings, describe, designs, editbuffer, health,
+from fm9 import (acquire, ai_settings, describe, designs, editbuffer, health,
                  planner, presetfile, recipes as recipebook, rigprofile,
                  scratch_build, share)
 # `slots` is a local variable in more than one function here, so the module
@@ -1866,6 +1866,47 @@ _preset_cache: dict = {"slots": None}
 #: The one parsed file awaiting install, keyed by content hash so the
 #: confirm step installs exactly what was previewed, byte for byte.
 _install_cache: dict = {}
+
+
+@app.post("/api/acquire")
+def api_acquire(body: dict):
+    """Turn "get me the Periphery tones from Gift of Tone" into parsed,
+    ready-to-install presets.
+
+    Read-only against hardware. The Gift of Tone catalog is matched
+    deterministically (no model in the loop, nothing to hallucinate), the
+    bundle is downloaded once, and every FM9 preset inside goes through
+    the same validating parser as a dropped file, into the install cache.
+    Flash writes still happen one slot at a time through /api/install,
+    behind the whitelist, the gig lock and the read-back check.
+    """
+    import hashlib
+    query = str(body.get("query") or "").strip()
+    if not query:
+        return JSONResponse({"error": "say what to get"}, status_code=400)
+    try:
+        entries = acquire.catalog()
+        hit = acquire.find(query, entries)
+        if hit is None:
+            near = ", ".join(e["artist"] for e in entries[:8])
+            return JSONResponse(
+                {"error": f"nothing on Gift of Tone matches that. "
+                          f"Recent gifts: {near}..."}, status_code=404)
+        presets, skipped = acquire.fetch_presets(hit["url"])
+    except acquire.AcquireError as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    out = []
+    for pr in presets:
+        digest = hashlib.sha1(pr["raw"]).hexdigest()
+        _install_cache[digest] = pr["raw"]
+        out.append({"hash": digest, "name": pr["name"], "file": pr["file"],
+                    "chunks": pr["chunks"], "bytes": len(pr["raw"])})
+    log.info("acquired %d preset(s) from %s (%s)", len(out),
+             hit["artist"], hit["url"])
+    return {"artist": hit["artist"], "year": hit["year"], "url": hit["url"],
+            "presets": out, "skipped": skipped}
 
 
 @app.post("/api/install/parse")

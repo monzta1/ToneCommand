@@ -1715,6 +1715,11 @@
     margin: 6px 0; line-height: 1.4; }
   .installrow input[type="file"] { font: inherit; font-size: var(--fs-hint);
     color: var(--text); }
+  #installfound .foundname { min-width: 200px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  #installfound .foundout { margin: 0; }
+  #installfound .foundslot { min-width: 180px; }
+  #installfound .foundgo { white-space: nowrap; }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -2350,6 +2355,7 @@
           <button id="installbtn">INSTALL</button>
         </div>
         <div class="hint" id="installout" hidden></div>
+        <div id="installfound" hidden></div>
       </div>
 
       <details class="dangerzone">
@@ -6034,10 +6040,89 @@ async function* sseFrom(response) {
   }
 }
 
+// "Get me the Periphery tones from Gift of Tone" is a fetch, not a tone
+// request: routing it to the planner produced an imitation of a preset
+// the real version of which is a free download (owner, 2026-09-03). The
+// intent is unmistakable when a source is NAMED, so only a named source
+// intercepts; everything else still goes to the conversation.
+function acquireIntent(said) {
+  return /gift\s*of\s*tone/i.test(said)
+    && /\b(get|download|grab|install|fetch|load|go)\b/i.test(said);
+}
+
+async function runAcquire(said) {
+  chatLog.push({role: 'user', content: said});
+  chatNote('Going to Gift of Tone...');
+  renderChat();
+  try {
+    const r = await fetch('/api/acquire', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: said})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const names = d.presets.map(x => `"${x.name}"`).join(', ');
+    chatNote(`Found ${d.artist} (Gift of Tone ${d.year}): ${d.presets.length} `
+      + `FM9 preset${d.presets.length === 1 ? '' : 's'}: ${names}. Every file `
+      + `validated. Pick a slot for each in the STORAGE drawer, which is `
+      + `open; installing writes flash and is verified by reading the slot `
+      + `back.`);
+    renderInstallFound(d.presets);
+    openDrawer('storage');
+  } catch (e) {
+    chatNote(`Could not fetch that: ${e.message}`);
+  }
+  renderChat();
+}
+
+function renderInstallFound(presets) {
+  const box = $('installfound');
+  box.hidden = !presets.length;
+  box.innerHTML = presets.map(p => `
+    <div class="saverow" data-hash="${p.hash}">
+      <b class="foundname">${esc(p.name)}</b>
+      <select class="foundslot">${$('saveslot').innerHTML}</select>
+      <button class="small foundgo">INSTALL</button>
+      <span class="hint foundout"></span>
+    </div>`).join('');
+  for (const row of box.querySelectorAll('[data-hash]')) {
+    row.querySelector('.foundgo').onclick = async () => {
+      const slot = Number(row.querySelector('.foundslot').value);
+      const sel = saveSlots.find(s => s.number === slot);
+      const name = row.querySelector('.foundname').textContent;
+      if (!window.confirm(
+          `Install "${name}" to slot ${sel ? sel.label : slot}, permanently `
+          + `overwriting ${sel && sel.name ? '"' + sel.name + '"'
+                                           : 'whatever is stored there'}?\n\n`
+          + 'This writes flash. UNDO does not cover it.')) return;
+      const out = row.querySelector('.foundout');
+      out.textContent = 'installing...';
+      try {
+        const r = await fetch('/api/install', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hash: row.dataset.hash, slot})});
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        out.textContent = d.detail;
+        log(`install: ${d.detail}`, d.ok ? 'ok' : 'err');
+        if (d.ok) { loadPresets(false); loadSaveSlots(false); }
+      } catch (e) {
+        out.textContent = `failed: ${e.message}`;
+        log(`install failed: ${e.message}`, 'err');
+      }
+    };
+  }
+}
+
 async function talk() {
   if (chatBusy) return;                 // one turn at a time
   const said = $('prompt').value.trim();
   if (!said) return;
+  if (acquireIntent(said)) {
+    $('prompt').value = '';
+    growPrompt();
+    runAcquire(said);
+    return;
+  }
   chatLog.push({role: 'user', content: said});
   $('prompt').value = '';
   growPrompt();

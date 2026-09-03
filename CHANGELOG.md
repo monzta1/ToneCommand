@@ -5,6 +5,17 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **"Get me the Periphery tones from Gift of Tone" now works as a
+  sentence (#42).** A named source in the COMMAND box routes to a fetch
+  instead of the tone planner, which would have built an imitation of a
+  preset whose real version is a free download. The official Gift of
+  Tone catalog is matched deterministically (no model in the loop,
+  nothing to hallucinate; an unmatched ask lists recent gifts instead of
+  guessing), the bundle is downloaded once, every FM9 preset inside is
+  validated by the same parser as a dropped file, wrong-device variants
+  are skipped with reasons, and the results land in the Storage drawer
+  with a slot picker each. Flash writes still go one at a time through
+  the whitelist, the gig lock, the confirmation and the read-back check.
 - **Install preset files (#42).** Drop a .syx from Gift of Tone,
   Axe-Change or a friend into the Storage drawer and it lands in a
   whitelisted slot. The parser trusts nothing: every frame checksummed,
