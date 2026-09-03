@@ -2055,7 +2055,11 @@ def api_install(body: dict):
         try:
             fm9 = get_fm9()
             pf = fm9.install_preset(raw, slot, name or None)
-            got = fm9.slot_name(slot)
+            # Verify by LOADING the slot, not by reading its name field: the
+            # name lands even when the preset body does not, so a name-only
+            # read is a false positive (proven on hardware 2026-09-03, an
+            # install whose name read back but whose slot loaded <EMPTY>).
+            loaded = fm9.select_preset(slot)
         except PermissionError as e:
             return JSONResponse({"error": str(e)}, status_code=403)
         except FM9NotFound:
@@ -2066,8 +2070,9 @@ def api_install(body: dict):
             return JSONResponse({"error": str(e)}, status_code=422)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-    read_back = got.name if got else None
-    ok = bool(read_back and read_back.strip() == pf.name.strip())
+    read_back = loaded[1] if loaded else None
+    ok = bool(read_back and not proto.is_empty_slot_name(read_back)
+              and read_back.strip() == pf.name.strip())
     if ok:
         log.info("installed %r to %s", pf.name, proto.slot_label(slot))
         if _preset_cache["slots"]:
@@ -2077,12 +2082,13 @@ def api_install(body: dict):
                     s["empty"] = False
     return {"ok": ok, "installed": pf.name, "read_back": read_back,
             "slot": slot, "label": proto.slot_label(slot),
-            "detail": (f"slot {proto.slot_label(slot)} reads back as "
+            "detail": (f"slot {proto.slot_label(slot)} loaded as "
                        f"{read_back!r}: verified" if ok else
-                       f"the slot read back as {read_back!r}, not "
-                       f"{pf.name!r}. The write direction is not yet "
-                       "hardware-proven; treat this install as failed and "
-                       "check the unit before trusting the slot")}
+                       f"install FAILED: slot {proto.slot_label(slot)} loaded "
+                       f"as {read_back!r}, not {pf.name!r}. The preset body "
+                       "did not land. This preset-file write path does not "
+                       "work on this firmware yet; nothing here is trustworthy "
+                       "until it is captured from FM9-Edit")}
 
 
 @app.get("/api/store-slots")
