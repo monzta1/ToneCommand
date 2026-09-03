@@ -32,13 +32,16 @@ Notable changes to ToneCommand. Dates are UTC.
   just tighter. Nothing about behavior changed.
 
 ### Fixed
-- **Plurals and pronouns no longer break a local search.** "find the luke
-  TONES and load THEM ON my SYSTEM" was matching nothing while the
-  singular worked: the extra words stayed required search terms with no
-  file to match. Those fillers, common command verbs (clear, reload,
-  store, ...) and location words (system, folder, local) are now ignored
-  the same way "tone" and "it" already were, so the natural phrasing
-  finds the file (owner, 2026-09-03).
+- **Filler, plurals and typos no longer break a local search.** "find the
+  luke TONES and load THEM ON my SYSTEM", and even "IND the luke tones"
+  with a dropped letter, were matching nothing while the bare "luke"
+  worked: every extra word was a required search term with no file to
+  match. The local search now ranks files by how many query words the
+  name answers to and keeps the best, so a pronoun, a location word or a
+  typo simply does not score instead of sinking the whole search. A real
+  artist name that is not on disk still finds nothing; it ranks, it does
+  not guess. Asking for two artists at once now returns both (owner,
+  2026-09-03).
 - **The Inspector no longer garbles amp/cab names, and EXPANDs for room.**
   The amp/cab pair and knob grids were laid out for a full-width page, so
   in the 356px Inspector rail the amp value overflowed into the cabinet

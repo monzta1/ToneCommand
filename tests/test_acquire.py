@@ -158,8 +158,12 @@ def test_plurals_and_pronouns_do_not_break_a_local_search(tmp_path, monkeypatch)
     for phrase in ("find the luke tone and load it",
                    "find the luke tones and load them",
                    "find the luke tones and load them on my system",
-                   "clear this preset and load luke again"):
+                   "clear this preset and load luke again",
+                   "ind the luke tones and load them"):   # a dropped letter
         assert acquire.search_local(phrase), phrase
+    # but a real artist name that is not on disk still finds nothing: the
+    # search ranks, it does not guess.
+    assert acquire.search_local("get the meshuggah tones") == []
 
 
 def test_a_copy_button_exports_the_whole_conversation():

@@ -271,53 +271,73 @@ def _fm9_from_zip_bytes(data: bytes) -> list:
     return out
 
 
+def _name_score(name: str, words: list) -> int:
+    """How many of `words` the file name answers to. Substring, or a filename
+    token sharing a 3+ char prefix, so a nickname finds the full name:
+    "luke" -> "Lukather", "petty" -> "Tom Petty"."""
+    low = name.lower()
+    tokens = re.findall(r"[a-z0-9]+", low)
+    n = 0
+    for w in words:
+        if w in low or (len(w) >= 3 and any(tok.startswith(w[:3])
+                                            for tok in tokens)):
+            n += 1
+    return n
+
+
 def search_local(query: str) -> list:
-    """FM9 presets on this machine matching `query`, newest file first.
+    """FM9 presets on this machine matching `query`, best match first.
 
     Returns dicts {label, raw, kind, source}. A .zip is opened and its FM9
     presets/bundles are pulled out; loose .syx and .fasBundle files match
-    directly. Matching is the same all-words-must-appear rule as the Gift
-    of Tone catalog, against the file name.
+    directly.
+
+    Ranks files by how many query words the name answers to and keeps the
+    best. A word that matches nothing anywhere -- a typo ("ind" for "find"),
+    a stray pronoun -- simply does not score, so it cannot sink a search the
+    way an all-words-must-match rule did (owner, 2026-09-03: "ind the luke
+    tones and load them" found nothing). Two artists asked for together each
+    score, so both come back. If nothing scores, nothing is returned; a
+    request that is all filler never guesses.
     """
     words = [w for w in re.findall(r"[a-z0-9]+", query.lower())
              if w not in _STOPWORDS]
     if not words:
         return []
 
-    def matches(name: str) -> bool:
-        # Substring, or a filename token sharing a 3+ char prefix, so a
-        # nickname finds the full name: "luke" -> "Lukather", "petty" ->
-        # "Tom Petty". Every query word must connect to something.
-        tokens = re.findall(r"[a-z0-9]+", name.lower())
-        for w in words:
-            if w in name.lower():
-                continue
-            pre = w[:3]
-            if len(w) >= 3 and any(tok.startswith(pre) for tok in tokens):
-                continue
-            return False
-        return True
-
-    hits = []
+    scored = []
     for d in local_dirs():
         for f in sorted(d.iterdir(), key=lambda x: -x.stat().st_mtime
                         if x.is_file() else 0):
             if not f.is_file():
                 continue
-            if not matches(f.name):
-                continue
             low = f.name.lower()
-            try:
-                if low.endswith(".zip"):
-                    for label, raw, kind in _fm9_from_zip_bytes(f.read_bytes()):
-                        hits.append({"label": label, "raw": raw, "kind": kind,
-                                     "source": f.name})
-                elif low.endswith((".syx", ".fasbundle")):
-                    kind = "bundle" if low.endswith(".fasbundle") else "syx"
-                    hits.append({"label": f.name, "raw": f.read_bytes(),
-                                 "kind": kind, "source": f.name})
-            except OSError:
+            if not low.endswith((".zip", ".syx", ".fasbundle")):
                 continue
+            s = _name_score(f.name, words)
+            if s:
+                scored.append((s, f))
+
+    if not scored:
+        return []
+    best = max(s for s, _ in scored)          # only the strongest match wins
+
+    hits = []
+    for s, f in scored:
+        if s < best:
+            continue
+        low = f.name.lower()
+        try:
+            if low.endswith(".zip"):
+                for label, raw, kind in _fm9_from_zip_bytes(f.read_bytes()):
+                    hits.append({"label": label, "raw": raw, "kind": kind,
+                                 "source": f.name})
+            else:
+                kind = "bundle" if low.endswith(".fasbundle") else "syx"
+                hits.append({"label": f.name, "raw": f.read_bytes(),
+                             "kind": kind, "source": f.name})
+        except OSError:
+            continue
     return hits
 
 
