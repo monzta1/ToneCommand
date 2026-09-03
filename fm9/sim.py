@@ -248,7 +248,13 @@ class SimFM9Core:
                 break
             chars.append(chr(hi))
         slot = pending["slot"]
-        self.st.presets.setdefault(slot, {})["name"] = "".join(chars).rstrip()
+        # A real device writes a COMPLETE preset to the slot; model that so
+        # loading it afterward works. Base it on a default preset (a full
+        # grid/scenes/params dict) and stamp the installed name, rather than
+        # leaving a name-only stub that select_preset cannot load.
+        if slot not in self.st.presets or "grid" not in self.st.presets[slot]:
+            self.st.presets[slot] = _default_preset(slot, self.st.reg)
+        self.st.presets[slot]["name"] = "".join(chars).rstrip()
         self.st.empty_slots.pop(slot, None)
         self.undecoded.add(
             "preset install (0x77/0x78/0x79 write direction) is not "
