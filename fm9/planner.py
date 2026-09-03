@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -194,6 +195,31 @@ FAILURE_CLASSES = (
 )
 
 
+#: The endpoint backend speaks one protocol for many vendors, so its errors
+#: must name the SERVICE. "openai [http_status] 429" while planning with
+#: Gemini reads as the wrong company failing (the owner asked exactly that,
+#: 2026-09-02): the quota that ran out was Google's.
+SERVICE_HOSTS = {
+    "generativelanguage.googleapis.com": "Gemini",
+    "api.openai.com": "ChatGPT API",
+    "api.x.ai": "Grok",
+    "api.deepseek.com": "DeepSeek",
+    "api.moonshot.ai": "Kimi",
+    "openrouter.ai": "OpenRouter",
+}
+
+
+def service_label(backend: str, target: str | None) -> str:
+    """What to call a failing backend, in the vendor's name where known."""
+    if backend != "openai" or not target:
+        return backend
+    host = urllib.parse.urlsplit(target).hostname or ""
+    known = SERVICE_HOSTS.get(host)
+    if known:
+        return known
+    return host or backend
+
+
 class BackendFailure(RuntimeError):
     """This backend produced no plan, so the next candidate may run.
 
@@ -206,7 +232,8 @@ class BackendFailure(RuntimeError):
                  target: str | None = None, model: str | None = None):
         if failure_class not in FAILURE_CLASSES:
             raise ValueError(f"unknown failure class {failure_class!r}")
-        super().__init__(f"{backend} [{failure_class}] {detail}")
+        super().__init__(
+            f"{service_label(backend, target)} [{failure_class}] {detail}")
         self.backend = backend
         self.failure_class = failure_class
         self.detail = detail
@@ -380,6 +407,16 @@ def _extract_json(text: str) -> dict:
     for obj in reversed(candidates):
         if "actions" in obj or "summary" in obj:
             return obj
+    # No envelope anywhere. Some models emit the ACTIONS THEMSELVES - one
+    # object per action, or one bare action - instead of wrapping them in
+    # {summary, actions}. Gemini 3.5 Flash did exactly this on an 8-scene
+    # build (2026-09-02): dozens of well-formed actions, and this function
+    # kept only the last one and called it an empty plan. If what the model
+    # said is action-shaped, believe it and build the envelope ourselves;
+    # every action still goes through _validate and validate_action after.
+    acts = [o for o in candidates if o.get("kind") in ACTION_KINDS]
+    if acts:
+        return {"summary": "", "actions": acts}
     return candidates[-1]
 
 

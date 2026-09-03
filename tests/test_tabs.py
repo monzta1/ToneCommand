@@ -1,92 +1,111 @@
-"""Two ways to work, one at a time.
+"""The five-stage command rail, which replaced the two tabs.
 
-Saying what you want and turning a knob are different activities. One wants
-room to read a conversation back, the other wants every control at once, and
-they were competing for the same screen: the loser was whichever you happened
-to want that day.
-
-What stays OUTSIDE both tabs is the load-bearing decision here, not the split
-itself.
+DESIGN WITH AI / MANUAL implied two separate products and forced users to
+remember which side held a control. The rail states the one workflow instead:
+REQUEST -> PLAN -> REVIEW -> CONFIRM -> SEND. What stays OUTSIDE the stages
+is still the load-bearing decision: the live context, the shelf with Undo,
+and the drawers are visible or reachable from every stage.
 """
 import re
 from pathlib import Path
 
 UI = (Path(__file__).resolve().parents[1] / "ui" / "index.html").read_text()
+SCRIPT = UI.split("<script>")[1]
 
 
-def _panel_owner(label):
-    """Which tab a panel lives in: 'ai', 'manual' or '' for neither."""
-    at = UI.index(f'data-label="{label}"')
-    ai = UI.index('<div id="tab-ai"')
-    mid = UI.index('<div id="tab-manual"')
-    end = UI.index("</div>", UI.index('data-label="PRESET HEALTH"'))
-    if ai < at < mid:
-        return "ai"
-    if mid < at < UI.index('data-label="UNDO / COMPARE"'):
-        return "manual"
-    return ""
+def test_the_five_stages_exist_exactly_once_in_order():
+    order = [UI.index(f'id="stg-{name}"')
+             for name in ("request", "plan", "review", "confirm", "send")]
+    assert order == sorted(order)
+    for name in ("request", "plan", "review", "confirm", "send"):
+        assert UI.count(f'id="stg-{name}"') == 1
+        assert UI.count(f'id="pane-{name}"') == 1
 
 
-def test_asking_and_knobs_are_separated():
-    assert _panel_owner("COMMAND") == "ai"
-    assert _panel_owner("PROPOSED CHANGES") == "ai"
-    for knobs in ("AMP &amp; CAB", "GRAPHIC EQ", "EFFECTS",
-                  "DYNAMICS &amp; LEVELS"):
-        assert _panel_owner(knobs) == "manual", knobs
+def test_stages_are_gated_not_free_navigation():
+    """Plan and Review need a plan; Confirm refuses blockers; Send is only
+    entered by the armed control, never by clicking the rail cold."""
+    gate = SCRIPT.split("function canEnter")[1].split("\n}")[0]
+    assert "!!currentPlan" in gate
+    assert "hasBlockers()" in gate
+    assert "planSending || stageDone.send" in gate
 
 
-def test_what_you_are_looking_at_is_in_neither():
-    """SCENES and the chain are the subject in BOTH modes. Tabbing away from
-    the picture of your own signal path would be a loss, not a simplification.
-    """
-    for shared in ("SCENES", "SIGNAL CHAIN"):
-        assert _panel_owner(shared) == "", shared
-    assert UI.index('data-label="SCENES"') < UI.index('<div class="tabs"')
+def test_what_you_are_looking_at_is_outside_every_stage():
+    """Scenes and the signal path are the subject in EVERY stage. Hiding the
+    picture of your own rig during Review would conceal the blast radius."""
+    ctx = UI.index('id="context"')
+    assert ctx < UI.index('id="workspace"')
+    assert UI.index('id="scenes"') < UI.index('id="pane-request"')
+    assert UI.index('id="blocks"') < UI.index('id="pane-request"')
 
 
-def test_undo_and_save_are_never_behind_a_tab():
-    """Hiding undo behind a tab would be actively unsafe: it covers what
-    EITHER half just did, and you reach for it when something went wrong."""
-    for always in ("UNDO / COMPARE", "SAVE TO PRESET", "LOG"):
-        assert _panel_owner(always) == "", always
+def test_undo_is_on_the_shelf_never_behind_a_stage():
+    """Undo is the most important recovery action and never depends on
+    scroll or stage."""
+    shelf = UI.index('id="shelf"')
+    assert UI.index('id="undo"') > shelf
+    assert UI.index('id="pane-send"') < shelf, "the shelf sits below the stages"
 
 
-def test_a_pending_plan_is_never_left_behind_a_tab():
-    """Nothing transmits without the button, so a hidden panel is not
-    dangerous in itself. But a proposal you cannot see is one you cannot
-    refuse either, and it would sit there looking like nothing happened."""
-    fn = UI.split("function showPlan(plan)")[1].split("\n}\n")[0]
-    assert "showTab('ai')" in fn
+def test_a_pending_plan_is_never_left_behind_navigation():
+    """A proposal you cannot see is one you cannot refuse. showPlan enters
+    the PLAN stage itself rather than hoping the reader finds it."""
+    body = SCRIPT.split("function showPlan")[1].split("\nfunction ")[0]
+    assert "setStage('plan')" in body
 
 
-def test_the_choice_is_remembered():
-    assert "const TAB_KEY = 'tonecommand.tab.v1';" in UI
-    fn = UI.split("function showTab(which)")[1].split("\n}\n")[0]
-    assert "localStorage.setItem(TAB_KEY, on)" in fn
-    assert "catch" in fn, "a private window must not break the tabs"
+def test_the_final_send_control_exists_only_in_confirm():
+    """One SEND TO FM9 button, inside the Confirm stage, hidden until armed.
+    No other control may carry the reserved word SEND toward hardware."""
+    markup = UI.split("<script>")[0]
+    assert markup.count('id="apply"') == 1
+    confirm = markup.split('id="pane-confirm"')[1].split("</section>")[0]
+    assert 'id="apply"' in confirm
+    assert "SEND TO FM9" in confirm
+    assert 'hidden>SEND TO FM9' in confirm.replace("\n", " ") or \
+           re.search(r'id="apply"\s+hidden', confirm)
 
 
-def test_an_unknown_stored_tab_falls_back_rather_than_showing_nothing():
-    fn = UI.split("function showTab(which)")[1].split("\n}\n")[0]
-    assert "which === 'manual' ? 'manual' : 'ai'" in fn
+def test_arming_is_acknowledge_then_arm_then_eight_seconds():
+    assert "I reviewed the target and affected scenes" in UI
+    assert "armLeft = 8" in SCRIPT
+    assert "Esc to disarm" in UI
+    # Esc genuinely disarms, and target changes disarm from the poll.
+    assert "disarmSend(); return;" in SCRIPT
+    assert "function stageGuard" in SCRIPT
 
 
-def test_both_panels_and_both_buttons_exist_exactly_once():
-    for ident in ("tab-ai", "tab-manual", "tab-ai-btn", "tab-manual-btn"):
-        assert UI.count(f'id="{ident}"') == 1, ident
+def test_the_send_stage_never_claims_audible_success():
+    assert "EARS: PENDING" in SCRIPT
+    assert "PRESET NOT STORED" in SCRIPT
 
 
-def test_the_manual_tab_starts_hidden_and_hidden_actually_hides():
-    assert re.search(r'<div id="tab-manual"[^>]*\shidden>', UI)
-    assert "[hidden] { display: none !important; }" in UI
+def test_the_request_action_does_not_say_send():
+    markup = UI.split("<script>")[0]
+    composer = markup.split('id="pane-request"')[1].split("</section>")[0]
+    assert 'id="engage">GENERATE PLAN<' in composer
+    assert ">SEND<" not in composer
 
 
-def test_the_tabs_are_reachable_by_keyboard_and_announced():
-    """They are buttons with roles, not divs with click handlers."""
-    bar = UI.split('<div class="tabs"')[1].split("</div>")[0]
-    assert bar.count("<button") == 2
-    assert 'role="tablist"' in UI.split("\n")[
-        [i for i, l in enumerate(UI.split("\n")) if 'class="tabs"' in l][0]]
-    assert 'aria-selected' in bar and 'aria-controls' in bar
-    fn = UI.split("function showTab(which)")[1].split("\n}\n")[0]
-    assert "aria-selected" in fn, "the announced state has to follow the visible one"
+def test_no_keyboard_shortcut_reaches_the_final_send():
+    """Cmd/Ctrl+Enter may generate a plan; nothing on the keyboard may
+    transmit to hardware."""
+    keys = SCRIPT.split("// Cmd/Ctrl+Enter generates a plan")[1] \
+                 .split("addEventListener('beforeunload'")[0]
+    assert "talk()" in keys
+    assert "apply()" not in keys
+
+
+def test_only_one_utility_drawer_opens_at_a_time():
+    body = SCRIPT.split("function openDrawer")[1].split("\nfunction ")[0]
+    assert "key !== name" in body, "opening one drawer hides the rest"
+
+
+def test_the_poll_cannot_wipe_the_acknowledgement():
+    """renderGig runs on every five-second poll tick, and an unconditional
+    Confirm redraw reset the acknowledgement checkbox faster than a person
+    could check it and arm (owner, 2026-09-02)."""
+    fn = SCRIPT.split("const plainGig = renderGig;")[1].split("\n}")[0]
+    assert "changed = on !== gigOn" in fn
+    assert "changed && stage === 'confirm'" in fn

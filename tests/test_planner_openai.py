@@ -252,3 +252,46 @@ def test_the_last_object_wins_when_none_of_them_are_plan_shaped():
     that is the answer even when it is the wrong answer."""
     got = planner._extract_json('{"a": 1}\nno wait\n{"b": 2}')
     assert got == {"b": 2}
+
+
+def test_bare_actions_are_gathered_into_a_plan():
+    """Gemini 3.5 Flash answered an 8-scene build with the ACTIONS
+    THEMSELVES, one JSON object per action and no {summary, actions}
+    envelope. The extractor kept only the last object and called it an
+    empty plan, so the owner watched a big build come back as nothing
+    (2026-09-02). Action-shaped output is believed and enveloped; it all
+    still passes through _validate and validate_action afterwards."""
+    text = ('{"kind": "set_param", "block": "AMP", "instance": 1, '
+            '"param": "TONE_BASS", "value": 4.4}\n'
+            '{"kind": "rename_scene", "block": "SCENE", "instance": 1, '
+            '"value": 1, "type_name": "British Steel"}\n'
+            '{"kind": "set_bypass", "block": "REVERB", "instance": 1, '
+            '"bypassed": false}')
+    got = planner._extract_json(text)
+    assert [a["kind"] for a in got["actions"]] == \
+        ["set_param", "rename_scene", "set_bypass"]
+
+
+def test_one_bare_action_is_still_a_plan_of_one():
+    got = planner._extract_json(
+        '{"kind": "set_bypass", "block": "REVERB", "instance": 1, '
+        '"bypassed": false, "reason": "Enable reverb"}')
+    assert len(got["actions"]) == 1
+    assert got["actions"][0]["kind"] == "set_bypass"
+
+
+def test_failures_name_the_service_not_the_protocol():
+    """"openai [http_status] 429" while planning with Gemini reads as the
+    wrong company failing. The quota that ran out was Google's, and the
+    error says so (asked by the owner, 2026-09-02)."""
+    exc = planner.BackendFailure(
+        "openai", "http_status", "429 quota exceeded",
+        "https://generativelanguage.googleapis.com/v1beta/openai", "m")
+    assert str(exc).startswith("Gemini [http_status] 429")
+    # An unknown host still names ITSELF rather than the protocol.
+    exc = planner.BackendFailure(
+        "openai", "transport", "unreachable", "http://127.0.0.1:8317/v1", "m")
+    assert str(exc).startswith("127.0.0.1 [transport]")
+    # Other backends are their own name.
+    exc = planner.BackendFailure("cli", "timeout", "no reply", None, None)
+    assert str(exc).startswith("cli [timeout]")

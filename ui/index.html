@@ -1004,7 +1004,6 @@
   /* These two are inside panels that DO work offline, so they are hidden
      individually. There is nothing to switch to, and a plan can be built with
      the rig off but not sent. */
-  body.rig-off #preset { display: none; }
   body.rig-off #apply { display: none; }
   .offbanner {
     display: none; align-items: center; gap: 11px; flex-wrap: wrap;
@@ -1116,20 +1115,90 @@
 #aipresets { display: flex; flex-wrap: wrap; gap: 7px;
              flex: 1 1 100%; margin: 2px 0 0; }
 #aipresethelp { flex: 1 1 100%; margin: 0; }
+/* Hard-edged like every other control on this surface: the picker was a
+   row of pill chips once, and the pill radius outlived the chips. */
 #aipresets button {
   font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer;
-  background: var(--panel, #16181d); color: var(--fg, #d8dde5);
-  border: 1px solid var(--line, #333a45); border-radius: 999px;
+  background: transparent; color: var(--text);
+  border: 1px solid var(--line, #333a45); border-radius: 2px;
 }
-#aipresets button:hover { border-color: var(--accent, #6ea8fe); }
+#aipresets button:hover { border-color: var(--cyan-dim); }
 #aipresets button[aria-pressed="true"] {
-  border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
+  border-color: var(--cyan-dim); background: rgba(47,230,255,0.08);
 }
 #aipresets #ashowme {
   border-style: dashed; border-color: var(--accent, #6ea8fe);
   color: var(--accent, #6ea8fe); margin-left: auto; font-weight: 600;
 }
 #aipresethelp:empty { display: none; }
+/* Field names for the settings inputs. A filled box loses its placeholder,
+   and an anonymous URL is a question, not a setting (owner, 2026-09-02). */
+.flabel { display: block; font-size: var(--fs-badge);
+  letter-spacing: 0.14em; color: var(--muted); margin: 10px 0 4px;
+  font-weight: 600; }
+.airow .flabel:first-child { margin-top: 0; }
+/* The provider cards: one flat choice, named and priced, state on its
+   sleeve. */
+#aipresets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.aicard { text-align: left; padding: 10px 12px; cursor: pointer;
+  font: inherit; color: var(--text); background: transparent;
+  border: 1px solid var(--line); border-radius: 2px; }
+.aicard:hover { border-color: var(--cyan-dim); }
+.aicard[aria-pressed="true"] { border-color: var(--cyan-dim);
+  background: rgba(47,230,255,0.08); }
+.aicard:disabled { opacity: 0.45; cursor: default; }
+.aicard b { font-weight: 600; letter-spacing: 0.04em; }
+.aicard .acost { display: block; font-size: var(--fs-hint);
+  color: var(--muted); margin-top: 3px; }
+.aicard .astate { float: right; font-size: var(--fs-badge);
+  letter-spacing: 0.08em; margin-left: 8px; }
+.aicard .astate.ready { color: var(--green); }
+.aicard .astate.key, .aicard .astate.setup { color: var(--amber); }
+.aicard .astate.missing { color: var(--muted); }
+#aipresets #ashowme { grid-column: 1 / -1; }
+#aikeylink { display: inline-block; margin: 6px 0 0; color: var(--cyan);
+  font-size: var(--fs-hint); text-decoration: none;
+  border-bottom: 1px dashed var(--cyan-dim); }
+#aiadvanced { margin-top: 14px; border-top: 1px solid var(--line);
+  padding-top: 8px; }
+#aiadvanced summary { color: var(--muted); font-size: var(--fs-badge);
+  letter-spacing: 0.14em; cursor: pointer; }
+.keystatus {
+  display: inline-block; margin-left: 9px; padding: 2px 6px;
+  border: 1px solid var(--line); border-radius: 2px;
+  color: var(--muted); font-size: var(--fs-badge); letter-spacing: .08em;
+  vertical-align: middle;
+}
+.keystatus.stored { color: var(--green); border-color: rgba(61,255,160,.45); }
+
+/* AI settings used to live inside .modal, whose vertical form rules are
+   above. It now lives in a utility drawer, so those selectors no longer
+   match and every label/input tries to share one wrapping flex row. Make
+   this an explicit one-field-per-row form in its current home. */
+#drawer-settings #aimodal .airow {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  gap: 0; align-items: stretch;
+}
+#drawer-settings #aimodal .airow > .flabel { margin: 12px 0 5px; }
+#drawer-settings #aimodal .airow > .flabel:first-child { margin-top: 0; }
+#drawer-settings #aimodal .airow > input,
+#drawer-settings #aimodal .airow > select,
+#drawer-settings #aimodal .airow > #aikey {
+  box-sizing: border-box; width: 100%; min-width: 0;
+  flex: none; min-height: 38px;
+}
+#drawer-settings #aimodal .airow > .btns {
+  display: flex; gap: 8px; margin-top: 14px;
+}
+/* The "planning with" line at the top of the COMMAND console. Quiet,
+   because it is ambient status, but a button, because reading it and
+   wanting to change it are one gesture apart. */
+#aiwho { display: block; width: 100%; text-align: left; margin: 0 0 8px;
+         padding: 0; background: none; border: none; cursor: pointer;
+         font: inherit; font-size: 12px; color: var(--dim, #8a93a6); }
+#aiwho b { color: var(--accent, #6ea8fe); font-weight: 600; }
+#aiwho .chg { opacity: 0.6; text-decoration: underline; margin-left: 6px; }
+#aiwho.needs { color: var(--amber, #e0a83c); }
 /* The models, always all of them. See loadAiModels for why the datalist
    alone was not enough. */
 #aimodelpicks { display: flex; flex-wrap: wrap; gap: 6px;
@@ -1242,6 +1311,9 @@
 #working.done-ok { border-color: #2f7d52; }
 #working.done-ok .wwhat { color: var(--green); }
 #working.done-ok .wdot { background: var(--green); animation: none; }
+#working.done-ready { border-color: var(--cyan-dim); }
+#working.done-ready .wwhat { color: var(--cyan); }
+#working.done-ready .wdot { background: var(--cyan); animation: none; }
 #working.done-part { border-color: #8a6a2a; }
 #working.done-part .wwhat { color: var(--amber); }
 #working.done-part .wdot { background: var(--amber); animation: none; }
@@ -1291,7 +1363,14 @@
 /* The empty state: a question and six real requests, centred in the space the
    conversation will fill. It is most people's first sight of this panel, and
    what it showed before was an input box with paragraphs stacked under it. */
-#chat { justify-content: flex-end; }        /* newest sits above the composer */
+/* Short exchanges sit down by the composer; tall ones must SCROLL. This
+   was justify-content: flex-end, which pins content to the bottom by
+   pushing the overflow above the container's top edge, where no scrollbar
+   reaches: the owner watched his own conversation become unreachable the
+   moment it outgrew the box (2026-09-02). A collapsing spacer gives the
+   same bottom-seated look and vanishes the moment the content needs the
+   room. */
+#chat::before { content: ""; flex: 1 1 0; }
 #cscroll { display: flex; flex-direction: column; gap: 14px; }
 .cempty {
   display: flex; flex-direction: column; align-items: center;
@@ -1338,7 +1417,10 @@
 /* Exactly what each scene will be called, before anything is built. Scene
    names are all you can read on a dark stage. */
 #chat .cscenes { margin-top: 7px; font-size: 12px; opacity: .7; }
-#chat .cscenes ul { margin: 4px 0 0; padding: 0; list-style: none; }
+/* Two columns: eight scene names in four rows, so the agreement fits the
+   conversation viewport instead of scrolling its own first line away. */
+#chat .cscenes ul { margin: 4px 0 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
 #chat .cscenes li { display: flex; gap: 9px; line-height: 1.7; }
 #chat .cscenes li b {
   min-width: 15px; color: var(--cyan-dim); font-weight: 600;
@@ -1488,17 +1570,368 @@
 .splice .slide { color: var(--dim); }
 .splice .oneway { color: #e8b04b; }
 .splice .oneway::before { content: "ONE WAY: "; letter-spacing: .08em; }
+
+  /* ===================== CONTROL-SURFACE SHELL =====================
+     The desktop redesign: five persistent layers, one stage at a time,
+     one explicit crossing into hardware. Overrides the long-document
+     layout above; component styles (pills, knobs, cards, pops) are
+     reused as-is. */
+
+  #unsupported { display: none; }
+  @media (max-width: 1179px) {
+    #shell { display: none; }
+    #unsupported { display: flex; align-items: center; justify-content:
+      center; min-height: 100vh; padding: 40px; text-align: center;
+      color: var(--text); font-size: var(--fs-sub); }
+    body { overflow: auto; }
+  }
+  @media (min-width: 1180px) {
+    body { overflow: hidden; height: 100vh; }
+  }
+
+  .wrap#shell {
+    max-width: none; height: 100vh; margin: 0; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+  }
+  /* This follows the more-specific shell rule intentionally. Without equal
+     specificity, the desktop surface remained visible behind the narrow-
+     viewport safety message. */
+  @media (max-width: 1179px) { .wrap#shell { display: none; } }
+
+  /* Layer 1: hardware bar */
+  #hwbar {
+    flex: 0 0 64px; display: flex; align-items: center; gap: 18px;
+    flex-wrap: nowrap; border-bottom: 1px solid var(--line);
+    padding: 0; margin: 0;
+  }
+  #hwbar .brand { gap: 12px; }
+  #hwbar .brand img { width: 40px; height: 40px; border-radius: 8px;
+    filter: drop-shadow(0 0 12px rgba(90,140,255,0.35)); }
+  #hwbar h1 { font-size: calc(1.15rem * var(--ui-scale, 1));
+    letter-spacing: 0.28em; white-space: nowrap; }
+  .hwtarget { display: flex; align-items: center; gap: 12px;
+    margin: 0 auto; min-width: 0; }
+  /* Fixed field: the preset selector must not resize with preset names. */
+  .hwtarget #preset { width: 420px; max-width: 420px; justify-content:
+    flex-start; overflow: hidden; }
+  .hwtarget #preset b { overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .dirty { font-size: var(--fs-badge); letter-spacing: 0.1em;
+    color: var(--amber); border: 1px solid rgba(255,180,84,0.5);
+    border-radius: 2px; padding: 3px 8px; white-space: nowrap; }
+  #hwbar .status { margin-left: 0; }
+
+  /* Layer 2: workflow rail */
+  #rail {
+    flex: 0 0 52px; display: flex; align-items: center;
+    justify-content: center; gap: 0; max-width: 920px; width: 100%;
+    margin: 0 auto;
+  }
+  .stg {
+    font: inherit; font-size: var(--fs-label); letter-spacing: 0.12em;
+    width: 168px; height: 36px; cursor: default; color: var(--muted);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 2px; position: relative; white-space: nowrap;
+  }
+  .stg .n { opacity: 0.55; margin-right: 4px; }
+  .stg.avail, .stg.done { color: var(--cyan); border-color: var(--cyan-dim);
+    cursor: pointer; }
+  .stg.done::after { content: " \2713"; }
+  .stg.on {
+    color: var(--cyan); border-color: var(--cyan-dim);
+    background: rgba(47,230,255,0.12);
+    box-shadow: inset 0 -2px 0 var(--cyan);
+  }
+  .stg.blocked { color: var(--red); border-color: rgba(255,84,112,0.6); }
+  .stg.sent { color: var(--green); border-color: rgba(61,255,160,0.5); }
+  .stg.sent.on { box-shadow: inset 0 -2px 0 var(--green);
+    background: rgba(61,255,160,0.08); }
+  .stgline { width: 20px; border-top: 1px solid var(--line); }
+
+  /* Layer 3: live context strip */
+  #context {
+    flex: 0 0 152px; margin-bottom: 0; padding: 14px 16px 10px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .ctxrow { display: flex; gap: 16px; min-height: 0; flex: 1; }
+  #context .scenes {
+    flex: 0 0 396px; display: grid;
+    grid-template-columns: repeat(4, 1fr); grid-auto-rows: 42px; gap: 8px;
+    align-content: start;
+  }
+  .pathzone { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .pathzone .gridwrap { flex: 1; overflow: auto hidden; min-height: 0; }
+  .pathzone .gridnote { margin-top: 2px; }
+
+  /* Stale, not gone: last-known hardware state stays visible offline but
+     must never read as live. */
+  body.rig-off #context { display: flex; }
+  body.rig-off #context .ctxrow { opacity: 0.45; filter: saturate(0.4); }
+  body.rig-off #preset { opacity: 0.55; filter: saturate(0.4); }
+  .offbanner { display: none; }
+  body.rig-off #context .offbanner {
+    display: block; margin: 0 0 8px; color: var(--text);
+    font-size: var(--fs-hint);
+  }
+
+  /* Layer 4: stage workspace */
+  #workspace {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 224px minmax(560px, 1fr) 356px; gap: 12px;
+  }
+  @media (max-width: 1279px) {
+    #workspace { grid-template-columns: 184px minmax(520px, 1fr) 320px; }
+    #context .scenes { flex-basis: 364px; }
+  }
+  #stagenav, #rightrail {
+    min-height: 0; overflow-y: auto; border: 1px solid var(--line);
+    border-radius: 4px; background: var(--panel); padding: 12px;
+  }
+  #canvas { min-height: 0; display: flex; flex-direction: column; }
+  .stagepane {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: var(--panel); padding: 14px 16px;
+  }
+  .navtitle, .cardtitle {
+    font-size: var(--fs-badge); letter-spacing: 0.16em; color: var(--cyan);
+    margin-bottom: 10px; font-weight: 600;
+  }
+  .navitem {
+    display: block; width: 100%; text-align: left; font: inherit;
+    font-size: var(--fs-label); letter-spacing: 0.08em; color: var(--muted);
+    background: transparent; border: 1px solid transparent; border-radius: 2px;
+    padding: 8px 10px; cursor: pointer; margin-bottom: 4px;
+  }
+  .navitem:hover { color: var(--text); border-color: var(--line); }
+  .navitem.on { color: var(--cyan); border-color: var(--cyan-dim);
+    background: rgba(47,230,255,0.08); }
+  .navitem .ct { float: right; opacity: 0.7; font-variant-numeric: tabular-nums; }
+  .navbody { font-size: var(--fs-hint); color: var(--muted); }
+  .navbody .nrow { display: flex; justify-content: space-between; gap: 8px;
+    padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .navbody .nrow b { color: var(--text); font-weight: 500; }
+
+  /* Request pane hosts the conversation; the composer stays pinned. */
+  #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
+  #pane-request .composer { flex: 0 0 auto; }
+  #pane-request #aiwho { flex: 0 0 auto; }
+  .stagecard { flex: 1; min-height: 0; overflow-y: auto; }
+  .stagefoot {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px;
+  }
+  .stagefoot button { white-space: nowrap; }
+  .stagefoot .tablefoot { white-space: nowrap; }
+  .spacer { flex: 1; }
+  .tablefoot { color: var(--muted); font-size: var(--fs-hint);
+    letter-spacing: 0.06em; }
+  .intentlist { display: grid; gap: 8px; margin-top: 16px; }
+  .intentrow { display: grid; grid-template-columns: 180px minmax(0,1fr) 72px;
+    gap: 14px; align-items: center; min-height: 54px; padding: 9px 12px;
+    border: 1px solid var(--line); border-left: 2px solid var(--cyan-dim);
+    background: rgba(0,0,0,.18); }
+  .intentname { color: var(--cyan); font-size: var(--fs-label);
+    letter-spacing: .1em; }
+  .intentoutcome { color: var(--text); font-size: var(--fs-hint);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .intentcount { color: var(--muted); font-size: var(--fs-label);
+    text-align: right; white-space: nowrap; }
+
+  /* Review: the change table scrolls internally; actions stay visible. */
+  .reviewhead {
+    display: grid; grid-template-columns: 28px 132px minmax(190px,1fr)
+      112px 112px 88px; gap: 10px; align-items: center;
+    flex: 0 0 34px; padding: 0 12px; border: 1px solid var(--line);
+    border-bottom: 0; background: #08111b; color: var(--muted);
+    font-size: var(--fs-badge); letter-spacing: .12em;
+  }
+  #plancards.changetable { flex: 1; min-height: 0; overflow-y: auto; }
+  .changetable .plan-card {
+    display: grid; grid-template-columns: 28px 132px minmax(190px,1fr)
+      112px 112px 88px; gap: 10px; align-items: center;
+    min-height: 48px; margin: 0; padding: 8px 12px;
+    border-radius: 0; border-left-width: 1px; border-bottom: 0;
+    font-size: var(--fs-hint);
+  }
+  .changetable .plan-card:last-child { border-bottom: 1px solid var(--line); }
+  .reviewstatus { color: var(--cyan); font-size: var(--fs-body); }
+  .vfail .reviewstatus { color: var(--red); }
+  .vwarn .reviewstatus { color: var(--amber); }
+  .reviewtarget { color: var(--text); font-size: var(--fs-label);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reviewwhat { min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .reviewwhat .what { white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .reviewbefore { color: var(--muted); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .reviewafter { color: var(--cyan); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .reviewimpact { color: var(--violet); font-size: var(--fs-label); }
+  .reviewdetail { grid-column: 3 / 7; margin-top: 3px; }
+  .reviewmore { position: relative; flex: 0 0 auto; font-size: var(--fs-label); }
+  .reviewmore summary { color: var(--muted); cursor: pointer;
+    letter-spacing: .08em; list-style: none; }
+  .reviewmore summary::-webkit-details-marker { display: none; }
+  .reviewmore summary::before { content: "+ "; color: var(--cyan-dim); }
+  .reviewmore[open] summary::before { content: "− "; }
+  .reviewmore .why { position: absolute; top: calc(100% + 8px); left: -8px;
+    z-index: 12; width: min(360px, 50vw); padding: 9px 11px;
+    background: #07111b; border: 1px solid var(--cyan-dim);
+    box-shadow: 0 10px 28px rgba(0,0,0,.65); color: var(--text);
+    white-space: normal; line-height: 1.5; }
+  #pane-review .stagefoot { gap: 8px; }
+  #pane-review .stagefoot button {
+    padding: 8px 12px; font-size: var(--fs-label); flex: 0 0 auto;
+  }
+  #pane-review #reviewcount { min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; }
+  @media (max-width: 1279px) {
+    .reviewhead, .changetable .plan-card {
+      grid-template-columns: 24px 104px minmax(160px,1fr) 92px 92px 70px;
+      gap: 7px;
+    }
+  }
+
+  /* Confirm */
+  .cfacts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-bottom: 14px; }
+  .cfact { border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; }
+  .cfact .cfl { font-size: var(--fs-badge); letter-spacing: 0.14em;
+    color: var(--muted); margin-bottom: 4px; }
+  .cfact .cfv { font-size: var(--fs-sub); color: var(--text); }
+  .cblast { color: var(--amber); font-size: var(--fs-body);
+    letter-spacing: 0.04em; margin-bottom: 14px; min-height: 1.4em; }
+  .cack { display: flex; gap: 10px; align-items: center;
+    font-size: var(--fs-body); color: var(--text); cursor: pointer; }
+  .cack input { width: 18px; height: 18px; accent-color: var(--cyan); }
+  #apply.armed { border-color: var(--cyan); color: var(--bg);
+    background: var(--cyan); font-weight: 700; }
+
+  /* Right rail cards */
+  .railcard { border: 1px solid var(--line); border-radius: 4px;
+    padding: 12px 14px; margin-bottom: 12px; }
+  .railbody { font-size: var(--fs-hint); color: var(--text); }
+  .railbody .ok { color: var(--green); }
+  .railbody .warn { color: var(--amber); }
+  .railbody .bad { color: var(--red); }
+  .railbody .schip { display: inline-block; min-width: 26px; text-align:
+    center; border: 1px solid var(--amber); color: var(--amber);
+    border-radius: 2px; padding: 1px 6px; margin: 2px 4px 2px 0;
+    font-variant-numeric: tabular-nums; }
+  #inspector .console { margin-bottom: 12px; padding: 14px; }
+  .insphead { display: flex; align-items: center; justify-content:
+    space-between; margin-bottom: 10px; color: var(--violet);
+    letter-spacing: 0.12em; font-size: var(--fs-label); }
+
+  /* Global operation strip: the fixed pill re-anchors above the shelf. */
+  #opstrip { flex: 0 0 auto; }
+  /* In-flow, not floating: the strip claims its own row above the shelf so
+     it can never cover a stage's actions. */
+  #opstrip #working { position: static; transform: none; max-width: none;
+    margin: 0 0 8px; }
+  #opstrip .srcprog { margin: 0 0 8px; }
+
+  /* Layer 5: command shelf */
+  #shelf {
+    flex: 0 0 52px; display: flex; align-items: center; gap: 12px;
+    border-top: 1px solid var(--line); padding: 0;
+  }
+  #shelf #undo {
+    height: 40px; padding: 0 14px; font: inherit;
+    font-size: var(--fs-label); letter-spacing: 0.1em; cursor: pointer;
+    border-radius: 2px; border: 1px solid var(--cyan-dim);
+    color: var(--bg); background: var(--cyan); font-weight: 600;
+  }
+  #shelf #undo:disabled { background: transparent; color: var(--muted);
+    border-color: var(--line); cursor: default; }
+  #shelf #undowhat { color: var(--muted); font-size: var(--fs-hint);
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .shbtn {
+    height: 40px; padding: 0 12px; font: inherit;
+    font-size: var(--fs-label); letter-spacing: 0.1em; cursor: pointer;
+    color: var(--muted); background: transparent;
+    border: 1px solid transparent; border-radius: 2px; position: relative;
+  }
+  .shbtn:hover { color: var(--text); border-color: var(--line); }
+  .shbtn.on { color: var(--cyan); border-color: var(--cyan-dim); }
+  .shbtn .badge {
+    display: inline-block; margin-left: 6px; min-width: 18px;
+    text-align: center; border-radius: 2px; padding: 0 4px;
+    background: var(--amber); color: var(--bg);
+    font-size: var(--fs-badge); font-weight: 600;
+  }
+  .comparepop {
+    position: absolute; bottom: 48px; left: 0; z-index: 70;
+    background: rgba(8,14,22,0.98); border: 1px solid var(--cyan-dim);
+    border-radius: 4px; padding: 14px; width: 420px;
+  }
+
+  /* Utility drawers */
+  #drawer {
+    position: fixed; bottom: 64px; right: 16px; z-index: 65;
+    max-height: 520px; overflow-y: auto; width: 720px;
+    background: rgba(8,14,22,0.98); border: 1px solid var(--cyan-dim);
+    border-radius: 4px; padding: 14px 16px;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.6);
+  }
+  #drawer[data-draw="settings"] { width: 560px; }
+  #drawer[data-draw="storage"] { width: 640px; }
+  #drawer[data-draw="library"] { width: 840px; }
+  .drawhead { display: flex; align-items: center; justify-content:
+    space-between; margin-bottom: 12px; color: var(--cyan);
+    letter-spacing: 0.16em; font-size: var(--fs-label); font-weight: 600; }
+  .drawhead .mclose { position: static; }
+  #drawer .console { box-shadow: none; padding: 16px; margin-bottom: 14px; }
+  .libtabs { display: flex; gap: 0; margin-bottom: 12px; }
+  .libtab { font: inherit; font-size: var(--fs-label);
+    letter-spacing: 0.1em; padding: 8px 16px; cursor: pointer;
+    color: var(--muted); background: transparent;
+    border: 1px solid var(--line); }
+  .libtab + .libtab { border-left: none; }
+  .libtab.on { color: var(--cyan); border-color: var(--cyan-dim);
+    background: rgba(47,230,255,0.08); }
+  .storebanner {
+    color: var(--amber); border: 1px solid rgba(255,180,84,0.5);
+    border-radius: 2px; padding: 8px 12px; margin-bottom: 12px;
+    letter-spacing: 0.08em; font-size: var(--fs-label);
+  }
+  .dangerzone { margin-top: 14px; border-top: 1px solid var(--line);
+    padding-top: 10px; }
+  .dangerzone summary { color: var(--red); letter-spacing: 0.12em;
+    cursor: pointer; font-size: var(--fs-label); }
+  .dangerzone .clearrow { margin-top: 10px; }
+
+  /* The fold headers make no sense on shell layers. */
+  [data-nofold] > .phead { display: none; }
+  /* Containers the drawer/stage machinery toggles: display is theirs to
+     manage, block flow is the rule. */
+  .drawpane { display: block; }
+  .libpane { display: block; }
+  .navpane { display: block; }
+
 </style>
   <link rel="icon" type="image/png" href="/logo.png">
 </head>
 <body>
-<div class="wrap">
-  <header>
+<!-- Deliberate, not responsive collapse: a compressed phone Send workflow is
+     how a wrong preset gets overwritten from a pocket. -->
+<div id="unsupported">
+  <p>ToneCommand needs at least 1180px of desktop width for safe hardware
+  review.</p>
+</div>
+
+<div class="wrap" id="shell">
+
+  <!-- LAYER 1: the hardware bar. Read before anything else, because every
+       action below is relative to a physical target. -->
+  <header id="hwbar">
     <a class="brand" href="/" title="ToneCommand">
-      <img src="/logo.png" alt="" width="104" height="104">
+      <img src="/logo.png" alt="" width="40" height="40">
       <h1>TONE <span>//</span> COMMAND</h1>
     </a>
-    <div class="status">
+    <div class="hwtarget">
       <span class="pillwrap">
         <button class="pill pillbtn" id="preset">PRESET <b>...</b><span class="caret"></span></button>
         <div class="pop" id="ppop" hidden>
@@ -1510,19 +1943,20 @@
             <button id="prescan">RESCAN</button></div>
         </div>
       </span>
-      <button class="pill off" id="link" title="click to look for the FM9 again">
-        <span class="dot"></span><span id="linktext">LINK</span></button>
+      <!-- Sending and storing are different acts; this badge is what keeps
+           them different at a glance. -->
+      <span class="dirty" id="dirty" hidden>EDIT BUFFER &middot; MODIFIED</span>
+    </div>
+    <div class="status">
       <!-- The performance lockout, visible and pressable. It used to exist
            only as an environment variable and an API: with it on, the page
            looked completely normal and every control just failed one refusal
            at a time, and the refusal then told a guitarist to POST JSON. -->
       <button class="pill" id="gig"
-              title="performance lockout: while on, only scene changes reach the FM9">GIG MODE</button>
-      <div class="textsize" role="group" aria-label="text size">
-        <button id="tsdown" title="smaller text" aria-label="smaller text">A</button>
-        <button id="tsup" title="larger text" aria-label="larger text">A</button>
-      </div>
-      <button class="gear" id="aiopen" aria-label="AI backend settings">
+              title="performance lockout: while on, only scene changes reach the FM9">GIG LOCK</button>
+      <button class="pill off" id="link" title="click to look for the FM9 again">
+        <span class="dot"></span><span id="linktext">LINK</span></button>
+      <button class="gear" id="aiopen" aria-label="settings">
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
              stroke-linejoin="round" aria-hidden="true">
@@ -1532,300 +1966,465 @@
     </div>
   </header>
 
-  <div class="offbanner">
-    <span><b>The FM9 is not connected</b>, so the panels that need it are
-      hidden: scenes, the signal chain, the tone controls, undo and compare,
-      preset health and saving. They come back on their own when it does.
-      Everything still shown works: design tones, browse and edit recipes, and
-      review what is queued. Nothing you build is lost, and it goes out when
-      the rig returns.</span>
-  </div>
+  <!-- LAYER 2: the five-stage command rail. The machine may propose; the
+       human reviews, confirms, and sends. Only current or completed stages
+       are clickable. -->
+  <nav id="rail" aria-label="command workflow">
+    <button class="stg" id="stg-request" data-stage="request"><span class="n">01</span> REQUEST</button>
+    <span class="stgline"></span>
+    <button class="stg" id="stg-plan" data-stage="plan"><span class="n">02</span> PLAN</button>
+    <span class="stgline"></span>
+    <button class="stg" id="stg-review" data-stage="review"><span class="n">03</span> REVIEW</button>
+    <span class="stgline"></span>
+    <button class="stg" id="stg-confirm" data-stage="confirm"><span class="n">04</span> CONFIRM</button>
+    <span class="stgline"></span>
+    <button class="stg" id="stg-send" data-stage="send"><span class="n">05</span> SEND</button>
+  </nav>
 
-  <div class="console perf needs-rig" data-label="SCENES">
-    <div class="scenes" id="scenes"></div>
-  </div>
-
-  <div class="console needs-rig" data-label="SIGNAL CHAIN">
-    <div class="gridwrap" id="blocks"><span class="hint">awaiting link...</span></div>
-    <div class="gridnote">
-      <span class="k"><span class="sw" style="background:var(--cyan)"></span>carrying signal</span>
-      <span class="k"><span class="sw" style="background:#3b5262"></span>not reached</span>
-      <span class="k">dashed = bypassed</span>
-      <span class="k">click a block to bypass it, its letter to change channel</span>
-      <button class="k gridzoom" id="gridzoom">enlarge for review</button>
-      <span class="k" id="gridwhy"></span>
+  <!-- LAYER 3: the live FM9 context. Scenes and the signal path stay on
+       screen through every stage, because sound and blast radius are
+       scene-dependent and hiding them during Review would conceal the most
+       important consequence. -->
+  <section id="context" class="console needs-rig" data-nofold data-label="LIVE FM9 CONTEXT">
+    <div class="offbanner">
+      <span><b>The FM9 is not connected.</b> What is shown is the last known
+        state, stale until the link returns. Requests, recipes and offline
+        designs still work; nothing that needs live hardware will pretend to.</span>
     </div>
-  </div>
-
-
-  <!-- Two ways to work, and they were competing for the same screen. Saying
-       what you want and turning a knob are different activities: one wants
-       room to read a conversation, the other wants every control at once.
-       Neither needs the other on screen while it is happening.
-
-       SCENES and the SIGNAL CHAIN stay ABOVE this, because they are what you
-       are looking AT in both modes. So do UNDO, SAVE and the LOG, further
-       down: hiding undo behind a tab would be actively unsafe, and the log
-       records what both halves did. -->
-  <div class="tabs" role="tablist">
-    <button class="tab on" id="tab-ai-btn" role="tab" aria-selected="true"
-            aria-controls="tab-ai">DESIGN WITH AI</button>
-    <button class="tab" id="tab-manual-btn" role="tab" aria-selected="false"
-            aria-controls="tab-manual">MANUAL</button>
-  </div>
-
-  <div id="tab-ai" role="tabpanel" aria-labelledby="tab-ai-btn">
-
-  <div class="console command" data-label="COMMAND">
-    <!-- Shaped like the conversation it is: what was said fills the space,
-         and the box you type into is pinned under it. It read as a form
-         before, because the input sat at the TOP with suggestions and two
-         paragraphs of explanation stacked underneath, so the first thing on
-         screen was chrome rather than the exchange. -->
-    <!-- Anchored to the window, not to a panel. The build banner lives in the
-     COMMAND panel, which is fine while you are looking at it and useless the
-     moment you scroll down to watch for the plan: a five-minute operation
-     reported itself only in a place you can scroll away from. -->
-<div id="working" hidden></div>
-
-<div id="chat">
-      <!-- The empty state, which is most people's first sight of this. A
-           question and six real requests beat any amount of describing what
-           the box accepts. -->
-      <div class="cempty" id="cempty">
-        <p class="cask">What do you want it to sound like?</p>
-        <!-- Real requests the planner resolves; clicking one loads it, so the
-             first thing a new player does is a working command rather than a
-             guess at the vocabulary. -->
-        <div class="egs" id="egs"></div>
+    <div class="ctxrow">
+      <div class="scenes" id="scenes"></div>
+      <div class="pathzone">
+        <div class="gridwrap" id="blocks"><span class="hint">awaiting link...</span></div>
+        <div class="gridnote">
+          <span class="k"><span class="sw" style="background:var(--cyan)"></span>carrying signal</span>
+          <span class="k"><span class="sw" style="background:#3b5262"></span>not reached</span>
+          <span class="k">dashed = bypassed</span>
+          <span class="k">click a block to open it, its letter to change channel</span>
+          <button class="k gridzoom" id="gridzoom">EXPAND</button>
+          <span class="k" id="gridwhy"></span>
+        </div>
       </div>
-      <div id="cscroll"></div>
+    </div>
+  </section>
+
+  <!-- LAYER 4: the stage workspace. One focused task at a time. -->
+  <main id="workspace">
+    <aside id="stagenav">
+      <!-- Request: how the request arrives. Empty Slot appears only when the
+           loaded slot is actually empty. -->
+      <div class="navpane" id="nav-request">
+        <div class="navtitle">REQUEST TYPE</div>
+        <button class="navitem on" id="mode-describe">DESCRIBE</button>
+        <button class="navitem" id="mode-source">SOURCE</button>
+        <button class="navitem" id="mode-empty" hidden>EMPTY SLOT</button>
+      </div>
+      <div class="navpane" id="nav-plan" hidden>
+        <div class="navtitle">PLAN</div>
+        <div class="navbody" id="plannav"></div>
+      </div>
+      <div class="navpane" id="nav-review" hidden>
+        <div class="navtitle">CHANGE SET</div>
+        <div class="navbody" id="reviewfilters"></div>
+      </div>
+      <div class="navpane" id="nav-confirm" hidden>
+        <div class="navtitle">CONFIRM</div>
+        <div class="navbody hint">The last stop before hardware. Nothing has
+          been sent yet.</div>
+      </div>
+      <div class="navpane" id="nav-send" hidden>
+        <div class="navtitle">SEND</div>
+        <div class="navbody hint" id="sendnav"></div>
+      </div>
+    </aside>
+
+    <div id="canvas">
+
+      <!-- STAGE: REQUEST -->
+      <section class="stagepane" id="pane-request">
+        <!-- Who will answer, said where the question is typed. The backend
+             and model used to introduce themselves only on the finished
+             plan, minutes after the sentence went in. -->
+        <button type="button" id="aiwho" hidden></button>
+        <div id="chat">
+          <div class="cempty" id="cempty">
+            <p class="cask">WHAT SHOULD THIS RIG SOUND LIKE?</p>
+            <div class="egs" id="egs"></div>
+          </div>
+          <div id="cscroll"></div>
+        </div>
+        <div class="composer">
+          <div class="promptrow">
+            <span class="prompt-prefix">&gt;</span>
+            <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
+                      placeholder="Describe the result you want to hear..."></textarea>
+            <button id="engage">GENERATE PLAN</button>
+          </div>
+          <div class="hint composerhint">Enter generates a plan, Shift+Enter for a new line. No change reaches the FM9 until you review, confirm, and send.</div>
+        </div>
+        <!-- Source mode: one input, one action. -->
+        <div class="srcfold" id="srcpanel" hidden>
+          <div class="promptrow srcrow">
+            <span class="prompt-prefix">&#9834;</span>
+            <input id="srcinput" autocomplete="off" spellcheck="false"
+                   placeholder="paste a YouTube link, a page, or the transcript itself">
+            <button id="analyze">ANALYZE SOURCE</button>
+          </div>
+          <div class="hint" id="srchint">Reads what the source actually says and
+            proposes a build for <em>your</em> rig. An interpretation to review and
+            tweak, not a copy: sources rarely state everything, and what it had to
+            guess is marked separately. YouTube links read the description and the
+            captions, and transcribe the audio here if the video has none, which
+            takes a few minutes on a long one.</div>
+        </div>
+        <!-- Between reading and building: the two questions whose answers
+             change the work, asked before the plan is generated. -->
+        <div id="srcask" class="srcask" hidden></div>
+        <!-- Empty-slot mode: the same Plan, Review, Confirm, Send road. -->
+        <div class="console" data-nofold id="emptypanel" style="display:none">
+          <p class="hint" id="emptywhy"></p>
+          <div class="abrow">
+            <button id="buildscratch">PROPOSE STARTING CHAIN</button>
+            <span class="hint" id="buildwhat">Input &rarr; Amp &rarr; Cab &rarr;
+              Output. Creates a reversible starting chain in the edit buffer;
+              the slot still reads &lt;EMPTY&gt; until you store it yourself.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- STAGE: PLAN. What the machine believes you asked for, before the
+           parameter detail. -->
+      <section class="stagepane" id="pane-plan" hidden>
+        <div class="stagecard">
+          <div class="cardtitle">PLAN SUMMARY</div>
+          <div id="plansummary"></div>
+          <div id="planhead"></div>
+          <div class="intentlist" id="planintents"></div>
+        </div>
+        <div class="stagefoot">
+          <button class="danger" id="discard">DISCARD</button>
+          <button id="keep">SAVE PLAN FOR LATER</button>
+          <span class="spacer"></span>
+          <button id="reviewbtn">REVIEW CHANGES</button>
+        </div>
+      </section>
+
+      <!-- STAGE: REVIEW. The exact changes and their blast radius. -->
+      <section class="stagepane" id="pane-review" hidden>
+        <div class="reviewhead" aria-hidden="true">
+          <span></span><span>TARGET</span><span>PARAMETER / ACTION</span>
+          <span>BEFORE</span><span>AFTER</span><span>IMPACT</span>
+        </div>
+        <div id="plancards" class="changetable"></div>
+        <div class="stagefoot">
+          <button class="danger" id="discard2">DISCARD</button>
+          <span class="tablefoot" id="reviewcount"></span>
+          <span class="spacer"></span>
+          <button id="backplan">BACK TO PLAN</button>
+          <button id="toconfirm">CONTINUE TO CONFIRM</button>
+        </div>
+      </section>
+
+      <!-- STAGE: CONFIRM. A full safety stage, not a modal: the crossing
+           from proposal to hardware is this product's defining boundary. -->
+      <section class="stagepane" id="pane-confirm" hidden>
+        <div class="cfacts" id="cfacts"></div>
+        <div class="cblast" id="cblast"></div>
+        <label class="cack"><input type="checkbox" id="ack">
+          I reviewed the target and affected scenes</label>
+        <div class="stagefoot">
+          <button id="backreview">BACK TO REVIEW</button>
+          <span class="spacer"></span>
+          <button id="armbtn" disabled>ARM SEND</button>
+          <button class="armed" id="apply" hidden>SEND TO FM9</button>
+          <span class="hint" id="armhint" hidden>Esc to disarm</span>
+        </div>
+        <div class="hint" id="giglockwhy" hidden></div>
+      </section>
+
+      <!-- STAGE: SEND. Transmission as an observable hardware process. -->
+      <section class="stagepane" id="pane-send" hidden>
+        <div class="stagecard">
+          <div class="cardtitle" id="sendphase">SEND</div>
+          <div id="planresult" hidden></div>
+          <details id="plandetail">
+            <summary id="plandetailsum">show every change</summary>
+            <div id="sendcards"></div>
+          </details>
+        </div>
+        <div class="stagefoot" id="sendfoot" hidden>
+          <button id="auditionbtn">AUDITION ON FM9</button>
+          <button id="storeafter">STORE PRESET&hellip;</button>
+          <span class="spacer"></span>
+          <button id="newrequest">NEW REQUEST</button>
+        </div>
+      </section>
     </div>
 
-    <div class="composer">
-      <div class="promptrow">
-        <span class="prompt-prefix">&gt;</span>
-        <!-- A textarea, not an input. People describe tones in sentences, and
-             a one-line box shows them the middle of their own thought. It
-             grows with what is typed and stops at a few lines. -->
-        <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
-                  placeholder="describe the tone you want..."></textarea>
-        <button id="engage">SEND</button>
+    <aside id="rightrail">
+      <!-- The stage rail: hardware target, blast radius, preflight. -->
+      <div id="stagerail">
+        <div class="railcard" id="targetcard">
+          <div class="cardtitle">HARDWARE TARGET</div>
+          <div class="railbody" id="targetbody">&mdash;</div>
+        </div>
+        <div class="railcard needs-rig" id="manualcard">
+          <div class="cardtitle">MANUAL CONTROLS</div>
+          <div class="railbody">Click any block in the signal chain above to
+            open its controls: amp and cab, sliders, EQ, effects.
+            <br><button class="small" id="openamp" style="margin-top:8px">OPEN AMP &amp; CAB</button></div>
+        </div>
+        <div class="railcard" id="blastcard" hidden>
+          <div class="cardtitle">BLAST RADIUS</div>
+          <div class="railbody" id="blastbody"></div>
+        </div>
+        <div class="railcard" id="preflightcard" hidden>
+          <div class="cardtitle">PREFLIGHT</div>
+          <div class="railbody" id="preflightbody"></div>
+        </div>
+        <div class="railcard" id="reversecard" hidden>
+          <div class="cardtitle">REVERSIBILITY</div>
+          <div class="railbody" id="reversebody"></div>
+        </div>
       </div>
-      <div class="hint composerhint">Enter sends, Shift+Enter for a new line. Nothing reaches the FM9 until you confirm it.</div>
-    </div>
+      <!-- The contextual Inspector: manual control attaches to the selected
+           routing block, because guitarists reason along the signal chain. -->
+      <div id="inspector" hidden>
+        <div class="insphead">
+          <span id="inspname">BLOCK</span>
+          <button class="mclose" id="inspclose" title="back to impact">&#10005;</button>
+        </div>
+        <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
+          <div id="picks"></div>
+          <div class="knobs" id="knobs-amp"><span class="hint">awaiting link...</span></div>
+          <div class="hint">Drag a slider to set it. Edit buffer only; UNDO covers it.</div>
+        </div>
+        <div class="console needs-rig" data-label="GRAPHIC EQ" id="geqpanel" style="display:none">
+          <div class="geqbar">
+            <span class="lab">Curve</span><span id="geqbadge"></span>
+            <select id="geqcurve" title="a starting point, written to the bands as an ordinary set of verified writes"></select>
+            <button id="geqflat" title="put every band back to 0 dB">FLATTEN ALL</button>
+          </div>
+          <div id="geqbox"></div>
+          <div class="hint" id="geqhint"></div>
+        </div>
+        <div class="console needs-rig" data-label="EFFECTS" id="fxpanel" style="display:none">
+          <div class="knobs" id="knobs-fx"></div>
+        </div>
+        <div class="console needs-rig" data-label="DYNAMICS &amp; LEVELS" id="utilpanel" style="display:none">
+          <div class="knobs" id="knobs-util"></div>
+        </div>
+      </div>
+    </aside>
+  </main>
 
-    <!-- Folded away. It is a real feature and a rare one: two text boxes and
-         two buttons stacked in the same panel made the page read as a form,
-         and the second field competed with the one almost everybody wants.
-         One line, opened by the people who came for it. -->
-    <details class="srcfold">
-      <summary>Build from a video or a description instead</summary>
-      <!-- One field, one button. Paste a link and the work of watching the
-           video and typing the settings out is the part being removed. -->
-      <div class="promptrow srcrow">
-        <span class="prompt-prefix">&#9834;</span>
-        <input id="srcinput" autocomplete="off" spellcheck="false"
-               placeholder="paste a YouTube link, a page, or the transcript itself">
-        <button id="analyze">ANALYZE</button>
-      </div>
-      <div class="hint" id="srchint">Reads what the source actually says and
-        proposes a build for <em>your</em> rig. An interpretation to review and
-        tweak, not a copy: sources rarely state everything, and what it had to
-        guess is marked separately. YouTube links read the description and the
-        captions, and transcribe the audio here if the video has none, which
-        takes a few minutes on a long one.</div>
-    </details>
+  <!-- Global operation strip: long work reports itself here, above the
+       shelf, where it cannot be scrolled away from. -->
+  <div id="opstrip">
+    <div id="working" hidden></div>
     <div id="srcprogress" class="srcprog" hidden></div>
-
-    <!-- Between reading and building. Two questions whose answers change the
-         work, asked once, at the point where they are decisions rather than
-         discoveries. -->
-    <div id="srcask" class="srcask" hidden></div>
   </div>
 
-  <div class="console" data-label="PROPOSED CHANGES" id="planbox" style="display:none">
-    <div id="plansummary"></div>
-    <div id="planhead"></div>
-    <!-- The buttons come BEFORE the changes. An eight-scene build is 140
-         cards, and putting TRANSMIT after them meant scrolling the length of
-         the plan to reach the thing you had already decided to press. The
-         detail is still there, one click away, for when you want to read it. -->
-    <div class="plan-actions">
-      <button class="confirm" id="apply">TRANSMIT TO FM9</button>
-      <button id="keep">SAVE FOR LATER</button>
-      <button class="danger" id="discard">DISCARD</button>
-    </div>
-    <div id="planresult" hidden></div>
-    <details id="plandetail">
-      <summary id="plandetailsum">show every change</summary>
-      <div id="plancards"></div>
-    </details>
-  </div>
+  <!-- LAYER 5: the command shelf. Undo is the most important recovery
+       action and never depends on scroll or stage. -->
+  <footer id="shelf">
+    <button id="undo" disabled>UNDO</button>
+    <span id="undowhat">nothing to undo yet</span>
+    <span class="pillwrap">
+      <button class="shbtn" id="shcompare">COMPARE A/B</button>
+      <div class="pop comparepop" id="comparepop" hidden>
+        <div class="abrow">
+          <span class="lbl">A</span>
+          <button class="small" id="holda">HOLD A</button>
+          <button class="small" id="reca" disabled>RECALL A</button>
+        </div>
+        <div class="abrow">
+          <span class="lbl">B</span>
+          <button class="small" id="holdb">HOLD B</button>
+          <button class="small" id="recb" disabled>RECALL B</button>
+        </div>
+        <div class="hint">Snapshots are silent reads of the edit buffer, taken
+          before every change. Recalling one holds the other first, so A/B is
+          a round trip. Nothing here touches a stored preset.</div>
+      </div>
+    </span>
+    <span class="spacer"></span>
+    <button class="shbtn" id="shdiag">DIAGNOSTICS<span class="badge" id="diagbadge" hidden></span></button>
+    <button class="shbtn" id="shlib">LIBRARY</button>
+    <button class="shbtn" id="shstore">STORAGE</button>
+    <button class="shbtn" id="shact">ACTIVITY<span class="badge" id="actbadge" hidden></span></button>
+    <button class="shbtn" id="shset">SETTINGS</button>
+  </footer>
 
-  <div class="console needs-rig" data-label="EMPTY SLOT" id="emptypanel" style="display:none">
-    <p class="hint" id="emptywhy"></p>
-    <div class="abrow">
-      <button id="buildscratch">BUILD A STARTING CHAIN</button>
-      <span class="hint" id="buildwhat">Input, amp, cab and output, cabled and
-        checked end to end. Edit buffer only: nothing is stored, so the slot
-        still reads &lt;EMPTY&gt; until you save it yourself.</span>
-    </div>
-  </div>
+  <!-- Utility drawers: they support the command loop but are not steps in
+       it. One at a time, rising from the shelf, never covering the hardware
+       bar, the rail, or the live context. -->
+  <div id="drawer" hidden>
+    <div class="drawhead"><span id="drawtitle"></span>
+      <button class="mclose" id="drawclose" title="close">&#10005;</button></div>
 
-  <div class="console" data-label="TONE RECIPES">
-    <div class="profrow">
-      <input id="rsearch" autocomplete="off" spellcheck="false"
-             placeholder="filter by name, author or what it is for">
-      <button class="small" id="rrefresh">REFRESH</button>
-    </div>
-    <div id="rlist"></div>
-    <div class="hint" id="rshare"></div>
-    <div class="hint">Tones other people have built, shared as instructions
-      rather than as preset files. Reading them needs no account: they live in
-      a public folder and are fetched straight from it. USE validates every
-      step against YOUR device first, then proposes it like any other plan.</div>
-  </div>
-
-  <div class="console" data-label="DESIGNED PRESETS">
-    <div class="profbar" id="profbar" hidden></div>
-    <div class="profrow">
-      <button class="small" id="profexport">SHARE MY RIG</button>
-      <button class="small" id="profimport">DESIGN FOR SOMEONE ELSE</button>
-      <span class="hint" style="margin:0">A rig profile describes which blocks
-        a preset has and how they are wired, never the parameter values, so
-        nobody's paid preset travels with it.</span>
-    </div>
-    <div id="dlist"></div>
-    <div class="hint">Tones you built with the rig switched off. Each one was
-      validated when it was saved, so it would actually run, but nothing has
-      been read back from hardware yet: a design is
-      <span class="savewarn">designed, not verified</span>, until it lands.
-      SEND checks the preset has not moved underneath it first.</div>
-  </div>
-  </div>
-
-  <div id="tab-manual" role="tabpanel" aria-labelledby="tab-manual-btn" hidden>
-
-
-  <!-- One long column-flow made you hunt for the reverb. These follow the
-       signal: what makes the sound, then what shapes it, then what sits
-       around it. Each panel folds, so a preset with six effects no longer
-       pushes the amp off the screen. -->
-  <!-- An empty FM9 slot has no grid cells at all, so every other way of
-       adding a block refuses, correctly, and used to leave you nowhere to go
-       but a terminal (issue #36). -->
-  <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
-    <div id="picks"></div>
-    <div class="knobs" id="knobs-amp"><span class="hint">awaiting link...</span></div>
-    <div class="hint">Drag any slider to set it. Changes go to the edit buffer, not to your saved preset.</div>
-  </div>
-
-
-  <!-- Its own panel, not a cell of the TONE column grid. A graphic EQ is read
-       as a shape and a shape needs width. -->
-  <div class="console needs-rig" data-label="GRAPHIC EQ" id="geqpanel" style="display:none">
-    <div class="geqbar">
-      <span class="lab">Curve</span><span id="geqbadge"></span>
-      <select id="geqcurve" title="a starting point, written to the bands as an ordinary set of verified writes"></select>
-      <button id="geqflat" title="put every band back to 0 dB">FLATTEN ALL</button>
-    </div>
-    <div id="geqbox"></div>
-    <div class="hint" id="geqhint"></div>
-  </div>
-
-  <div class="console needs-rig" data-label="EFFECTS" id="fxpanel" style="display:none">
-    <div class="knobs" id="knobs-fx"></div>
-  </div>
-
-  <div class="console needs-rig" data-label="DYNAMICS &amp; LEVELS" id="utilpanel" style="display:none">
-    <div class="knobs" id="knobs-util"></div>
-  </div>
-
-  <div class="console needs-rig" data-label="PRESET HEALTH">
-    <div class="hz">
-      <button id="scan">SCAN THIS PRESET</button>
-      <span class="hint" style="margin:0" id="scanhint">Walks every scene to
-        read it, so the rig makes noise for a few seconds. Not a background
-        check, and never on a timer.</span>
-    </div>
-    <div id="hout"></div>
-  </div>
-  </div>
-
-
-  <div class="console needs-rig" data-label="UNDO / COMPARE">
-    <div class="abrow">
-      <button id="undo" disabled>UNDO</button>
-      <span id="undowhat">nothing to undo yet</span>
-      <span class="sep"></span>
-      <span class="lbl">A/B</span>
-      <button class="small" id="holda">HOLD A</button>
-      <button class="small" id="reca" disabled>RECALL A</button>
-      <button class="small" id="holdb">HOLD B</button>
-      <button class="small" id="recb" disabled>RECALL B</button>
-    </div>
-    <div class="hint">Snapshots are silent reads of the edit buffer, taken
-      before every change. Nothing here touches a saved preset.</div>
-  </div>
-
-  <div class="console needs-rig" data-label="SAVE TO PRESET">
-    <div class="savenow" id="savenow"></div>
-    <div class="saverow">
-      <select id="saveslot"><option>loading slots...</option></select>
-      <button id="save" disabled>SAVE</button>
-      <button class="small" id="savescan" title="read the current names of these slots">NAMES</button>
-    </div>
-    <div class="hint"><span id="savecount"></span> Everything else in this app
-      is edit buffer only and reversible. This is not: it overwrites whatever is
-      stored in the slot, permanently, and
-      <span class="savewarn">UNDO does not cover it</span>.</div>
-
-    <!-- Erasing lives beside saving because they are the only two operations
-         that touch flash, and hiding the more destructive one somewhere else
-         would make it feel like less than it is. -->
-    <div class="saverow renamerow">
-      <input id="newname" maxlength="32" autocomplete="off" spellcheck="false"
-             placeholder="rename the selected preset (32 characters)">
-      <button class="small" id="renameslot" disabled>RENAME</button>
-      <span class="hint">The FM9 keeps the name inside the preset, so this
-        stores it. The tone is untouched; the slot is written back exactly as
-        it is, under the new name.</span>
+    <div class="drawpane needs-rig" id="drawer-diagnostics" hidden>
+      <div class="hz">
+        <button id="scan">SCAN ALL SCENES</button>
+        <span class="hint" style="margin:0" id="scanhint">Changes scenes and
+          may produce sound for several seconds. Not a background check, and
+          never on a timer.</span>
+      </div>
+      <div id="hout"></div>
     </div>
 
-    <div class="saverow clearrow">
-      <button class="small" id="clearslot" disabled>ERASE THIS SLOT</button>
-      <span class="hint" id="clearwhat">Empties the selected slot so it reads
-        &lt;EMPTY&gt; on the unit, the same as clearing it from the FM9's own
-        Utility menu. There is <span class="savewarn">no copy kept anywhere</span>:
-        a preset erased here is gone.</span>
+    <div class="drawpane" id="drawer-library" hidden>
+      <div class="libtabs">
+        <button class="libtab on" data-lib="recipes">RECIPES</button>
+        <button class="libtab" data-lib="designs">DESIGNS</button>
+        <button class="libtab" data-lib="profiles">RIG PROFILES</button>
+      </div>
+      <div class="libpane" id="lib-recipes">
+        <div class="profrow">
+          <input id="rsearch" autocomplete="off" spellcheck="false"
+                 placeholder="filter by name, author or what it is for">
+          <button class="small" id="rrefresh">REFRESH</button>
+        </div>
+        <div id="rlist"></div>
+        <div class="hint" id="rshare"></div>
+        <div class="hint">Tones other people have built, shared as instructions
+          rather than as preset files. USE validates every step against YOUR
+          device first, then enters the same Plan, Review, Confirm, Send road
+          as any other plan.</div>
+      </div>
+      <div class="libpane" id="lib-designs" hidden>
+        <div id="dlist"></div>
+        <div class="hint">Tones you built with the rig switched off. Each one
+          was validated when it was saved, so it would actually run, but
+          nothing has been read back from hardware yet: a design is
+          <span class="savewarn">designed, not verified</span>, until it lands.
+          SEND checks the preset has not moved underneath it first.</div>
+      </div>
+      <div class="libpane" id="lib-profiles" hidden>
+        <div class="profbar" id="profbar" hidden></div>
+        <div class="profrow">
+          <button class="small" id="profexport">EXPORT MY RIG</button>
+          <button class="small" id="profimport">IMPORT PROFILE</button>
+          <span class="hint" style="margin:0">A rig profile describes which
+            blocks a preset has and how they are wired, never the parameter
+            values, so nobody's paid preset travels with it.</span>
+        </div>
+      </div>
     </div>
-  </div>
 
+    <div class="drawpane needs-rig" id="drawer-storage" hidden>
+      <div class="storebanner">PERMANENT SLOT WRITE &middot; UNDO DOES NOT COVER STORAGE</div>
+      <div class="savenow" id="savenow"></div>
+      <div class="saverow">
+        <select id="saveslot"><option>loading slots...</option></select>
+        <button id="save" disabled>STORE PRESET</button>
+        <button class="small" id="savescan" title="read the current names of these slots">RELOAD SLOT NAMES</button>
+      </div>
+      <div class="hint"><span id="savecount"></span> Everything else in this
+        app is edit buffer only and reversible. This is not: it overwrites
+        whatever is stored in the slot, permanently, and
+        <span class="savewarn">UNDO does not cover it</span>.</div>
+      <div class="saverow renamerow">
+        <input id="newname" maxlength="32" autocomplete="off" spellcheck="false"
+               placeholder="rename the selected preset (32 characters)">
+        <button class="small" id="renameslot" disabled>RENAME</button>
+        <span class="hint">The FM9 keeps the name inside the preset, so
+          renaming stores it. The tone is untouched; the slot is written back
+          exactly as it is, under the new name.</span>
+      </div>
+      <details class="dangerzone">
+        <summary>DANGER ZONE</summary>
+        <div class="saverow clearrow">
+          <button class="small" id="clearslot" disabled>ERASE SLOT&hellip;</button>
+          <span class="hint" id="clearwhat">Empties the selected slot so it
+            reads &lt;EMPTY&gt; on the unit, the same as clearing it from the
+            FM9's own Utility menu. There is
+            <span class="savewarn">no copy kept anywhere</span>: a preset
+            erased here is gone.</span>
+        </div>
+      </details>
+    </div>
 
-  <div class="console" data-label="LOG" style="margin-top:20px">
-    <div id="log"></div>
-    <!-- The log is empty on arrival, which is dead space on the one screen a
-         new user is deciding whether to keep open. These are the four things
-         FM9-Edit structurally cannot do, and they vanish the moment anything
-         is logged. -->
-    <div id="logempty">
-      <div class="lehead">What this does that FM9-Edit cannot</div>
-      <ul class="lelist">
-        <li><b>Judge a preset.</b> SCAN THIS PRESET walks every scene and
-          reports whether a live signal path exists, names the hop that broke
-          it, and flags scenes that are secretly the same sound.</li>
-        <li><b>Warn before it surprises you.</b> Parameters live on the
-          channel, so changing one moves every scene sharing it. Those scenes
-          light up and say WILL CHANGE before anything is sent.</li>
-        <li><b>Undo, and A/B.</b> Neither of which the FM9 has. A snapshot is
-          taken automatically before every change.</li>
-        <li><b>Audition by typing.</b> 331 amps and 2,237 cabs, filtered as
-          you type and stepped with the arrow keys, searchable by what the cab
-          actually is rather than only its name.</li>
-      </ul>
-      <div class="lefoot">And it takes plain English: describe the tone in the
-        box above, review exactly what it proposes, then confirm.</div>
+    <div class="drawpane" id="drawer-activity" hidden>
+      <div id="log"></div>
+      <div id="logempty"><div class="lefoot">Nothing logged yet. Every
+        hardware read, write, refusal and verification lands here as it
+        happens.</div></div>
+    </div>
+
+    <div class="drawpane" id="drawer-settings" hidden>
+      <div class="console" data-nofold data-label="WHO PLANS YOUR TONES" id="aimodal">
+        <div class="airow">
+          <!-- One question, answered by picking a name. The plumbing that
+               used to lead this panel (backend, address, model id) lives
+               under ADVANCED, because a guitarist should never need the
+               words "backend" or "endpoint" to choose an AI. -->
+          <div id="aipresets"></div>
+          <div class="hint" id="aipresethelp"></div>
+          <div id="aisetup" hidden></div>
+          <label class="flabel" id="aikeylabel" for="aikey">API KEY
+            <span class="keystatus" id="aikeystatus">NOT STORED</span></label>
+          <input id="aikey" type="password" autocomplete="new-password"
+                 aria-describedby="aikeystatus ainote"
+                 placeholder="API key (required for Claude API but optional for others)">
+          <a id="aikeylink" href="#" target="_blank" rel="noopener" hidden>GET A KEY &rarr;</a>
+          <div class="btns">
+            <button id="aisave">SAVE</button>
+            <button id="aiclearkey" class="danger">CLEAR KEY</button>
+          </div>
+          <details id="aiadvanced">
+            <summary>ADVANCED</summary>
+            <label class="flabel" for="aibackend">BACKEND</label>
+            <select id="aibackend"></select>
+            <label class="flabel" id="aiurllabel" for="aibaseurl">SERVICE ADDRESS</label>
+            <input id="aibaseurl" autocomplete="off" spellcheck="false"
+                   placeholder="http://127.0.0.1:8317/v1">
+            <label class="flabel" id="aimodellabel" for="aimodel">MODEL</label>
+            <input id="aimodel" autocomplete="off" spellcheck="false"
+                   list="aimodels" placeholder="model (optional)">
+            <datalist id="aimodels"></datalist>
+            <div id="aimodelpicks" hidden></div>
+          </details>
+        </div>
+        <div class="hint" id="ainote"></div>
+        <div class="hint" id="aisrc"></div>
+        <div class="hint">Takes effect on the next plan, no restart. Keys are stored on this machine and never sent to the browser.</div>
+      </div>
+
+      <div class="console" data-nofold data-label="SAFETY &middot; ALLOWED STORE SLOTS">
+        <div class="hint" style="margin:0 0 9px" id="slotsrc"></div>
+        <div class="saverow">
+          <input id="slotspec" autocomplete="off" spellcheck="false"
+                 placeholder="133,139-170">
+          <button id="slotsave">SET</button>
+        </div>
+        <div class="egrow">
+          <span class="eglabel">EXAMPLES</span>
+          <button class="eg" data-eg="150">150</button>
+          <button class="eg" data-eg="139-170">139-170</button>
+          <button class="eg" data-eg="133,139-170">133,139-170</button>
+          <button class="eg" data-eg="">none</button>
+        </div>
+        <div class="hint">One slot, a range with a dash, or several separated by
+          commas. Click an example to fill the box, then SET.<br>
+          These are <b>wire</b> numbers, 0-511. Your unit and FM9-Edit number the
+          same slots 1-512, so <b>139 here is 140 on the screen</b>. Read the range
+          off the wire or the whole list sits one slot out.<br>
+          This is the only thing standing between a mis-click and a preset you
+          cannot get back, so list only slots you genuinely do not mind losing.
+          "none" switches storing off entirely.</div>
+      </div>
+
+      <div class="console" data-nofold data-label="APPEARANCE">
+        <div class="hz">
+          <span class="lbl">TEXT SIZE</span>
+          <div class="textsize" role="group" aria-label="text size">
+            <button id="tsdown" title="smaller text" aria-label="smaller text">A</button>
+            <button id="tsup" title="larger text" aria-label="larger text">A</button>
+          </div>
+          <span class="hint" style="margin:0">Reduced motion follows the
+            operating system setting.</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1854,56 +2453,6 @@
   </div>
 </div>
 
-<div class="modal" id="aimodal" hidden>
-  <div class="console" data-label="AI SETTINGS">
-    <button class="mclose" id="aiclose" title="close">&#10005;</button>
-    <div class="airow">
-      <select id="aibackend"></select>
-      <input id="aibaseurl" autocomplete="off" spellcheck="false"
-             placeholder="http://127.0.0.1:8317/v1">
-      <div id="aipresets" hidden></div>
-      <div class="hint" id="aipresethelp"></div>
-      <div id="aisetup" hidden></div>
-      <input id="aimodel" autocomplete="off" spellcheck="false"
-             list="aimodels" placeholder="model (optional)">
-      <datalist id="aimodels"></datalist>
-      <div id="aimodelpicks" hidden></div>
-      <input id="aikey" type="password" autocomplete="off"
-             placeholder="API key (required for Claude API but optional for others)">
-      <div class="btns">
-        <button id="aisave">SAVE</button>
-        <button id="aiclearkey" class="danger">CLEAR KEY</button>
-      </div>
-    </div>
-    <div class="hint" id="ainote"></div>
-    <div class="hint" id="aisrc"></div>
-    <div class="hint">Takes effect on the next prompt, no restart. Keys are stored on this machine and never sent to the browser. Only the boxes a backend actually reads are shown.</div>
-  </div>
-
-  <div class="console" data-label="SAVE SLOTS" style="margin-top:22px">
-    <div class="hint" style="margin:0 0 9px" id="slotsrc"></div>
-    <div class="saverow">
-      <input id="slotspec" autocomplete="off" spellcheck="false"
-             placeholder="133,139-170">
-      <button id="slotsave">SET</button>
-    </div>
-    <div class="egrow">
-      <span class="eglabel">EXAMPLES</span>
-      <button class="eg" data-eg="150">150</button>
-      <button class="eg" data-eg="139-170">139-170</button>
-      <button class="eg" data-eg="133,139-170">133,139-170</button>
-      <button class="eg" data-eg="">none</button>
-    </div>
-    <div class="hint">One slot, a range with a dash, or several separated by
-      commas. Click an example to fill the box, then SET.<br>
-      These are <b>wire</b> numbers, 0-511. Your unit and FM9-Edit number the
-      same slots 1-512, so <b>139 here is 140 on the screen</b>. Read the range
-      off the wire or the whole list sits one slot out.<br>
-      This is the only thing standing between a mis-click and a preset you
-      cannot get back, so list only slots you genuinely do not mind losing.
-      "none" switches saving off entirely.</div>
-  </div>
-</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -2136,7 +2685,7 @@ function renderPresetScan() {
   if (on) {
     $('savescan').textContent = `READING ${presetScan.read}/${presetScan.total}`;
   } else if (/^READING /.test($('savescan').textContent)) {
-    $('savescan').textContent = 'NAMES';
+    $('savescan').textContent = 'RELOAD SLOT NAMES';
   }
   if (!$('ppop').hidden) renderPresets(false);
 }
@@ -2181,6 +2730,9 @@ async function _loadPresets(refresh) {
 
 async function gotoPreset(n) {
   if (presetBusy) return;
+  if (bufferDirty && !window.confirm(
+      'The edit buffer holds unsent or unstored changes. Loading a preset '
+      + 'discards them. Load it anyway?')) { closePop(); return; }
   presetBusy = true;
   closePop();
   // The popover closes at once, so without this the click answers with a
@@ -2247,23 +2799,44 @@ let lastScenes = [];              // last known scene list, to redraw marks
 let sharedFor = null;
 
 async function loadShared(presetNumber) {
-  if (sharedFor === presetNumber && sharedMap) return;
+  // Cache pickup only, costs no MIDI. The audible sweep used to fire from
+  // here on every preset change, so browsing presets from the front panel
+  // had the rig stepping through scenes on its own; the sweep now runs
+  // only from ensureShared, when a plan actually needs the hints.
+  if (sharedFor === presetNumber) return;
   try {
     const r = await fetch('/api/shared');
     const d = await r.json();
     if (d.error) return;                 // a hint is never worth an error
-    // Gig mode refused the sweep (it is audible); ask again after the set.
-    if (d.gig) return;
-    sharedMap = d.shared; sharedFor = d.preset;
-    // The sweep steps the rig through all eight scenes, audibly. Naming it
-    // is what keeps the noises from reading as the tool doing something it
-    // was not asked to.
-    if (d.swept) {
-      log('mapped which scenes share each block’s channel, for the '
-          + 'blast-radius hints. The quick scene-stepping you may have '
-          + 'heard was that read.');
-    }
+    sharedFor = d.preset; sharedMap = d.shared || null;
   } catch (e) { /* silent: this only ever adds information */ }
+}
+
+async function ensureShared() {
+  // The lazy path to the blast-radius map. Free if the server already
+  // swept this preset; otherwise it ANNOUNCES the noise first, then asks
+  // for the sweep. Announced-then-heard is the whole point: an unexplained
+  // scene-step from a tool that can write to the rig reads as the tool
+  // doing something it was not asked to.
+  if (sharedMap && sharedFor === currentPresetNumber) return true;
+  try {
+    const r0 = await fetch('/api/shared');
+    const d0 = await r0.json();
+    if (d0.shared) { sharedMap = d0.shared; sharedFor = d0.preset; return true; }
+    log('mapping which scenes share each block’s channel, for the '
+        + 'blast-radius hints on this plan. You’ll hear the rig step '
+        + 'briefly through all eight scenes.');
+    const r = await fetch('/api/shared/sweep', {method: 'POST'});
+    const d = await r.json();
+    if (r.status === 423) {
+      log('GIG MODE is on, so the scene sweep was skipped: blast-radius '
+          + 'hints are off for this preset until after the set.', 'warn');
+      return false;
+    }
+    if (d.error) { log(`blast-radius map unavailable: ${d.error}`, 'warn'); return false; }
+    sharedMap = d.shared; sharedFor = d.preset;
+    return true;
+  } catch (e) { return false; }
 }
 
 function scenesAffectedBy(plan) {
@@ -2282,6 +2855,18 @@ function scenesAffectedBy(plan) {
     }
   }
   return out;
+}
+
+function refreshBlastRadius(plan) {
+  // Everything the shared map feeds on a plan, in one place, because it can
+  // now arrive AFTER the plan is on screen: the plan renders immediately and
+  // the hints fill in when the lazy sweep lands.
+  affectedScenes = scenesAffectedBy(plan);
+  renderScenes({scenes: lastScenes, scene: {number: currentSceneNumber}});
+  if (affectedScenes.size) {
+    log(`blast radius: this also moves scene${affectedScenes.size > 1 ? 's' : ''} ` +
+        `${[...affectedScenes].sort((a, b) => a - b).join(', ')}`, 'warn');
+  }
 }
 
 function alsoAffects(a, currentScene) {
@@ -2829,7 +3414,7 @@ async function reconnect() {
   const el = $('link');
   if (el.classList.contains('busy')) return;
   el.classList.add('busy');
-  $('linktext').textContent = 'LOOKING';
+  $('linktext').textContent = 'SEARCHING';
   try {
     const d = await (await fetch('/api/reconnect', {method: 'POST'})).json();
     if (d.connected) {
@@ -2862,7 +3447,7 @@ function renderGig(on) {
   gigOn = on;
   const el = $('gig');
   el.classList.toggle('on', on);
-  el.textContent = on ? 'GIG MODE ON' : 'GIG MODE';
+  el.textContent = on ? 'GIG LOCK ON' : 'GIG LOCK';
   el.title = on
     ? 'GIG MODE: only scene changes reach the FM9. Click to switch it off.'
     : 'performance lockout: click to allow nothing but scene changes, for '
@@ -3071,7 +3656,7 @@ async function useRecipe(i) {
     showPlan({summary: d.summary, actions: d.actions,
               recipe: r.name,
               device: lastState.preset ? {preset: lastState.preset} : null});
-    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
+    closeDrawer(); if (currentPlan) setStage('plan');
     if (d.assumes) log(`"${d.summary}" assumes: ${d.assumes}`, 'warn');
     // Shown before TRANSMIT, because that is the moment it matters and the
     // only thing validation cannot check for you.
@@ -3081,7 +3666,7 @@ async function useRecipe(i) {
           + `BLOCKED and will not be transmitted`, 'err');
     }
     for (const e of (d.ear_checklist || [])) log(`ear check: ${e}`);
-    log(`"${d.summary}" proposed. Review it, then TRANSMIT.`,
+    log(`"${d.summary}" proposed. Review, confirm, and send.`,
         d.blocked ? 'warn' : 'ok');
   } catch (e) {
     log(`could not use that recipe: ${e.message}`, 'err');
@@ -3256,8 +3841,8 @@ async function keepPlan() {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     log(`saved "${name}" to designed presets`, 'ok');
-    $('planbox').style.display = 'none';
     currentPlan = null; clearAffected();
+    setStage('request');
     await loadDesigns();
   } catch (e) {
     log(`could not save the design: ${e.message}`, 'err');
@@ -3316,7 +3901,7 @@ async function sendDesign(id) {
     // Into the same plan box, behind the same confirm gate, as everything else.
     showPlan({summary: d.name, actions: d.actions,
               device: d.preset ? {preset: d.preset} : null});
-    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
+    closeDrawer(); if (currentPlan) setStage('plan');
     log(`"${d.name}" checked against the rig and proposed. Confirm to transmit.`,
         chk.verdict === 'clean' ? 'ok' : 'warn');
   } catch (e) {
@@ -3429,7 +4014,7 @@ async function loadSaveSlots(withNames) {
     $('save').disabled = true;
   } finally {
     $('savescan').disabled = false;
-    $('savescan').textContent = 'NAMES';
+    $('savescan').textContent = 'RELOAD SLOT NAMES';
   }
 }
 
@@ -3458,10 +4043,10 @@ function aimAtLoadedPreset() {
     const buffer = (cur.name || '').trim();
     el.innerHTML = (flash && buffer && flash !== buffer)
       ? `Loaded: <b>${esc(cur.label)}</b>. The slot holds "${esc(flash)}"; `
-        + `your unsaved edits on it are named <b>"${esc(buffer)}"</b>. SAVE `
+        + `your unsaved edits in the edit buffer are named <b>"${esc(buffer)}"</b>. STORE `
         + `overwrites the slot with your edits, under your edits' name.`
       : `Loaded: <b>${esc(cur.label)}</b> `
-        + `${buffer ? '"' + esc(buffer) + '"' : ''}. SAVE writes back to it.`;
+        + `${buffer ? '"' + esc(buffer) + '"' : ''}. STORE writes back to it.`;
   } else {
     el.className = 'savenow blocked';
     el.innerHTML = `Loaded: <b>${esc(cur.label)}</b> ` +
@@ -3481,7 +4066,7 @@ function updateSaveButton() {
   // the product that cannot be undone, and the rule everywhere being one out
   // is expensive is that both numbers are shown.
   const sel = saveSlots.find(s => s.number === Number($('saveslot').value));
-  $('save').textContent = sel ? `SAVE TO ${sel.label}` : 'SAVE';
+  $('save').textContent = sel ? `STORE TO ${sel.label}` : 'STORE PRESET';
   $('save').title = sel ? `overwrite ${sel.label}` : '';
   // Erasing is offered only for a slot whose name we have actually read, and
   // never for one already empty. "Erase" over an unknown name is an invitation
@@ -3610,8 +4195,8 @@ async function saveToSlot() {
   // label anyone has for it.
   const asName = ((lastState.preset || {}).name || '').trim();
   if (!window.confirm(
-        `Save the current edit buffer to slot ${slot.label}?\n\n` +
-        `It will be saved under the name ${asName ? `"${asName}"` : '(unnamed)'}.` +
+        `Store the current edit buffer in slot ${slot.label}?\n\n` +
+        `It will be saved under the name ${asName ? `"${asName}"` : '(unnamed)'} when stored.` +
         ` If that is not what this preset is, cancel and rename it first.\n\n` +
         `That slot currently holds ${holds}, and it will be overwritten ` +
         `permanently. UNDO does not cover this.`)) {
@@ -3620,7 +4205,7 @@ async function saveToSlot() {
   }
   $('save').disabled = true;
   const was = $('save').textContent;
-  $('save').textContent = 'SAVING...';
+  $('save').textContent = 'STORING...';
   try {
     const r = await fetch('/api/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -3630,7 +4215,7 @@ async function saveToSlot() {
     if (d.error) throw new Error(d.error);
     const res = (d.results || []).slice(-1)[0];
     if (!res || !res.ok) throw new Error(res ? res.detail : 'refused');
-    log(`saved to ${slot.label}: ${res.detail}`, 'ok');
+    log(`stored in ${slot.label}: ${res.detail}`, 'ok');
     // The server corrects its name cache in place when a store lands, so
     // this is instant; the full rescan it used to force cost seconds of
     // MIDI to learn a name the store result already carried.
@@ -3739,7 +4324,7 @@ async function fixAll() {
     if (!plan.actions.length) throw new Error('nothing to propose');
     fixPending = true;          // rescan once this lands, to prove it
     showPlan(plan);
-    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
+    closeDrawer(); if (currentPlan) setStage('plan');
   } catch (e) {
     const stopped = e.name === 'AbortError' || e.message === 'stopped';
     log(stopped ? 'fix stopped; nothing was proposed and nothing was sent'
@@ -3844,6 +4429,7 @@ async function blockAction(action, btn, what) {
   } finally {
     if (btn) btn.classList.remove('busy');
     blockBusy = false;
+    setDirty(true);
     await refresh();          // re-read: never assume the write landed
     refreshSnaps();           // and the undo now refers to this change
   }
@@ -3854,7 +4440,11 @@ async function blockAction(action, btn, what) {
 // small one is for seeing the shape of the rig rather than for aiming at it.
 // Bypass and channel switching move into the enlarged view, where the target
 // is twice the size and you can read what you are about to switch off.
-$('blocks').addEventListener('click', () => openGrid());
+$('blocks').addEventListener('click', e => {
+  const cell = e.target.closest('.cell');
+  if (cell && cell.dataset.fam) { selectBlock(cell.dataset.fam); return; }
+  openGrid();
+});
 
 // Bypass and channel, on whichever copy is interactive. Bound to the enlarged
 // view now; the markup and the behaviour are identical, so this is the same
@@ -3888,7 +4478,10 @@ async function refresh() {
     // the rig is unplugged, and the pill has to stay true either way.
     if (typeof s.gig_mode === 'boolean') renderGig(s.gig_mode);
     if (!s.connected) throw new Error(s.error || 'no link');
-    if (!$('link').classList.contains('busy')) $('link').className = 'pill on';
+    if (!$('link').classList.contains('busy')) {
+      $('link').className = 'pill on';
+      $('linktext').textContent = 'FM9 · LINKED';
+    }
     setRigOff(false);
     // the label carries both numbers: the wire number this tool sends and the
     // one the front panel and FM9-Edit show, which differ by one
@@ -3905,11 +4498,15 @@ async function refresh() {
       `<b>${esc(s.preset.name)}</b><span class="caret"></span>`;
     renderScenes(s);
     if (s.scene) currentSceneNumber = s.scene.number;
+    if (typeof stageGuard === 'function') stageGuard(s);
     if (s.preset) loadShared(s.preset.number);
     loadGrid();
     if (!dragging) renderParams(s);
   } catch (e) {
-    if (!$('link').classList.contains('busy')) $('link').className = 'pill off';
+    if (!$('link').classList.contains('busy')) {
+      $('link').className = 'pill off';
+      $('linktext').textContent = 'FM9 · OFFLINE';
+    }
     setRigOff(true);
   }
 }
@@ -3963,6 +4560,10 @@ function renderParams(s) {
   // <EMPTY> sends people looking for a cable fault they do not have.
   const emptySlot = lastState.connected !== false && !(s.blocks || []).length;
   $('emptypanel').style.display = emptySlot ? '' : 'none';
+  if ($('mode-empty')) {
+    $('mode-empty').hidden = !emptySlot;
+    if (!emptySlot && requestMode === 'empty') setRequestMode('describe');
+  }
   if (emptySlot) {
     $('emptywhy').textContent =
       `This preset slot is empty. An FM9 slot in this state has no grid cells `
@@ -4384,7 +4985,7 @@ $('buildscratch').onclick = async () => {
       + '\u2022 The FM9 will switch to the first slot it reports as EMPTY, '
       + 'which discards whatever is in the edit buffer right now.\n'
       + '\u2022 Nothing is stored. The slot still reads <EMPTY> in flash '
-      + 'until you save it yourself from SAVE TO PRESET.\n'
+      + 'until you store it yourself from STORE PRESET.\n'
       + '\u2022 The blocks arrive at factory defaults, so it will sound '
       + 'plain until you voice it.')) return;
   const b = $('buildscratch');
@@ -4576,7 +5177,7 @@ const EXAMPLES = [
   ['Octave under lead', 'add a subtle octave-down layer like a POG under the lead'],
 ];
 
-$('egs').innerHTML = EXAMPLES
+$('egs').innerHTML = EXAMPLES.slice(0, 4)
   .map(([label, prompt], i) =>
     `<button data-eg="${i}" title="${esc(prompt)}">${esc(label)}</button>`)
   .join('');
@@ -4762,8 +5363,8 @@ async function runBuild(spec, note) {
     if (plan.error) throw new Error(plan.error);
     $('srcprogress').hidden = true;
     showPlan(plan);
-    $('planbox').scrollIntoView({behavior: 'smooth', block: 'center'});
-    log(`"${plan.summary}" proposed from that source. Review it, then TRANSMIT.`, 'ok');
+    closeDrawer(); if (currentPlan) setStage('plan');
+    log(`"${plan.summary}" proposed from that source. Review, confirm, and send.`, 'ok');
     if (plan.dropped && plan.dropped.length) {
       log(`dropped ${plan.dropped.join(', ')}: a build from someone else's `
           + `source may not write to a preset slot`, 'warn');
@@ -4874,15 +5475,9 @@ function showPlan(plan) {
   // transmits without the button being pressed, so a hidden panel is not
   // dangerous in itself, but a proposal you cannot see is one you cannot
   // refuse either, and it would sit there looking like nothing happened.
-  if (typeof showTab === 'function') showTab('ai');
   // Light the scenes this plan would also move, so it cannot be skipped the
   // way a line of small print under a card can be.
-  affectedScenes = scenesAffectedBy(plan);
-  renderScenes({scenes: lastScenes, scene: {number: currentSceneNumber}});
-  if (affectedScenes.size) {
-    log(`blast radius: this also moves scene${affectedScenes.size > 1 ? 's' : ''} ` +
-        `${[...affectedScenes].sort((a, b) => a - b).join(', ')}`, 'warn');
-  }
+  refreshBlastRadius(plan);
   const prevBy = $('planby'); if (prevBy) prevBy.remove();
   const prevSrc = $('plansrc'); if (prevSrc) prevSrc.remove();
   $('plansummary').textContent = plan.summary;
@@ -4923,23 +5518,9 @@ function showPlan(plan) {
       + (plan.model ? ` / ${plan.model}` : '');
     $('plansummary').after(by);
   }
-  $('plancards').innerHTML = plan.actions.map(a => {
-    const errs = a.validation_errors || [];
-    const warns = a.validation_warnings || [];
-    const vclass = errs.length ? ' vfail' : (warns.length ? ' vwarn' : '');
-    const vmsg = errs.concat(warns).map(m =>
-      `<div class="vmsg ${errs.length ? 'verr' : 'vwrn'}">${esc(m)}</div>`).join('');
-    return `
-    <div class="plan-card${vclass}">
-      <div><div class="what">${esc(describe(a))}</div><div class="why">${esc(a.reason || '')}</div>${vmsg}${
-        (() => { const s = alsoAffects(a, currentSceneNumber);
-                 return s ? `<div class="spread">${esc(s)}</div>` : ''; })()}${spliceNote(a)}</div>
-      <div class="delta">${errs.length ? 'BLOCKED' : (a.kind === 'set_param' ? '→ ' + a.value : '')}</div>
-    </div>`;
-  }).join('');
+  renderPlanCards(plan);
   const blocked = plan.actions.filter(a => (a.validation_errors || []).length).length;
   if (blocked) log(`validation blocked ${blocked} action(s); they will not be transmitted`, 'err');
-  $('planbox').style.display = 'block';
   // Said HERE, not only in the chat. The completion note used to live in
   // the transcript while the page scrolled you down to this panel, so the
   // one line saying "the build worked, TRANSMIT is next" sat exactly where
@@ -4952,7 +5533,7 @@ function showPlan(plan) {
     + `Nothing has been sent to the FM9 yet.`
     + (blocked ? ` ${blocked} ${blocked === 1 ? 'is' : 'are'} marked BLOCKED `
                  + `and will not transmit.` : '')
-    + ` If it reads right, press TRANSMIT TO FM9 to hear it`
+    + ` If it reads right, continue to REVIEW, confirm, and send`
     + (willStore
         // No false comfort: UNDO never covers a store, and this plan has one.
         ? `. This plan also STORES to a preset slot; you will be asked again `
@@ -4962,8 +5543,69 @@ function showPlan(plan) {
   // And in the strip, which is the only place guaranteed to be on screen
   // wherever the reader has scrolled to while the build ran.
   workAnnounce(`BUILD COMPLETE: ${n} change${n === 1 ? '' : 's'} proposed. `
-               + `Review and TRANSMIT below.`, 'ok');
-  log(`plan ready: ${plan.actions.length} change(s). Confirm to transmit.`, 'ok');}
+               + `Review, confirm, and send.`, 'ready');
+  log(`plan ready: ${plan.actions.length} change(s). Review to continue.`, 'ok');
+  // The shared-channel map is fetched lazily, HERE, because a plan on screen
+  // is the one moment the blast-radius hints earn their audible sweep. The
+  // plan is already rendered above: the hints fill in when the map lands,
+  // and only if this is still the plan on screen.
+  if (!sharedMap || sharedFor !== currentPresetNumber) {
+    ensureShared().then(ok => {
+      if (!ok || currentPlan !== plan) return;
+      refreshBlastRadius(plan);
+      renderPlanCards(plan);
+      renderStageRail();
+    });
+  }
+  setStage('plan');
+}
+
+function renderPlanCards(plan, filter) {
+  const wanted = filter && filter !== 'all' ? filter : null;
+  $('plancards').innerHTML = plan.actions
+    .filter(a => !wanted || classifyAction(a).has(wanted))
+    .map(a => {
+    const errs = a.validation_errors || [];
+    const warns = a.validation_warnings || [];
+    const vclass = errs.length ? ' vfail' : (warns.length ? ' vwarn' : '');
+    const vmsg = errs.concat(warns).map(m =>
+      `<div class="vmsg ${errs.length ? 'verr' : 'vwrn'}">${esc(m)}</div>`).join('');
+    const setParam = a.kind === 'set_param';
+    const meta = setParam ? (lastParams || {})[a.param] : null;
+    const target = a.block
+      ? `${String(a.block).toUpperCase()} ${a.instance || 1}${a.channel ? ` ${a.channel}` : ''}`
+      : (a.kind === 'rename_preset' || a.kind === 'store' ? 'PRESET' : 'FM9');
+    const beforeRaw = setParam
+      ? ((plan.values || {})[a.param] ?? (lastState.values || {})[a.param])
+      : null;
+    const before = beforeRaw === undefined || beforeRaw === null ? 'Not read' : beforeRaw;
+    // Both branches are model- or device-originated strings. Escape here,
+    // once, before either enters the review table.
+    const after = setParam ? esc(String(a.value)) : esc(describe(a));
+    const spread = alsoAffects(a, currentSceneNumber);
+    const impact = spread
+      ? `${(spread.match(/\d+/g) || []).length + 1} scenes`
+      : (a.scene ? `Scene ${a.scene}` : 'Current');
+    // Safety facts stay open. Ordinary rationale is available without making
+    // every safe row two lines tall in a large plan.
+    const critical = [vmsg,
+      spread ? `<div class="spread">${esc(spread)}</div>` : '',
+      spliceNote(a)].join('');
+    const rationale = a.reason
+      ? `<details class="reviewmore"><summary>RATIONALE</summary><div class="why">${esc(a.reason)}</div></details>`
+      : '';
+    return `
+    <div class="plan-card${vclass}">
+      <div class="reviewstatus" aria-label="${errs.length ? 'blocked' : (warns.length ? 'warning' : 'valid')}">${errs.length ? '✕' : (warns.length ? '△' : '✓')}</div>
+      <div class="reviewtarget" title="${esc(target)}">${esc(target)}</div>
+      <div class="reviewwhat"><div class="what">${esc(meta && meta.label ? meta.label : describe(a))}</div>${rationale}</div>
+      <div class="reviewbefore" title="${esc(String(before))}">${esc(String(before))}</div>
+      <div class="reviewafter" title="${after}">${after}</div>
+      <div class="reviewimpact">${esc(impact)}</div>
+      ${critical ? `<div class="reviewdetail">${critical}</div>` : ''}
+    </div>`;
+  }).join('');
+}
 
 // A splice moves blocks the user did not ask about, and may spend a
 // pass-through cell that cannot be put back. Those two are not the same thing,
@@ -5193,6 +5835,7 @@ function renderWorking() {
             ? `: ${srcWork.count} change${srcWork.count === 1 ? '' : 's'} written`
             : ''));
   el.classList.toggle('done-ok', !busy && workDone.cls === 'ok');
+  el.classList.toggle('done-ready', !busy && workDone.cls === 'ready');
   el.classList.toggle('done-part', !busy && workDone.cls === 'part');
   el.classList.toggle('done-bad', !busy && workDone.cls === 'bad');
   el.querySelector('.wwhat').textContent = what;
@@ -5210,10 +5853,21 @@ function renderWorking() {
   }
 }
 
+let chatViewStale = false;   // a rewrite was skipped while reading back
+let chatAgreedSeen = '';     // which agreement was already scrolled to
+
 function renderChat() {
   const box = $('chat');
   // Measured BEFORE the rewrite, because after it scrollTop is meaningless.
   const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  // Reading back is sacred. The busy tick rewrites this feed every second,
+  // and a rewrite lands mid-scroll like a hand on the page: the gesture
+  // dies and the follow-to-bottom yanks the reader down again (owner,
+  // 2026-09-02: "i cant scroll back in the conversation"). While the
+  // reader is up in the history, nothing is rewritten; the scroll listener
+  // below repaints the moment they return to the bottom.
+  if (!wasAtBottom && chatLog.length) { chatViewStale = true; saveChat(); return; }
+  chatViewStale = false;
   // The transcript area stays: it is the shape of the panel, not a thing that
   // appears once you have used it. Only its contents swap between the empty
   // state and the exchange.
@@ -5273,12 +5927,23 @@ function renderChat() {
   + `<div class="cbtns">${
       chatBusy ? '<button id="cstop">STOP</button>' : ''
     }${chatReady && chatRequest && !chatBusy
-        ? '<button id="cbuild">BUILD THIS</button>' : ''
+        ? '<button id="cbuild">GENERATE PLAN</button>' : ''
     }<button id="cclear" title="Delete this conversation and start a new one">CLEAR</button></div>`;
   // Follow the newest message only when already at the bottom. Yanking
   // somebody back down while they are reading something further up is worse
   // than making them scroll.
   if (wasAtBottom) box.scrollTop = box.scrollHeight;
+  // A tall agreement used to clip its own first lines: eight scene names
+  // pushed scene 1 above the viewport, and the one line being checked was
+  // the one not on screen (owner, 2026-09-02). If the card cannot fit under
+  // a bottom-scroll, start the reader at its top instead - ONCE per
+  // agreement, so it can never fight a scroll.
+  const agreed = box.querySelector('.cagreed');
+  if (wasAtBottom && agreed && agreed.offsetTop < box.scrollTop
+      && chatAgreedSeen !== chatRequest) {
+    chatAgreedSeen = chatRequest;
+    box.scrollTop = Math.max(0, agreed.offsetTop - 8);
+  }
   if ($('cbuild')) $('cbuild').onclick = () =>
     engage(chatRequest, chatName, chatScenes);
   // Waiting is a thing you can leave. Without this, a wedged backend meant
@@ -5510,8 +6175,8 @@ async function engage(prompt, name, scenes) {
       chatReady = false;
       chatWorking = '';
       renderChat();
-      $('planbox').style.display = 'none';
       clearAffected();
+      setStage('request');
       return;
     }
     showPlan(plan);
@@ -5521,10 +6186,9 @@ async function engage(prompt, name, scenes) {
     const n = (plan.actions || []).length;
     chatWorking = '';
     chatNote(n
-      ? `Proposed ${n} change${n === 1 ? '' : 's'}, below. Nothing has been `
-        + `sent yet: review them and press TRANSMIT.`
+      ? `Proposed ${n} change${n === 1 ? '' : 's'}. Nothing has been `
+        + `sent yet: review, confirm, and send.`
       : 'That produced no changes to make.');
-    if (n) $('planbox').scrollIntoView({behavior: 'smooth', block: 'start'});
   } catch (e) {
     const stopped = e.name === 'AbortError' || e.message === 'stopped';
     log(stopped ? 'build stopped' : `plan failed: ${e.message}`,
@@ -5561,38 +6225,156 @@ function aiPresetFor(url) {
   return aiEndpoints.find(p => p.url.replace(/\/+$/, '') === u) || null;
 }
 
+function renderKeyStatus(hasKey) {
+  const status = $('aikeystatus');
+  if (!status) return;
+  // This state belongs to the address currently in the form, not merely to
+  // the broad "ChatGPT or other" backend. Otherwise a saved Grok key makes
+  // CLEAR KEY appear after clicking ChatGPT, even while the adjacent badge
+  // truthfully says NOT STORED.
+  $('aikey').dataset.stored = hasKey ? '1' : '0';
+  status.textContent = hasKey ? 'STORED · BLANK KEEPS IT' : 'NOT STORED';
+  status.classList.toggle('stored', !!hasKey);
+  const backend = aiBackends.find(x => x.backend === $('aibackend').value);
+  $('aiclearkey').style.display = backend && backend.needsKey && hasKey
+    ? '' : 'none';
+}
+
+function aiCardList() {
+  // Every way this tool can plan, as a flat list of NAMES with what each
+  // one costs. "Backend", "endpoint" and "base URL" are implementation and
+  // live under ADVANCED; a guitarist picks an AI the way they pick a chip
+  // on the pedalboard: by name.
+  const back = n => aiBackends.find(x => x.backend === n) || {};
+  const ep = n => aiEndpoints.find(x => x.name === n) || null;
+  const KEY_URLS = {
+    'Gemini': 'https://aistudio.google.com/apikey',
+    'ChatGPT API': 'https://platform.openai.com/api-keys',
+    'Grok': 'https://console.x.ai',
+    'DeepSeek': 'https://platform.deepseek.com',
+    'Kimi': 'https://platform.moonshot.ai',
+    'OpenRouter': 'https://openrouter.ai/settings/keys',
+  };
+  const cards = [];
+  const cli = back('cli');
+  cards.push({id: 'cli', name: 'Claude subscription',
+    cost: 'Included with your Claude sign-in. Nothing to configure.',
+    state: cli.available ? 'ready' : 'missing',
+    why: cli.available ? '' : 'Claude Code is not installed on this computer',
+    backend: 'cli', help: cli.note || ''});
+  const sub = ep('ChatGPT subscription');
+  if (sub) cards.push({id: 'sub', name: 'ChatGPT subscription',
+    cost: 'Included with ChatGPT Plus or Pro. One-time setup.',
+    state: (setupGuide && setupGuide.complete) ? 'ready' : 'setup',
+    backend: 'openai', preset: sub, help: sub.help});
+  const gem = ep('Gemini');
+  if (gem) cards.push({id: 'Gemini', name: 'Gemini',
+    cost: 'Free key from Google, takes a minute.',
+    state: gem.hasKey ? 'ready' : 'key', backend: 'openai', preset: gem,
+    keyUrl: KEY_URLS['Gemini'], help: gem.help});
+  const grokCli = back('grok');
+  if (grokCli.available) cards.push({id: 'grokcli', name: 'Grok subscription',
+    cost: 'Included with your Grok sign-in.',
+    state: 'ready', backend: 'grok', help: grokCli.note || ''});
+  for (const [nm, cost] of [
+      ['ChatGPT API', 'Paid key, billed per request.'],
+      ['Grok', 'Paid key, billed per request.'],
+      ['DeepSeek', 'Paid key, notably cheap per request.'],
+      ['Kimi', 'Paid key, billed per request.'],
+      ['OpenRouter', 'One paid key, many AIs.']]) {
+    const p = ep(nm);
+    if (p) cards.push({id: nm, name: nm === 'Grok' ? 'Grok API' : nm, cost,
+      state: p.hasKey ? 'ready' : 'key', backend: 'openai', preset: p,
+      keyUrl: KEY_URLS[nm], help: p.help});
+  }
+  const api = back('api');
+  cards.push({id: 'api', name: 'Claude API',
+    cost: 'Paid key, billed per request.',
+    state: api.hasKey ? 'ready' : 'key', backend: 'api',
+    keyUrl: 'https://console.anthropic.com', help: api.note || ''});
+  const local = ep('Local model');
+  if (local) cards.push({id: 'local', name: 'Local model',
+    cost: 'Free, runs on this computer.',
+    state: 'ready', backend: 'openai', preset: local, help: local.help});
+  cards.push({id: 'auto', name: 'Automatic',
+    cost: 'Uses the first of your ready services.',
+    state: 'ready', backend: '', help: back('').note || ''});
+  return cards;
+}
+
+const AI_STATE_WORDS = {ready: 'READY', key: 'NEEDS A KEY',
+                        setup: 'NEEDS SETUP', missing: 'NOT INSTALLED'};
+
+function aiCurrentCard(cards) {
+  const backend = $('aibackend').value;
+  if (backend !== 'openai' && backend !== '') {
+    return cards.find(c => c.backend === backend) || null;
+  }
+  if (backend === '' ) {
+    // Auto is a real choice, but a filled address narrows what it will use.
+    const svc = aiPresetFor($('aibaseurl').value);
+    if (!svc) return cards.find(c => c.id === 'auto') || null;
+    return cards.find(c => c.preset && c.preset.name === svc.name)
+        || cards.find(c => c.id === 'auto');
+  }
+  const svc = aiPresetFor($('aibaseurl').value);
+  return svc ? cards.find(c => c.preset && c.preset.name === svc.name) || null
+             : null;
+}
+
 function renderAiPresets() {
   const box = $('aipresets');
-  const on = $('aibaseurl').style.display !== 'none' && aiEndpoints.length;
-  box.hidden = !on;
-  $('aipresethelp').textContent = '';
-  if (!on) return;
-  const current = aiPresetFor($('aibaseurl').value);
+  if (!aiBackends.length) { box.innerHTML = ''; return; }
+  const cards = aiCardList();
+  const current = aiCurrentCard(cards);
   box.innerHTML = '';
-  for (const preset of aiEndpoints) {
+  for (const card of cards) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = preset.name;
-    b.setAttribute('aria-pressed', String(current === preset));
+    b.className = 'aicard';
+    b.innerHTML = `<span class="astate ${card.state}">${
+        AI_STATE_WORDS[card.state]}</span><b>${esc(card.name)}</b>` +
+      `<span class="acost">${esc(card.why || card.cost)}</span>`;
+    b.title = card.help || card.cost;
+    b.setAttribute('aria-pressed', String(!!current && current.id === card.id));
+    if (card.state === 'missing') b.disabled = true;
     b.onclick = () => {
-      $('aibaseurl').value = preset.url;
-      renderAiPresets();
-      // The model list comes from the endpoint's own /models, so it is only
-      // worth asking once there is an endpoint to ask.
-      loadAiModels($('aibackend').value);
+      $('aibackend').value = card.backend;
+      if (card.preset) {
+        $('aibaseurl').value = card.preset.url;
+        // Each service carries its own stored model and key. The box used
+        // to keep whatever the previous service used, so the Gemini pick
+        // sat over a GPT model name, and a key saved for one service
+        // silently replaced another's. Swap in THIS service's state.
+        $('aimodel').value = card.preset.model || '';
+        $('aikey').value = '';
+        renderKeyStatus(card.preset.hasKey);
+      } else {
+        $('aibaseurl').value = '';
+        $('aimodel').value = '';
+      }
+      aiFields();
+      // aiFields refills the model box from backend-level state, which for
+      // a just-picked service is empty: put the card's own model back or
+      // the commit below saves a blank and the planner falls to "local".
+      if (card.preset) $('aimodel').value = card.preset.model || '';
+      // A READY card takes effect on the click. Picking an AI and then
+      // hunting for a second button to make the pick real is the two-step
+      // that left the owner "planning with Grok" after choosing the local
+      // model (2026-09-02). A card still missing its key or setup selects
+      // and says what it needs; SAVE commits once that exists.
+      if (card.state === 'ready') saveAiSettings({}, true);
     };
     box.appendChild(b);
   }
-  // Only this service needs software installed, and only it gets an offer to
-  // walk through it. A SET IT UP button beside a service that needs no setup
-  // would be a question mark where there was none.
-  const guided = current && setupGuide && current.url === setupGuide.url;
+  // Only the subscription route needs software installed, and only it gets
+  // an offer to walk through it.
+  const guided = current && current.preset && setupGuide
+    && current.preset.url === setupGuide.url;
   if (!guided && setupOpen) { setupOpen = false; }
   if (guided && !setupOpen) {
     const b = document.createElement('button');
     b.type = 'button';
-    // Not a service. It sits in the same row for lack of anywhere better, so
-    // it has to stop reading as a fifth thing to choose between.
     b.id = 'ashowme';
     b.textContent = setupGuide.complete ? 'ALREADY SET UP' : 'SHOW ME HOW';
     b.onclick = async () => {
@@ -5602,15 +6384,45 @@ function renderAiPresets() {
     box.appendChild(b);
   }
   renderSetup();
-  if (current) {
-    $('aipresethelp').textContent = current.key === 'required'
-      ? `${current.help} A key is required.`
-      : `${current.help} No key needed.`;
-    // The generic placeholders contradict the chip. "optional for others"
+  const svc = current && current.preset ? current.preset : null;
+  if ($('aiurllabel')) {
+    $('aiurllabel').textContent = svc
+      ? `SERVICE ADDRESS · ${svc.name.toUpperCase()}`
+      : 'SERVICE ADDRESS';
+  }
+  if ($('aikeylabel')) {
+    // Keep the status chip as a child while naming which service owns this
+    // secret. Keys are intentionally isolated per endpoint.
+    $('aikeylabel').childNodes[0].nodeValue = current
+      ? `API KEY · ${current.name.toUpperCase()} ` : 'API KEY ';
+  }
+  if (svc) renderKeyStatus(svc.hasKey);
+  // Where to get the one thing a keyed service still needs.
+  const link = $('aikeylink');
+  if (link) {
+    const wants = current && current.keyUrl
+      && !(svc ? svc.hasKey : (current.backend === 'api'
+                               && aiBackends.find(x => x.backend === 'api')
+                               && aiBackends.find(x => x.backend === 'api').hasKey));
+    link.hidden = !wants;
+    if (wants) {
+      link.href = current.keyUrl;
+      link.textContent = `GET A ${current.name.toUpperCase()} KEY →`;
+    }
+  }
+  $('aipresethelp').textContent = current
+    ? (current.state === 'key'
+        ? `${current.help} Paste a key below and press SAVE to switch to it.`
+        : current.state === 'setup'
+          ? `${current.help} Press SHOW ME HOW to set it up.`
+          : current.help)
+    : 'Pick who plans your tones. Hover a name for what it is.';
+  if (svc) {
+    // The generic placeholders contradict the pick. "optional for others"
     // sits under a sentence saying a key is required, and "model (optional)"
     // is plain false on a hosted service, where blank sends "local" and gets
     // a 404 for a model nobody typed.
-    if (current.key === 'required') {
+    if (svc.key === 'required') {
       $('aikey').placeholder = $('aikey').dataset.stored === '1'
         ? 'key stored (blank keeps it)'
         : 'API key, required for this service';
@@ -5781,10 +6593,12 @@ function aiFields() {
   const b = aiBackends.find(x => x.backend === chosen);
   const show = (id, on) => { $(id).style.display = on ? '' : 'none'; };
   show('aibaseurl', !!(b && b.needsBaseUrl));
+  show('aiurllabel', !!(b && b.needsBaseUrl));
   show('aimodel', !!(b && b.needsModel));
+  show('aimodellabel', !!(b && b.needsModel));
   if (!(b && b.needsModel)) $('aimodelpicks').hidden = true;
   show('aikey', !!(b && b.needsKey));
-  show('aiclearkey', !!(b && b.needsKey && b.hasKey));
+  show('aikeylabel', !!(b && b.needsKey));
   // Claude API and a bare endpoint are selectable now, because the box that
   // fixes them is on this form. Say what is still missing while it is, rather
   // than letting the save fail to explain it.
@@ -5803,7 +6617,7 @@ function aiFields() {
     // Spell out the whole rule rather than a per-backend word: the Claude API
     // cannot run without a key, and an OAuth router wants none at all, so
     // hunting for one you do not need is a waste of an afternoon.
-    $('aikey').dataset.stored = b.hasKey ? '1' : '0';
+    renderKeyStatus(b.hasKey);
     $('aikey').placeholder = b.hasKey ? 'key stored (blank keeps it)'
       : 'API key (required for Claude API but optional for others)';
   }
@@ -5819,16 +6633,23 @@ function aiGear(backend) {
   // Amber only for a backend that cannot actually run. ENGAGE would fail and
   // the explanation is behind this button, so the button has to say so.
   const broken = !!b && (!b.available || !!b.needs);
+  // "ChatGPT or other" is the honest name of the endpoint backend, and a
+  // useless one to somebody who picked Gemini: the address in effect knows
+  // which named service it is, so say that instead when it matches one.
+  const svc = b && (b.backend === 'openai' || b.backend === '')
+    ? aiPresetFor(aiSavedBaseUrl || aiEnvBaseUrl) : null;
+  const name = svc ? svc.name : (b ? b.short : '');
   $('aiopen').classList.toggle('needs', broken);
   $('aiopen').title = broken
-    ? `AI settings. ${b.short} is not ready: ${b.needs || b.why}.`
-    : `AI settings. Planning with ${b ? b.short : 'the first backend available'}.`;
+    ? `AI settings. ${name} is not ready: ${b.needs || b.why}.`
+    : `AI settings. Planning with ${name || 'the first backend available'}.`;
 }
 
 function aiModal(open) {
-  $('aimodal').hidden = !open;
-  if (open) $('aibackend').focus();
-  else $('aikey').value = '';   // never leave a typed key sitting in the DOM
+  // The AI settings live in the Settings drawer now; the name survives
+  // because a dozen call sites know it.
+  if (open) { openDrawer('settings'); $('aibackend').focus(); }
+  else { closeDrawer(); }
 }
 
 async function loadAiSettings() {
@@ -5854,9 +6675,26 @@ async function loadAiSettings() {
     aiSavedBaseUrl = d.settings.baseUrl || '';
     aiFields();
     aiGear(d.settings.backend || '');
+    renderAiWho(d.planning);
   } catch (e) {
     log(`could not read AI settings: ${e.message}`, 'err');
   }
+}
+
+// The model you are about to talk to, said where you type, not on the
+// finished plan five minutes later. Clicking it opens the settings, because
+// reading it and wanting to change it are one gesture apart.
+function renderAiWho(p) {
+  const el = $('aiwho');
+  if (!el) return;
+  if (!p || (!p.service && !p.problem)) { el.hidden = true; return; }
+  el.hidden = false;
+  el.classList.toggle('needs', !!p.problem);
+  el.innerHTML = p.problem
+    ? `${esc(p.problem)}<span class="chg">open AI settings</span>`
+    : `Planning with <b>${esc(p.service)}</b> &middot; ${esc(p.model)}`
+      + `<span class="chg">change</span>`;
+  el.onclick = () => aiModal(true);
 }
 
 // Pick or type: the list is a convenience, never a constraint.
@@ -5935,7 +6773,7 @@ async function loadAiModels(backend) {
   }
 }
 
-async function saveAiSettings(extra) {
+async function saveAiSettings(extra, keepOpen) {
   const body = Object.assign({
     backend: $('aibackend').value,
     baseUrl: $('aibaseurl').value.trim(),
@@ -5956,8 +6794,8 @@ async function saveAiSettings(extra) {
     // that missing is a failed prompt some minutes later.
     if (d.warning) log(d.warning, 'warn');
     await loadAiSettings();
-refreshSnaps();
-    aiModal(false);
+    refreshSnaps();
+    if (!keepOpen) aiModal(false);
   } catch (e) {
     log(`could not save AI settings: ${e.message}`, 'err');
   }
@@ -6013,7 +6851,7 @@ function planResult(html, how) {
   el.hidden = false;
   if ($('planclose')) $('planclose').onclick = () => {
     el.hidden = true;
-    $('planbox').style.display = 'none';
+    setStage('request');
   };
 }
 
@@ -6042,6 +6880,10 @@ async function apply() {
     }
   }
   $('apply').disabled = true; $('discard').disabled = true;
+  disarmSend();
+  setStage('send', true);   // forced: planSending is set a breath later
+  sendPhase('SNAPSHOTTING');
+  $('sendfoot').hidden = true;
   const total = currentPlan.actions.length;
   log('transmitting to FM9...');
   // Where the button is. The transcript is two panels up and the log is two
@@ -6051,7 +6893,7 @@ async function apply() {
   workLog = [];
   const say = (n) => {
     planSent = n;
-    $('apply').innerHTML = `<span class="spin">◍</span> SENDING ${n}/${total}`;
+    sendPhase(`TRANSMITTING · ${n} / ${total}`);
     renderWorking();
   };
   say(0);
@@ -6145,8 +6987,8 @@ async function apply() {
         + bufferNote
       : `Sent ${good} change${good === 1 ? '' : 's'} to the FM9. Play it.`
         + (stored.length ? bufferNote
-                         : ` Nothing is saved to the preset until you press `
-                           + `SAVE, and UNDO puts it back.`));
+                         : ` Nothing is stored in the preset until you choose `
+                           + `STORE PRESET, and UNDO puts the edit buffer back.`));
     // Transmits, not downloads. This is the moment a recipe actually reached
     // somebody's rig, which is a far better signal than a fetch and much
     // harder to inflate by refreshing a page. Queued locally, so a gig with
@@ -6174,6 +7016,16 @@ async function apply() {
           ? `DONE: ${good} change${good === 1 ? '' : 's'} sent and stored to slot ${storedWhere}. The preset is ready; play it.`
           : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
       bad ? 'part' : 'ok');
+    sendPhase(bad ? `PARTIAL · ${good} OF ${acted.length} VERIFIED`
+                  : `COMPLETE · ${good} OF ${acted.length} VERIFIED`);
+    $('sendnav').innerHTML = (stored.length
+        ? 'FM9 EDIT BUFFER MODIFIED · STORED TO SLOT ' + esc(storedWhere)
+        : 'FM9 EDIT BUFFER MODIFIED · PRESET NOT STORED')
+      + '<br>EARS: PENDING';
+    $('sendfoot').hidden = false;
+    setDirty(true);
+    stageDone.send = true;
+    renderRail();
     const rescan = fixPending;
     fixPending = false;
     // The panel used to hide itself 1.5 seconds after finishing, which threw
@@ -6189,7 +7041,7 @@ async function apply() {
         + (stored.length
             ? `Play it.` + esc(bufferNote)
             : `It is in the edit buffer, so play it. Nothing is written to `
-              + `the preset until you press SAVE, and UNDO puts it back.`),
+              + `the preset until you choose STORE PRESET, and UNDO puts it back.`),
       bad ? 'part' : 'ok');
     clearAffected();
     refresh();
@@ -6200,11 +7052,13 @@ async function apply() {
     planResult(`<b>Nothing was sent.</b> ${esc(e.message)}`, 'bad');
     chatNote(`Nothing was sent: ${e.message}`);
     workAnnounce(`NOTHING SENT: ${String(e.message).slice(0, 120)}`, 'bad');
+    sendPhase('FAILED · NOTHING VERIFIED');
+    $('sendfoot').hidden = false;
   } finally {
     chatWorking = '';
     planSending = false;
     renderWorking();
-    $('apply').innerHTML = 'TRANSMIT TO FM9';   // its own label, not a shorter one
+    $('apply').innerHTML = 'SEND TO FM9';
     $('apply').disabled = false; $('discard').disabled = false;
     currentPlan = null;
     clearAffected();
@@ -6229,21 +7083,15 @@ $('prompt').addEventListener('keydown', e => {
 // A conversation left open yesterday is still there today.
 loadChat();
 renderChat();
+// The skipped rewrites land the moment the reader comes back down.
+$('chat').addEventListener('scroll', () => {
+  if (!chatViewStale) return;
+  const box = $('chat');
+  if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) renderChat();
+});
 $('apply').onclick = apply;
-$('discard').onclick = () => {
-  $('planbox').style.display = 'none'; currentPlan = null;
-  clearAffected(); log('plan discarded');
-};
 
 $('aiopen').onclick = () => aiModal(true);
-$('aiclose').onclick = () => aiModal(false);
-// backdrop only, not a click that started inside the panel
-$('aimodal').addEventListener('mousedown', e => {
-  if (e.target === $('aimodal')) aiModal(false);
-});
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('aimodal').hidden) aiModal(false);
-});
 $('aisave').onclick = () => saveAiSettings();
 $('aiclearkey').onclick = () => saveAiSettings({clearKey: true});
 // Typing an address by hand still lights the matching chip, or clears it.
@@ -6267,39 +7115,567 @@ $('aibackend').onchange = () => {
   aiFields();
 };
 
+// --- the command workflow -------------------------------------------------
+//
+// REQUEST -> PLAN -> REVIEW -> CONFIRM -> SEND. One stage on screen at a
+// time; the hardware bar, the rail, the live context and the shelf never
+// move. The machine may propose; the human reviews, confirms, and sends.
+
+const STAGES = ['request', 'plan', 'review', 'confirm', 'send'];
+let stage = 'request';
+let stageDone = {request: false, plan: false, review: false,
+                 confirm: false, send: false};
+let reviewFilter = 'all';
+let bufferDirty = false;
+let armTimer = null;          // the eight-second SEND window
+let armLeft = 0;
+
+function hasBlockers() {
+  return !!currentPlan && currentPlan.actions.some(
+    a => (a.validation_errors || []).length);
+}
+
+function canEnter(name) {
+  if (name === 'request') return true;
+  if (name === 'plan' || name === 'review') return !!currentPlan;
+  if (name === 'confirm') return !!currentPlan && !hasBlockers();
+  // Send is never navigated to; it is entered by the armed control, and
+  // revisited only while or after a transmission.
+  if (name === 'send') return planSending || stageDone.send;
+  return false;
+}
+
+function renderRail() {
+  const idx = STAGES.indexOf(stage);
+  STAGES.forEach((name, i) => {
+    const b = $('stg-' + name);
+    if (!b) return;
+    b.className = 'stg';
+    if (name === stage) b.classList.add('on');
+    else if (stageDone[name]) b.classList.add('done');
+    else if (canEnter(name) && i < idx) b.classList.add('done');
+    else if (canEnter(name)) b.classList.add('avail');
+    if (name === 'confirm' && currentPlan && hasBlockers()) {
+      b.classList.add('blocked');
+      b.title = 'blocked: the plan has validation failures';
+    } else if (name === 'confirm') {
+      b.title = '';
+    }
+    if (name === 'send' && stageDone.send) b.classList.add('sent');
+  });
+}
+
+// The change cards live in one DOM node and follow the workflow: the Review
+// table while reviewing, the disclosure in Send while transmitting, so the
+// per-action ticks land on the same cards the reader just reviewed.
+function placeCards(where) {
+  const cards = $('plancards');
+  if (!cards) return;
+  if (where === 'send') $('plandetail').appendChild(cards);
+  else {
+    const pane = $('pane-review');
+    pane.insertBefore(cards, pane.querySelector('.stagefoot'));
+  }
+}
+
+function setStage(name, force) {
+  if (!STAGES.includes(name)) return;
+  if (!force && !canEnter(name)) return;
+  if (stage === 'confirm' && name !== 'confirm') disarmSend();
+  stage = name;
+  for (const s of STAGES) {
+    $('pane-' + s).hidden = s !== name;
+    const nav = $('nav-' + s);
+    if (nav) nav.hidden = s !== name;
+  }
+  if ((name === 'confirm' || name === 'send') && currentPlan) {
+    renderPlanCards(currentPlan);   // unfiltered: result marks line up
+  }
+  placeCards(name);
+  if (name === 'plan') renderPlanStage();
+  if (name === 'review') renderReviewStage();
+  if (name === 'confirm') renderConfirmStage();
+  renderRail();
+  renderStageRail();
+}
+
+for (const name of STAGES) {
+  $('stg-' + name).onclick = () => {
+    if (name === stage) return;
+    if (!canEnter(name)) return;
+    // Returning to Request with a live plan is a fork: continue the plan,
+    // or start over. Starting over discards it, and only after saying so.
+    if (name === 'request' && currentPlan && stage !== 'request') {
+      if (window.confirm('Start over? OK discards the current plan. '
+                         + 'Cancel returns to the request and KEEPS the plan.')) {
+        discardPlan();
+        return;                       // discardPlan lands on Request
+      }
+    }
+    if (name === 'send' && !planSending && !stageDone.send) return;
+    setStage(name);
+  };
+}
+
+function discardPlan() {
+  disarmSend();
+  currentPlan = null;
+  clearAffected();
+  stageDone = {request: false, plan: false, review: false,
+               confirm: false, send: false};
+  log('plan discarded');
+  setStage('request', true);
+}
+
+// --- PLAN stage: intent before parameters ---------------------------------
+
+const KIND_INTENT = {
+  add_block: 'BUILD ROUTING', build_chain: 'BUILD ROUTING',
+  set_channel: 'SWITCH CHANNELS', set_bypass: 'ENGAGE / BYPASS',
+  bind_pedal: 'ASSIGN PEDAL 2', unbind_pedal: 'RELEASE PEDAL 2',
+  set_cab: 'VOICE CABINET', set_type: 'CHOOSE MODELS',
+  rename_scene: 'NAME SCENES', rename_preset: 'NAME PRESET',
+  set_scene: 'SET SCENES', set_tempo: 'SET TEMPO', store: 'STORE PRESET',
+};
+
+function intentGroups(plan) {
+  const groups = new Map();
+  for (const a of plan.actions || []) {
+    const key = a.kind === 'set_param'
+      ? `VOICE ${a.block || 'BLOCK'} ${a.instance || 1}`.toUpperCase()
+      : (KIND_INTENT[a.kind] || (a.kind || 'CHANGE').toUpperCase());
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+  return groups;
+}
+
+function renderPlanStage() {
+  if (!currentPlan) return;
+  const n = currentPlan.actions.length;
+  $('reviewbtn').textContent = `REVIEW ${n} CHANGE${n === 1 ? '' : 'S'}`;
+  const groups = intentGroups(currentPlan);
+  $('plannav').innerHTML = [...groups.entries()].map(([k, list]) =>
+    `<div class="nrow"><b>${esc(k)}</b><span>${list.length}</span></div>`)
+    .join('') || '<span class="hint">no grouped work</span>';
+  $('planintents').innerHTML = [...groups.entries()].map(([name, list]) => {
+    const first = list[0] || {};
+    const outcome = first.reason || describe(first);
+    const blocked = list.some(a => (a.validation_errors || []).length);
+    const inferred = list.some(a => (a.validation_warnings || []).length);
+    const state = blocked ? 'BLOCKED' : (inferred ? 'CHECK' : 'GROUNDED');
+    return `<div class="intentrow${blocked ? ' vfail' : (inferred ? ' vwarn' : '')}">
+      <div class="intentname">${esc(name)}</div>
+      <div class="intentoutcome" title="${esc(outcome)}">${esc(outcome)}</div>
+      <div class="intentcount">${list.length} · ${state}</div>
+    </div>`;
+  }).join('') || '<div class="hint">No changes were proposed.</div>';
+}
+
+// --- REVIEW stage: the exact changes, scan-first --------------------------
+
+function classifyAction(a) {
+  const out = new Set(['all']);
+  if ((a.validation_errors || []).length
+      || (a.validation_warnings || []).length) out.add('warnings');
+  if (['add_block', 'build_chain', 'set_channel', 'set_bypass']
+      .includes(a.kind) || (a.splice && a.splice.ok)) out.add('routing');
+  if (['bind_pedal', 'unbind_pedal'].includes(a.kind)) out.add('modifiers');
+  if (['rename_scene', 'rename_preset', 'set_scene', 'store']
+      .includes(a.kind)) out.add('scene');
+  const fam = String(a.block || '').toUpperCase();
+  if (['AMP', 'CABINET', 'CAB'].includes(fam)
+      || ['set_cab', 'set_type'].includes(a.kind)) out.add('ampcab');
+  const p = String(a.param || '').toUpperCase();
+  if (/LEVEL|GAIN|VOLUME|OUT_/.test(p)) out.add('levels');
+  if (a.kind === 'set_param' && !out.has('ampcab') && !out.has('levels')) {
+    out.add('effects');
+  }
+  return out;
+}
+
+const REVIEW_FILTERS = [
+  ['all', 'All'], ['warnings', 'Warnings'], ['routing', 'Routing'],
+  ['ampcab', 'Amp/Cab'], ['effects', 'Effects'], ['levels', 'Levels'],
+  ['modifiers', 'Modifiers'], ['scene', 'Scene metadata'],
+];
+
+function renderReviewStage() {
+  if (!currentPlan) return;
+  const acts = currentPlan.actions || [];
+  const counts = {};
+  for (const [key] of REVIEW_FILTERS) counts[key] = 0;
+  for (const a of acts) for (const c of classifyAction(a)) {
+    if (c in counts) counts[c] += 1;
+  }
+  $('reviewfilters').innerHTML = REVIEW_FILTERS
+    .filter(([key]) => key === 'all' || counts[key])
+    .map(([key, label]) =>
+      `<button class="navitem${key === reviewFilter ? ' on' : ''}"
+               data-filter="${key}">${esc(label)}
+       <span class="ct">${counts[key]}</span></button>`).join('');
+  for (const b of $('reviewfilters').querySelectorAll('[data-filter]')) {
+    b.onclick = () => { reviewFilter = b.dataset.filter; renderReviewStage(); };
+  }
+  renderPlanCards(currentPlan, reviewFilter);
+  const scenes = affectedScenes.size;
+  $('reviewcount').textContent =
+    `${acts.length} CHANGES` + (scenes ? ` · ${scenes + 1} SCENES` : '')
+    + ` · EDIT BUFFER ONLY`;
+  $('toconfirm').disabled = hasBlockers();
+  $('toconfirm').title = hasBlockers()
+    ? 'blocked: fix or discard the failing changes first' : '';
+}
+
+// --- CONFIRM stage: arm, then send ----------------------------------------
+
+function renderConfirmStage() {
+  if (!currentPlan) return;
+  const n = currentPlan.actions.length;
+  const scenes = affectedScenes.size;
+  const dev = currentPlan.device && currentPlan.device.preset;
+  const stores = currentPlan.actions.filter(a => a.kind === 'store');
+  const facts = [
+    ['TARGET', dev
+      ? `FM9 · Preset ${esc(String(dev.editor ?? dev.number))} ${esc(dev.name || '')}`
+      : 'FM9 · loaded preset'],
+    ['SCOPE', `${n} change${n === 1 ? '' : 's'}`
+      + (scenes ? ` across ${scenes + 1} scenes` : '')],
+    ['DESTINATION', stores.length
+      ? 'EDIT BUFFER, THEN A PERMANENT SLOT WRITE'
+      : 'EDIT BUFFER · NOT STORED'],
+    ['RECOVERY', stores.length
+      ? 'Snapshot ready · UNDO DOES NOT COVER THE STORE'
+      : 'Automatic snapshot ready · Undo available'],
+  ];
+  $('cfacts').innerHTML = facts.map(([l, v]) =>
+    `<div class="cfact"><div class="cfl">${l}</div>
+     <div class="cfv">${v}</div></div>`).join('');
+  const hit = [...affectedScenes].sort((a, b) => a - b);
+  $('cblast').textContent = hit.length
+    ? `SCENE${hit.length > 1 ? 'S' : ''} ${hit.join(', ')} WILL ALSO CHANGE: `
+      + `they share a channel with what this plan edits.`
+    : 'No other scene moves: nothing here crosses a shared channel.';
+  const locked = gigOn === true;
+  $('giglockwhy').hidden = !locked;
+  if (locked) {
+    $('giglockwhy').innerHTML = 'GIG LOCK is on: transmission is blocked. '
+      + 'It never exits on its own. '
+      + '<button id="exitgig">EXIT GIG LOCK</button>';
+    $('exitgig').onclick = () => toggleGig();
+  }
+  $('ack').checked = false;
+  $('armbtn').disabled = true;
+  disarmSend();
+}
+
+$('ack').onchange = () => {
+  $('armbtn').disabled = !$('ack').checked || gigOn === true;
+};
+
+function disarmSend() {
+  if (armTimer) { clearInterval(armTimer); armTimer = null; }
+  $('apply').hidden = true;
+  $('armhint').hidden = true;
+  $('armbtn').hidden = false;
+  $('armbtn').disabled = !$('ack').checked || gigOn === true;
+}
+
+$('armbtn').onclick = () => {
+  if (gigOn === true) return;
+  $('armbtn').hidden = true;
+  $('apply').hidden = false;
+  $('armhint').hidden = false;
+  armLeft = 8;
+  $('apply').textContent = `SEND TO FM9 · ${armLeft}`;
+  armTimer = setInterval(() => {
+    armLeft -= 1;
+    if (armLeft <= 0) { disarmSend(); return; }
+    $('apply').textContent = `SEND TO FM9 · ${armLeft}`;
+  }, 1000);
+};
+
+// Anything that changes the target while armed disarms it: preset, scene,
+// link, or the plan itself. Checked from the poll, which is what knows.
+let guardPreset = null, guardScene = null;
+function stageGuard(s) {
+  const p = s.preset ? s.preset.number : null;
+  const sc = s.scene ? s.scene.number : null;
+  const moved = (guardPreset !== null && p !== guardPreset)
+             || (guardScene !== null && sc !== guardScene);
+  if (moved && stage === 'confirm') {
+    disarmSend();
+    log('target changed on the unit: SEND disarmed, back to REVIEW', 'warn');
+    setStage(currentPlan ? 'review' : 'request', true);
+  }
+  if (guardPreset !== null && p !== guardPreset) {
+    // A preset load replaced the edit buffer wholesale.
+    setDirty(false);
+  }
+  guardPreset = p; guardScene = sc;
+  renderStageRail();
+}
+
+function sendPhase(text) { $('sendphase').textContent = text; }
+
+// --- the right rail: target, blast radius, preflight ----------------------
+
+function renderStageRail() {
+  const snap = lastState || {};
+  const p = snap.preset, sc = snap.scene;
+  const off = document.body.classList.contains('rig-off');
+  $('targetbody').innerHTML = off
+    ? '<span class="bad">OFFLINE</span> · last known: '
+      + (p ? `${esc(String(p.editor ?? p.number))} ${esc(p.name || '')}` : 'nothing read yet')
+    : (p ? `FM9 · PRESET ${esc(String(p.editor ?? p.number))}<br>`
+           + `<b>${esc(p.name || '')}</b>`
+           + (sc ? `<br>Scene ${sc.number} ${esc(sc.name || '')}` : '')
+         : 'reading...');
+  const showPlanCards = !!currentPlan && stage !== 'request';
+  $('blastcard').hidden = !showPlanCards;
+  $('preflightcard').hidden = !showPlanCards;
+  $('reversecard').hidden = !showPlanCards;
+  if (!showPlanCards) return;
+  const hit = [...affectedScenes].sort((a, b) => a - b);
+  $('blastbody').innerHTML = hit.length
+    ? hit.map(x => `<span class="schip">${x}</span>`).join('')
+      + '<br>These scenes share a channel with what this plan edits.'
+    : 'Only the scene you are standing on.';
+  const blockers = currentPlan.actions.filter(
+    a => (a.validation_errors || []).length).length;
+  const pinned = currentPlan.device && currentPlan.device.preset;
+  const rows = [
+    [blockers === 0, blockers === 0 ? 'Plan valid'
+      : `${blockers} change${blockers === 1 ? '' : 's'} BLOCKED`],
+    [!!pinned, pinned ? 'Preset pinned' : 'Preset pin unknown'],
+    [!off, off ? 'FM9 OFFLINE: stale data cannot pass preflight'
+               : 'FM9 linked'],
+    [gigOn !== true, gigOn === true ? 'GIG LOCK blocks transmission'
+                                    : 'Snapshot ready'],
+  ];
+  $('preflightbody').innerHTML = rows.map(([ok, text]) =>
+    `<div class="${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'} ${esc(text)}</div>`)
+    .join('');
+  const stores = currentPlan.actions.filter(a => a.kind === 'store').length;
+  $('reversebody').innerHTML = stores
+    ? '<span class="warn">This plan STORES to flash. UNDO does not cover '
+      + 'the store; everything before it is snapshot-covered.</span>'
+    : 'Undo available after send.';
+}
+
+// --- the edit-buffer dirty badge ------------------------------------------
+
+function setDirty(on) {
+  bufferDirty = !!on;
+  $('dirty').hidden = !bufferDirty;
+}
+
+// --- request modes --------------------------------------------------------
+
+let requestMode = 'describe';
+function setRequestMode(mode) {
+  requestMode = mode;
+  $('mode-describe').classList.toggle('on', mode === 'describe');
+  $('mode-source').classList.toggle('on', mode === 'source');
+  $('mode-empty').classList.toggle('on', mode === 'empty');
+  document.querySelector('#pane-request .composer').hidden = mode === 'source';
+  $('srcpanel').hidden = mode !== 'source';
+  // The empty-slot panel keeps its own display logic (it exists only when
+  // the slot is empty); the mode button just brings it into focus.
+  if (mode === 'empty') $('emptypanel').scrollIntoView({block: 'nearest'});
+}
+$('mode-describe').onclick = () => setRequestMode('describe');
+$('mode-source').onclick = () => setRequestMode('source');
+$('mode-empty').onclick = () => setRequestMode('empty');
+
+// --- the contextual inspector ---------------------------------------------
+
+const INSPECT_PANEL = {
+  DISTORT: 'amppanel', CABINET: 'amppanel', AMP: 'amppanel', CAB: 'amppanel',
+  GEQ: 'geqpanel', PEQ: 'geqpanel',
+};
+function selectBlock(fam) {
+  $('stagerail').hidden = true;
+  $('inspector').hidden = false;
+  // The player's name for the block, not the wire family: DISTORT is an
+  // amp on every screen a guitarist reads.
+  const label = GROUP_NAMES[String(fam || '').toUpperCase()] || fam || 'BLOCK';
+  $('inspname').textContent = String(label).toUpperCase();
+  const target = INSPECT_PANEL[String(fam || '').toUpperCase()]
+    || ($('fxpanel').style.display !== 'none' ? 'fxpanel' : 'utilpanel');
+  const el = $(target);
+  if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'});
+}
+$('inspclose').onclick = () => {
+  $('inspector').hidden = true;
+  $('stagerail').hidden = false;
+};
+$('openamp').onclick = () => selectBlock('DISTORT');
+
+// --- utility drawers ------------------------------------------------------
+
+const DRAWERS = {
+  diagnostics: ['DIAGNOSTICS', 'shdiag'],
+  library: ['LIBRARY', 'shlib'],
+  storage: ['STORAGE · STORE PRESET', 'shstore'],
+  activity: ['ACTIVITY', 'shact'],
+  settings: ['SETTINGS', 'shset'],
+};
+let drawerOpen = null;
+
+function openDrawer(name) {
+  if (!(name in DRAWERS)) return;
+  drawerOpen = name;
+  $('drawer').hidden = false;
+  $('drawer').dataset.draw = name;
+  $('drawtitle').textContent = DRAWERS[name][0];
+  for (const key of Object.keys(DRAWERS)) {
+    $('drawer-' + key).hidden = key !== name;
+    $(DRAWERS[key][1]).classList.toggle('on', key === name);
+  }
+  if (name === 'activity') { $('actbadge').hidden = true; actErrors = 0; }
+}
+function closeDrawer() {
+  drawerOpen = null;
+  $('drawer').hidden = true;
+  for (const key of Object.keys(DRAWERS)) {
+    $(DRAWERS[key][1]).classList.remove('on');
+  }
+  $('aikey').value = '';   // never leave a typed key sitting in the DOM
+}
+for (const [name, [, btn]] of Object.entries(DRAWERS)) {
+  $(btn).onclick = () =>
+    drawerOpen === name ? closeDrawer() : openDrawer(name);
+}
+$('drawclose').onclick = closeDrawer;
+
+// Library tabs
+for (const b of document.querySelectorAll('.libtab')) {
+  b.onclick = () => {
+    for (const x of document.querySelectorAll('.libtab')) {
+      x.classList.toggle('on', x === b);
+    }
+    for (const pane of ['recipes', 'designs', 'profiles']) {
+      $('lib-' + pane).hidden = b.dataset.lib !== pane;
+    }
+  };
+}
+
+// Compare popover on the shelf
+$('shcompare').onclick = () => {
+  $('comparepop').hidden = !$('comparepop').hidden;
+};
+document.addEventListener('mousedown', e => {
+  if (!$('comparepop').hidden
+      && !e.target.closest('#comparepop, #shcompare')) {
+    $('comparepop').hidden = true;
+  }
+});
+
+// --- shelf badges ---------------------------------------------------------
+
+let actErrors = 0;
+{
+  const plainLog = log;
+  log = (msg, cls) => {
+    plainLog(msg, cls);
+    if (cls === 'err' && drawerOpen !== 'activity') {
+      actErrors += 1;
+      $('actbadge').textContent = String(actErrors);
+      $('actbadge').hidden = false;
+    }
+  };
+}
+{
+  const plainHealth = renderHealth;
+  renderHealth = d => {
+    plainHealth(d);
+    const findings = (d && d.scenes)
+      ? d.scenes.filter(s => s.alive === false).length : 0;
+    $('diagbadge').textContent = String(findings);
+    $('diagbadge').hidden = !findings;
+  };
+}
+{
+  const plainBlast = refreshBlastRadius;
+  refreshBlastRadius = plan => { plainBlast(plan); renderStageRail(); };
+}
+{
+  const plainGig = renderGig;
+  renderGig = on => {
+    // Only a CHANGE redraws the Confirm stage. This runs on every poll
+    // tick, and an unconditional redraw reset the acknowledgement checkbox
+    // every five seconds, faster than a person can check it and arm
+    // (owner, 2026-09-02: "KEEPS GETTING UNCHECKED").
+    const changed = on !== gigOn;
+    plainGig(on);
+    if (changed && stage === 'confirm') renderConfirmStage();
+    renderStageRail();
+  };
+}
+{
+  const plainOff = setRigOff;
+  setRigOff = off => {
+    plainOff(off);
+    if (off && stage === 'confirm') disarmSend();
+    renderStageRail();
+  };
+}
+
+// --- stage footer wiring --------------------------------------------------
+
+$('discard').onclick = discardPlan;
+$('discard2').onclick = discardPlan;
+$('reviewbtn').onclick = () => { stageDone.plan = true; setStage('review'); };
+$('backplan').onclick = () => setStage('plan');
+$('toconfirm').onclick = () => {
+  if (hasBlockers()) return;
+  stageDone.review = true;
+  setStage('confirm');
+};
+$('backreview').onclick = () => setStage('review');
+$('auditionbtn').onclick = () => {
+  // Back to the live context with Undo prominent; the tone judgement is
+  // the player's, on the hardware, with ears.
+  setStage('request', true);
+  $('context').scrollIntoView({block: 'nearest'});
+};
+$('storeafter').onclick = () => openDrawer('storage');
+$('newrequest').onclick = () => setStage('request', true);
+
+// --- keyboard -------------------------------------------------------------
+
+document.addEventListener('keydown', e => {
+  // Cmd/Ctrl+Enter generates a plan; the final hardware Send deliberately
+  // has NO keyboard shortcut.
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && stage === 'request') {
+    e.preventDefault();
+    talk();
+    return;
+  }
+  if (e.key !== 'Escape') return;
+  if (!$('apply').hidden && armTimer) { disarmSend(); return; }
+  if (!$('comparepop').hidden) { $('comparepop').hidden = true; return; }
+  if (drawerOpen) { closeDrawer(); return; }
+});
+
+// Leaving mid-plan or mid-transmit deserves a browser warning.
+window.addEventListener('beforeunload', e => {
+  if (planSending || (currentPlan && !stageDone.send)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+setStage('request', true);
+setRequestMode('describe');
+
 loadAiSettings();
 refresh();
 // Cached server side, so this is cheap after the first read. The SAVE panel
 // renders before the scan finishes and would say "name not read" until
 // somebody pressed NAMES, so it is refreshed from the filled cache after.
 loadPresets(false).then(() => loadSaveSlots(false));
-// --- the two ways to work -------------------------------------------------
-//
-// Saying what you want and turning a knob are different activities. One wants
-// room to read a conversation back; the other wants every control at once.
-// They were competing for the same screen, and the loser was whichever you
-// happened to want.
-const TAB_KEY = 'tonecommand.tab.v1';
-
-function showTab(which) {
-  const on = which === 'manual' ? 'manual' : 'ai';
-  for (const name of ['ai', 'manual']) {
-    const picked = name === on;
-    $(`tab-${name}`).hidden = !picked;
-    $(`tab-${name}-btn`).classList.toggle('on', picked);
-    $(`tab-${name}-btn`).setAttribute('aria-selected', String(picked));
-  }
-  try { localStorage.setItem(TAB_KEY, on); } catch (e) { /* private window */ }
-}
-
-$('tab-ai-btn').onclick = () => showTab('ai');
-$('tab-manual-btn').onclick = () => showTab('manual');
-try {
-  showTab(localStorage.getItem(TAB_KEY) || 'ai');
-} catch (e) {
-  showTab('ai');
-}
-
 setInterval(refresh, 5000);
 </script>
 </body>

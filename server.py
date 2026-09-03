@@ -1764,8 +1764,13 @@ def run_action(fm9: FM9, a: Action) -> dict:
                 "detail": "bypassed" if got else "engaged"}
     if a.kind == "set_channel":
         got = fm9.set_channel(eid, int(a.value))
+        # The blast-radius map is exactly "which scenes sit on which channel",
+        # so this write is the one thing that makes the cached copy a lie.
+        _shared_cache["preset"], _shared_cache["map"] = None, None
         return {"ok": got == int(a.value), "detail": f"channel {'ABCD'[got]}"}
     if a.kind == "add_block":
+        # A new block is a new row in the blast-radius map.
+        _shared_cache["preset"], _shared_cache["map"] = None, None
         return _add_block(fm9, a)
     if a.kind == "bind_pedal":
         return _bind_pedal(fm9, a)
@@ -2489,15 +2494,14 @@ def api_health_stream():
 def api_shared():
     """Which scenes share each block's channel, for the blast-radius hint.
 
-    Cached per preset because computing it sweeps all eight scenes, which is
-    audible. The UI asks for it once per preset, never on a timer.
-
-    Gig mode refuses the SWEEP, quietly. The UI asks for this on its own
-    whenever the preset changes, and a front-panel preset change mid-set
-    would otherwise have this tool audibly walking all eight scenes while
-    somebody is playing through it. A cached answer costs no MIDI and is
-    still served. `swept` marks a fresh sweep so the page can say what the
-    scene-stepping the owner just heard was.
+    CACHE ONLY. This GET never sweeps: computing the map walks the rig
+    through all eight scenes, which is audible, and this used to run
+    whenever the preset changed, so browsing presets from the front panel
+    had the rig stepping through scenes on its own. An audible action
+    behind a GET also breaks the same rule /api/health is a POST for.
+    The sweep now lives in POST /api/shared/sweep and runs only when a
+    plan actually needs the hints. `unswept` tells the page a sweep would
+    be required, so it can announce the noise before asking for it.
     """
     with _lock:
         try:
@@ -2506,8 +2510,38 @@ def api_shared():
             key = cur[0] if cur else None
             if _shared_cache["preset"] == key and _shared_cache["map"] is not None:
                 return {"preset": key, "shared": _shared_cache["map"], "cached": True}
-            if _gig_mode["on"]:
-                return {"preset": key, "shared": None, "gig": True}
+            return {"preset": key, "shared": None, "unswept": True}
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "FM9 not connected"}, status_code=503)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/shared/sweep")
+def api_shared_sweep():
+    """The audible sweep behind the blast-radius map, on request only.
+
+    POST for the same reason /api/health is: it walks the rig through all
+    eight scenes, and a thing you can hear must never happen because a
+    browser prefetched a link. The UI calls this lazily, the first time a
+    plan needs the hints on a preset the cache has not seen, and announces
+    the scene-stepping before it starts.
+
+    Gig mode refuses it outright, like the health scan: on stage the rig
+    does nothing it was not asked to do from the floor.
+    """
+    with _lock:
+        if _gig_mode["on"]:
+            return JSONResponse(
+                {"error": "GIG MODE is on: refusing the sweep. It walks the "
+                          "rig through every scene and is audible, which on "
+                          "stage is exactly what gig mode exists to prevent."},
+                status_code=423)
+        try:
+            fm9 = get_fm9()
+            cur = fm9.current_preset()
+            key = cur[0] if cur else None
             got = shared_scenes(fm9)
         except FM9NotFound:
             drop_fm9()
@@ -2515,7 +2549,7 @@ def api_shared():
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
     _shared_cache["preset"], _shared_cache["map"] = key, got
-    return {"preset": key, "shared": got, "cached": False, "swept": True}
+    return {"preset": key, "shared": got, "swept": True}
 
 
 @app.post("/api/gig")
@@ -2807,11 +2841,18 @@ def api_ai_settings_state():
     """
     return {"settings": ai_settings.panel_state(),
             "backends": ai_settings.available_backends(),
+            # Who will answer the next prompt, for the line beside the
+            # COMMAND box: the backend used to introduce itself only on the
+            # finished plan, minutes after the question was typed.
+            "planning": ai_settings.planning_line(),
             "defaults": {"cliproxy": ai_settings.CLIPROXY_DEFAULT_URL,
                          "localLlm": ai_settings.LOCAL_LLM_DEFAULT_URL},
             # Named services for the endpoint box, so it is a choice rather
             # than a blank the reader has to already know the answer to.
-            "endpoints": ai_settings.ENDPOINT_PRESETS}
+            # Each row carries its own stored model and hasKey, so a chip
+            # click swaps in that service's state instead of leaving the
+            # previous service's model in the box.
+            "endpoints": ai_settings.endpoint_presets_state()}
 
 
 @app.get("/api/ai-settings/models")

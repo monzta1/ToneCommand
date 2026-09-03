@@ -86,10 +86,112 @@ def test_the_endpoint_never_returns_the_key(client):
 def test_a_blank_key_keeps_the_stored_one(store):
     ai_settings.save({"backend": "openai", "baseUrl": "http://h/v1",
                       "apiKey": "sk-keep"})
-    assert ai_settings.save({"backend": "openai", "baseUrl": "http://new/v1"}) \
-        .key_for() == "sk-keep"
-    assert ai_settings.save({"backend": "openai", "baseUrl": "http://new/v1",
+    assert ai_settings.save({"backend": "openai", "baseUrl": "http://h/v1",
                              "apiKey": ""}).key_for() == "sk-keep"
+
+
+def test_a_key_belongs_to_its_service_and_survives_a_visit_elsewhere(store):
+    """The owner's report, within minutes of the Gemini chip shipping: he
+    set up Gemini, came back to ChatGPT, and 'my key vanished'. One shared
+    slot meant the ChatGPT key was silently replaced. Keys and models are
+    per service now: a detour through Gemini must leave ChatGPT exactly as
+    it was, and neither service may answer with the other's model."""
+    ai_settings.save({"backend": "openai", "baseUrl": "http://chatgpt/v1",
+                      "apiKey": "sk-openai", "model": "gpt-5.6-terra"})
+    ai_settings.save({"backend": "openai", "baseUrl": "http://gemini/v1",
+                      "apiKey": "AIza-gem", "model": "gemini-pro"})
+    back = ai_settings.save({"backend": "openai",
+                             "baseUrl": "http://chatgpt/v1"})
+    assert back.key_for() == "sk-openai"
+    assert back.model_for() == "gpt-5.6-terra"
+    there = ai_settings.save({"backend": "openai",
+                              "baseUrl": "http://gemini/v1"})
+    assert there.key_for() == "AIza-gem"
+    assert there.model_for() == "gemini-pro"
+
+
+def test_a_new_service_does_not_inherit_the_previous_ones_key(store):
+    """Sending the ChatGPT key to Google is a small leak dressed as a
+    convenience. A URL with nothing stored gets nothing."""
+    ai_settings.save({"backend": "openai", "baseUrl": "http://chatgpt/v1",
+                      "apiKey": "sk-openai"})
+    assert ai_settings.save({"backend": "openai",
+                             "baseUrl": "http://new/v1"}).key_for() == ""
+
+
+def test_a_named_hosted_service_cannot_be_saved_without_its_key(store):
+    """Selecting ChatGPT was allowed to save with no ChatGPT key. The next
+    request then failed, while a key for a different service made the panel
+    look partly configured. Fail at SAVE, where the user can correct it."""
+    ai_settings.save({"backend": "openai", "baseUrl": "https://api.x.ai/v1",
+                      "apiKey": "xai-key", "model": "grok"})
+    with pytest.raises(ValueError, match="API key for ChatGPT"):
+        ai_settings.save({"backend": "openai",
+                          "baseUrl": "https://api.openai.com/v1"})
+
+
+def test_a_custom_compatible_service_may_still_be_keyless(store):
+    """Only named services that explicitly require keys are constrained;
+    local and custom compatible endpoints often intentionally use none."""
+    saved = ai_settings.save({"backend": "openai",
+                              "baseUrl": "http://amp-rack.local/v1"})
+    assert saved.base_url == "http://amp-rack.local/v1"
+
+
+def test_a_pre_per_service_file_still_answers_and_migrates(store):
+    """Files written before per-service storage hold one bare 'openai'
+    model and key beside a base URL. They belonged to that URL, so they
+    keep working there, and the next save persists the new shape."""
+    ai_settings.settings_path().write_text(json.dumps({
+        "backend": "openai", "baseUrl": "http://h/v1",
+        "models": {"openai": "old-model"}, "keys": {"openai": "sk-old"}}))
+    s = ai_settings.load()
+    assert s.key_for() == "sk-old" and s.model_for() == "old-model"
+    ai_settings.save({"backend": "openai", "baseUrl": "http://h/v1"})
+    stored = json.loads(ai_settings.settings_path().read_text())
+    assert stored["keys"] == {"openai@http://h/v1": "sk-old"}
+
+
+def test_the_model_is_announced_where_the_question_is_typed(client, store):
+    """The owner, in caps: the model in effect must be visible on ENTERING
+    the AI tab, not on the finished plan minutes later. The server resolves
+    the first candidate the planner will try and names the service the way
+    the panel does; the page shows it beside the COMMAND box."""
+    ai_settings.save({
+        "backend": "openai",
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "models/gemini-3.5-flash", "apiKey": "AIza-x"})
+    got = client.get("/api/ai-settings").json()["planning"]
+    assert got == {"backend": "openai", "service": "Gemini",
+                   "model": "models/gemini-3.5-flash", "problem": ""}
+
+
+def test_an_unrunnable_choice_is_a_problem_line_not_a_late_surprise(store,
+                                                                    monkeypatch):
+    monkeypatch.setenv("PLANNER_BACKEND", "api")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    got = ai_settings.planning_line()
+    assert got["backend"] == "api" and got["service"] == "Claude API"
+    assert "needs" in got["problem"]
+
+
+def test_the_page_carries_the_planning_line():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert 'id="aiwho"' in ui
+    assert "renderAiWho(d.planning)" in ui
+
+
+def test_each_endpoint_chip_reports_its_own_state_without_the_key(store):
+    ai_settings.save({"backend": "openai",
+                      "baseUrl": "https://api.openai.com/v1",
+                      "apiKey": "sk-mine", "model": "gpt-5.6"})
+    rows = ai_settings.endpoint_presets_state()
+    by_name = {r["name"]: r for r in rows}
+    assert by_name["ChatGPT API"]["hasKey"] is True
+    assert by_name["ChatGPT API"]["model"] == "gpt-5.6"
+    assert by_name["Gemini"]["hasKey"] is False
+    assert by_name["Gemini"]["model"] == ""
+    assert "sk-mine" not in json.dumps(rows)
 
 
 def test_clearing_takes_an_explicit_flag(store):
@@ -278,7 +380,7 @@ def test_keys_are_stored_per_backend_not_shared(store):
                       "apiKey": "sk-router"})
     ai_settings.save({"backend": "api", "apiKey": "sk-ant"})
     stored = ai_settings.load()
-    assert stored.keys["openai"] == "sk-router"
+    assert stored.keys["openai@http://h/v1"] == "sk-router"
     assert stored.keys["api"] == "sk-ant"
 
 
@@ -460,6 +562,21 @@ def test_plan_card_strings_are_escaped():
     endpoint the user configured."""
     ui = _ui()
     assert "esc(describe(a))" in ui
+
+
+def test_settings_drawer_keeps_fields_on_separate_rows_and_names_stored_keys():
+    """Moving the AI form from a modal into the settings drawer must not
+    strand it on the old modal-only layout rules. A stored secret stays out
+    of the browser, but the empty field must say why it is empty."""
+    ui = _ui()
+    assert "#drawer-settings #aimodal .airow" in ui
+    assert "grid-template-columns: minmax(0, 1fr)" in ui
+    assert 'id="aikeystatus"' in ui
+    assert "STORED · BLANK KEEPS IT" in ui
+    assert "renderKeyStatus(card.preset.hasKey)" in ui
+    assert "renderKeyStatus(b.hasKey)" in ui
+    assert "renderKeyStatus(svc.hasKey)" in ui
+    assert "API KEY · ${current.name.toUpperCase()}" in ui
     assert "esc(a.reason" in ui
 
 
@@ -651,17 +768,41 @@ def test_the_short_names_live_beside_the_long_ones():
 
 def test_chatgpt_is_offered_by_name_with_its_address():
     by_name = {p["name"]: p for p in ai_settings.ENDPOINT_PRESETS}
-    assert "ChatGPT" in by_name
-    assert by_name["ChatGPT"]["url"] == "https://api.openai.com/v1"
-    assert by_name["ChatGPT"]["key"] == "required"
+    assert "ChatGPT API" in by_name, \
+        "named for what it is: the pay-per-request developer API"
+    assert by_name["ChatGPT API"]["url"] == "https://api.openai.com/v1"
+    assert by_name["ChatGPT API"]["key"] == "required"
 
 
 def test_every_preset_is_complete_and_addressable():
     for p in ai_settings.ENDPOINT_PRESETS:
         assert set(p) == {"name", "url", "key", "help"}, p
-        assert p["url"].startswith("http") and p["url"].endswith("/v1"), p
+        # Not endswith("/v1") any more: Gemini's compatible address is
+        # /v1beta/openai, and the shape that actually matters to the code is
+        # no trailing slash, because every caller does base.rstrip("/") +
+        # "/models" and a preset with a slash would double it in the chip
+        # matcher.
+        assert p["url"].startswith("http") and not p["url"].endswith("/"), p
         assert p["key"] in ("required", "no"), p
         assert len(p["help"]) > 40, p          # a label is not an explanation
+
+
+def test_the_household_names_are_offered_by_name():
+    """Feedback from the Fractal FB community (Martin White, 2026-09-02): he
+    was already using Gemini for tones by hand. Somebody who wants Gemini
+    should find the word Gemini, not a protocol note saying it is covered."""
+    by_name = {p["name"]: p for p in ai_settings.ENDPOINT_PRESETS}
+    for name in ("Gemini", "Grok", "DeepSeek", "Kimi"):
+        assert name in by_name, name
+        assert by_name[name]["key"] == "required", name
+    assert by_name["Gemini"]["url"] == \
+        "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert by_name["Grok"]["url"] == "https://api.x.ai/v1"
+    # The Grok chip is per-request billing; the Grok CLI backend is the
+    # subscription. Whichever one somebody has, the help has to point at the
+    # other rather than let them pay twice.
+    assert "subscription" in by_name["Grok"]["help"]
+    assert "Gemini" in ai_settings.BACKEND_LABELS["openai"]
 
 
 def test_no_preset_hardcodes_a_model_id():
@@ -675,7 +816,7 @@ def test_the_paid_route_says_it_is_paid_and_separate_from_plus():
     """A ChatGPT Plus subscription does not carry API access. Finding that
     out from a 401 after pasting the wrong thing is a bad afternoon."""
     chatgpt = next(p for p in ai_settings.ENDPOINT_PRESETS
-                   if p["name"] == "ChatGPT")
+                   if p["name"] == "ChatGPT API")
     assert "separate account" in chatgpt["help"]
     assert "bills per request" in chatgpt["help"]
 
@@ -729,6 +870,32 @@ def test_the_catalogue_is_not_the_menu():
         "omni-moderation-latest", "gpt-4o-realtime-preview", "gpt-image-1",
         "codex-mini-latest"])
     assert kept == ["gpt-5"]
+
+
+def test_the_gemini_product_line_is_not_a_model_menu():
+    """The exact listing a fresh Gemini key returned to the owner
+    (2026-09-02): video, music, image, robotics, translation and
+    browser-driving models offered as tone planners, with veo sorted first
+    and therefore auto-filled. Only text planners may survive, and the
+    maintained -latest aliases must lead so the fill is one that keeps
+    working."""
+    kept = ai_settings.usable_models([
+        "models/veo-3.1-lite-generate-preview",
+        "models/veo-3.1-generate-preview",
+        "models/nano-banana-pro-preview",
+        "models/lyria-3-pro-preview",
+        "models/gemini-robotics-er-2-preview",
+        "models/gemini-3.5-live-translate-preview",
+        "models/gemini-2.5-computer-use-preview-10-2025",
+        "models/aqa",
+        "models/antigravity-preview-05-2026",
+        "models/gemini-flash-latest",
+        "models/gemini-pro-latest",
+        "models/gemma-4-31b-it",
+        "models/gemini-3.5-flash",
+    ])
+    assert kept == ["models/gemini-pro-latest", "models/gemini-flash-latest",
+                    "models/gemma-4-31b-it", "models/gemini-3.5-flash"]
 
 
 def test_legacy_completion_models_are_dropped():
@@ -816,6 +983,20 @@ def test_the_key_box_stops_contradicting_the_service_above_it():
     assert "${current.name} key" not in fn
 
 
+def test_clear_key_tracks_the_service_in_the_form_not_the_backend():
+    """A stored Grok key made CLEAR KEY appear beside ChatGPT's truthful
+    NOT STORED badge because the button read backend-level state while the
+    badge read endpoint-level state. One renderer must own both states."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    status = ui.split("function renderKeyStatus(hasKey)")[1].split("\n}\n")[0]
+    fields = ui.split("function aiFields()")[1].split("\n}\n")[0]
+    presets = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
+    assert "$('aiclearkey').style.display" in status
+    assert "backend.needsKey && hasKey" in status
+    assert "show('aiclearkey'," not in fields
+    assert "renderKeyStatus(card.preset.hasKey)" in presets
+
+
 # --- a saved setting is not a working one ---------------------------------
 
 def test_saving_warns_when_nothing_is_listening(client, store):
@@ -851,7 +1032,8 @@ def test_an_http_error_is_a_running_service(monkeypatch):
 
 def test_the_warning_reaches_the_log_not_just_the_response():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function saveAiSettings(extra)")[1].split("\n}\n")[0]
+    fn = ui.split("async function saveAiSettings(extra, keepOpen)")[1] \
+        .split("\n}\n")[0]
     assert "if (d.warning) log(d.warning, 'warn');" in fn
 
 
@@ -1056,7 +1238,7 @@ def test_the_browser_advances_only_on_proof():
 def test_only_the_service_that_needs_setup_is_offered_it():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
-    assert "current.url === setupGuide.url" in fn
+    assert "current.preset.url === setupGuide.url" in fn
 
 
 # --- doing it, rather than describing it ----------------------------------
@@ -1200,3 +1382,21 @@ def test_typing_a_model_by_hand_still_lights_the_right_one():
 def test_a_backend_with_no_model_list_shows_no_model_chips():
     ui = (ROOT / "ui" / "index.html").read_text()
     assert "if (!(b && b.needsModel)) $('aimodelpicks').hidden = true;" in ui
+
+
+def test_the_local_card_finds_the_server_that_is_actually_running(store,
+                                                                  monkeypatch):
+    """The Local model card hardcoded LM Studio's port, so an Ollama owner
+    got a dead address and a trip through ADVANCED to type the right one:
+    the exact trip the panel exists to remove (owner, 2026-09-02)."""
+    monkeypatch.setattr(ai_settings, "local_llm_url",
+                        lambda: ai_settings.OLLAMA_URL)
+    rows = ai_settings.endpoint_presets_state()
+    local = next(r for r in rows if r["name"] == "Local model")
+    assert local["url"] == "http://127.0.0.1:11434/v1"
+    # and its stored model is read from the slot of the DETECTED address
+    ai_settings.settings_path().write_text(json.dumps({
+        "models": {"openai@http://127.0.0.1:11434/v1": "qwen3-coder:30b"}}))
+    rows = ai_settings.endpoint_presets_state()
+    local = next(r for r in rows if r["name"] == "Local model")
+    assert local["model"] == "qwen3-coder:30b"

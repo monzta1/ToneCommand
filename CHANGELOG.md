@@ -2,6 +2,116 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## Unreleased
+
+### Added
+- **The AI picker is a question, not a form.** Settings opens on WHO PLANS
+  YOUR TONES: named cards (Claude subscription, ChatGPT subscription,
+  ChatGPT API, Gemini, Grok API, DeepSeek, Kimi, Local model, OpenRouter,
+  Automatic), each stating its cost and its state: READY, NEEDS A KEY with
+  a GET A KEY link to the right page, NEEDS SETUP, or NOT INSTALLED. A
+  READY card takes effect on the click. Backend, service address and model
+  id moved under ADVANCED; the words "backend" and "endpoint" no longer
+  appear on the main path.
+- **The Local model card finds your local server.** It probes LM Studio's
+  and Ollama's ports and uses whichever is answering, instead of
+  hardcoding one and sending Ollama owners into ADVANCED to type an
+  address.
+- **Planner errors name the service, not the protocol.** A Gemini quota
+  failure now reads "Gemini [http_status] 429", not "openai [...]".
+- **Models that emit bare actions still plan.** Gemini answered an
+  8-scene build with one JSON object per action and no {summary, actions}
+  envelope; the extractor now gathers action-shaped output into a plan
+  instead of calling it empty. Every action still passes validation.
+
+### Fixed (redesign follow-ups, all owner-reported same day)
+- The Confirm acknowledgement no longer unchecks itself: the five-second
+  poll was redrawing the stage and wiping the checkbox faster than a
+  person could arm.
+- The conversation scrolls back: flex-end pinned overflow above the
+  container's top edge where no scrollbar reaches, and the busy tick's
+  rewrites killed scroll gestures. A collapsing spacer seats short
+  exchanges low, rewrites pause while reading back, and a tall AGREED
+  card opens at its top with scenes in two columns.
+- The Inspector names blocks the way a player reads them (AMP, not
+  DISTORT), scrolls to the right section, and the impact rail carries a
+  MANUAL CONTROLS card with an OPEN AMP &amp; CAB shortcut.
+- Every settings field has a visible label; the address label names the
+  service it holds.
+- **The desktop control surface.** The page is no longer a long document
+  with tabs: it is a fixed five-layer console built to
+  docs/UI-REDESIGN-SPEC.md. A hardware bar names the FM9, the preset, and
+  whether the edit buffer is modified; a five-stage rail walks REQUEST,
+  PLAN, REVIEW, CONFIRM, SEND; scenes and the live signal path stay on
+  screen through every stage; a command shelf pins UNDO and opens the
+  Diagnostics, Library, Storage, Activity and Settings drawers. SEND is
+  reserved for hardware: the composer says GENERATE PLAN, Review is a
+  filterable change table with the blast radius and preflight beside it,
+  and Confirm is a full stage with a facts matrix, an acknowledgement, ARM
+  SEND, and an eight-second SEND TO FM9 window that Esc or any target
+  change disarms. Transmission reports SNAPSHOTTING through COMPLETE with
+  verified counts, ends at EARS: PENDING, and a partial failure is never
+  painted as success. Manual control opens as an Inspector from the signal
+  chain; storing is STORE PRESET with erase behind a danger zone; below
+  1180px the page refuses rather than compressing the send workflow onto
+  a phone. Every existing capability kept its element and its handler;
+  they moved house. All 1024 tests pass, with the tab-era pins rewritten
+  against the stage rail.
+- **The COMMAND console says who will answer, before you ask.** A quiet
+  line at the top of DESIGN WITH AI reads "Planning with Gemini,
+  models/gemini-3.5-flash", resolved server-side the same way the planner
+  resolves its first candidate; clicking it opens the AI settings. It turns
+  amber with the reason when the chosen backend cannot actually run. The
+  backend used to introduce itself only on the finished plan, minutes after
+  the sentence went in.
+- **Gemini, Grok, DeepSeek and Kimi are one-click services in the AI
+  settings panel.** Each chip fills in the address, says where its key comes
+  from and what it costs, and lists real models the moment a key is saved.
+  Prompted by Fractal FB community feedback (Martin White): he was already
+  building tones with Gemini by hand, and the word Gemini appeared nowhere a
+  chooser could find it. The backend dropdown now reads "ChatGPT, Gemini, or
+  another service you choose", and the gear tooltip names the actual service
+  in effect instead of "ChatGPT or other".
+
+### Changed
+- **The README is a page you can finish.** Community feedback said it was
+  huge, and it was: 792 lines. It is now ~200, and everything it dropped
+  moved rather than died: docs/INTERFACE.md, docs/AI-BACKENDS.md,
+  docs/SETUP.md, docs/PROTOCOL-CONTRIBUTIONS.md and docs/CREDITS.md, all
+  linked from a documentation table.
+
+### Fixed
+- **Google's product line is no longer offered as tone planners.** A fresh
+  Gemini key listed video (veo), music (lyria), image (nano-banana),
+  robotics, live-translation and browser-driving models beside the real
+  ones, and reverse-alphabetical ordering both sorted veo FIRST and
+  auto-saved it as the model. The filter now knows those families, the
+  maintained "-latest" aliases lead the list, and the exact listing that
+  bit is pinned in a test.
+- **Each AI service now keeps its own key and model.** The named services
+  behind the endpoint backend shared one storage slot, so clicking the
+  Gemini chip showed ChatGPT's model in the box, and saving a Gemini key
+  silently replaced the ChatGPT one ("my key vanished"). Both reported by
+  the owner within minutes of the chips shipping. Keys and models are now
+  stored per service address, chips swap in their own service's state, the
+  models probe never sends one service's key to another, and old settings
+  files migrate on their next save. Saving a key for a hosted service with
+  no model picked now also fills the model in from the service's own list
+  at save time, closing the trap where the planner sent the "local" default
+  to an endpoint that 404s it.
+- **Changing presets on the front panel no longer makes the rig cycle
+  through all eight scenes.** The page was requesting the blast-radius map
+  on every preset change, and the GET behind it walked every scene to read
+  channel layouts, so browsing presets from the floor had the rig audibly
+  stepping through scenes on its own. The sweep now lives behind
+  POST /api/shared/sweep and runs only when a plan is on screen and needs
+  the hints, announced in the log before the scene-stepping starts. GIG
+  MODE refuses it outright, like the health scan. The plan renders
+  immediately; hints fill in when the map lands.
+- **The cached blast-radius map is invalidated when a transmit changes it**:
+  a channel write or a new block cleared the cache, where before a stale
+  map could keep describing the old scene-to-channel layout.
+
 ## 0.8.0 (2026-09-02)
 
 One wait experience, everywhere. The COMMAND box learned to count seconds,

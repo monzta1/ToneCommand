@@ -116,7 +116,10 @@ def test_the_reply_says_what_it_did_to_your_rig(client):
 # --- what the browser offers ----------------------------------------------
 
 def test_the_panel_appears_only_for_an_empty_slot():
-    assert 'data-label="EMPTY SLOT"' in BODY and 'id="emptypanel"' in BODY
+    assert 'id="emptypanel"' in BODY
+    assert 'id="mode-empty" hidden' in BODY, \
+        "the EMPTY SLOT request type is offered only when the slot is empty"
+    assert "$('mode-empty').hidden = !emptySlot;" in SCRIPT
     render = SCRIPT.split("function renderParams")[1].split("\nfunction ")[0]
     assert "const emptySlot = lastState.connected !== false && !(s.blocks || []).length;" in render
     assert "$('emptypanel').style.display = emptySlot ? '' : 'none';" in render

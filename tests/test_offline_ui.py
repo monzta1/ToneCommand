@@ -36,21 +36,33 @@ def _panels(with_class: bool):
 
 def test_the_panels_that_need_hardware_are_marked():
     marked = set(_panels(True))
-    assert marked == {"SCENES", "SIGNAL CHAIN", "EMPTY SLOT", "AMP & CAB",
-                      "GRAPHIC EQ", "EFFECTS", "DYNAMICS & LEVELS",
-                      "UNDO / COMPARE", "PRESET HEALTH", "SAVE TO PRESET"}, marked
+    assert marked == {"AMP & CAB", "GRAPHIC EQ", "EFFECTS",
+                      "DYNAMICS & LEVELS"}, marked
+    # The hardware-writing drawers carry the same mark on their pane.
+    assert 'class="drawpane needs-rig" id="drawer-diagnostics"' in UI
+    assert 'class="drawpane needs-rig" id="drawer-storage"' in UI
+    # And the live context section is marked, though its offline treatment
+    # is stale-visible rather than hidden (asserted below).
+    assert 'id="context" class="console needs-rig"' in UI
 
 
 def test_the_panels_that_work_offline_are_not_dimmed():
     """Planning, recipes and designs are the reason offline mode exists."""
-    live = set(_panels(False))
-    for panel in ("COMMAND", "TONE RECIPES", "DESIGNED PRESETS", "LOG"):
-        assert panel in live, panel
+    for pane in ('id="pane-request"', 'id="lib-recipes"',
+                 'id="lib-designs"', 'id="drawer-activity"'):
+        at = UI.index(pane)
+        opening = UI.rfind("<", 0, at)
+        assert "needs-rig" not in UI[opening:at], pane
 
 
 def test_a_panel_that_needs_the_rig_is_removed_not_faded():
-    """Out of the layout and out of the tab order in one move."""
+    """Out of the layout and out of the tab order in one move. The one
+    exception is the live context: last-known hardware state stays VISIBLE
+    offline, dimmed and desaturated, because a blank strip hides what the
+    stale overlay can honestly show."""
     assert "body.rig-off .needs-rig { display: none; }" in STYLE
+    assert "body.rig-off #context { display: flex; }" in STYLE
+    assert "body.rig-off #context .ctxrow { opacity: 0.45;" in STYLE
 
 
 def test_nothing_is_disabled_by_hand_any_more():
@@ -72,12 +84,13 @@ def test_transmit_is_hidden_even_though_its_panel_works():
     """A plan can be BUILT with the rig off, which is the whole point of the
     designs work. It just cannot be sent."""
     assert "body.rig-off #apply { display: none; }" in STYLE
-    assert "COMMAND" in _panels(False)
 
 
-def test_the_preset_pill_goes_too():
-    """There is nothing to switch to."""
-    assert "body.rig-off #preset { display: none; }" in STYLE
+def test_the_preset_pill_goes_stale_not_dark():
+    """The hardware bar keeps naming the last-known target offline, but it
+    must never read as live: dimmed and desaturated, over a red link pill."""
+    assert "body.rig-off #preset { opacity: 0.55;" in STYLE
+    assert "body.rig-off #preset { display: none; }" not in STYLE
 
 
 def test_one_switch_decides_it():
@@ -95,11 +108,11 @@ def test_the_banner_says_what_still_works():
     discouraging: everything you build offline is kept and goes out later."""
     banner = UI.split('class="offbanner"')[1].split("</div>")[0].lower()
     assert "not connected" in banner
-    # it NAMES what went, so nothing has silently vanished
-    assert "hidden" in banner and "scenes" in banner
+    # it says the shown state is STALE, never live
+    assert "stale" in banner and "last known" in banner
     # and says what still works, since "not connected" alone reads as
     # "nothing works", which is wrong and discouraging
-    assert "design" in banner and "lost" in banner
+    assert "designs still work" in banner
 
 
 # --- the one piece of state with no way to correct it --------------------

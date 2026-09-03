@@ -59,10 +59,12 @@ def test_every_size_on_the_page_answers_to_the_control():
     assert not raw, f"these bypass --ui-scale: {raw}"
 
 
-def test_the_control_is_in_the_header_and_clamped():
-    """Findable without hunting, and neither end can make the page unusable."""
+def test_the_control_is_under_settings_and_clamped():
+    """In Settings > Appearance now, per the control-surface spec, and
+    neither end can make the page unusable."""
     assert 'id="tsup"' in UI and 'id="tsdown"' in UI
-    assert 'class="textsize"' in UI.split("</header>")[0]
+    appearance = UI.split('data-label="APPEARANCE"')[1].split("</div>\n    </div>")[0]
+    assert 'class="textsize"' in appearance
     assert re.search(r"TS_MIN\s*=\s*0\.\d+", SCRIPT)
     assert re.search(r"TS_MAX\s*=\s*1\.\d+", SCRIPT)
     fn = SCRIPT.split("function textScale")[1].split("\n}")[0]

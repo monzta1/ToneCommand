@@ -57,18 +57,18 @@ import re
 SCRIPT = UI.split("<script>")[1]
 
 
-def test_the_settings_panel_is_behind_the_button_not_on_the_page():
-    modal = UI.split('<div class="modal" id="aimodal"')[1]
+def test_the_settings_live_behind_the_drawer_not_on_the_page():
+    drawer = UI.split('id="drawer-settings"')[1]
     for control in ("aibackend", "aikey", "aisave", "aiclearkey"):
-        assert f'id="{control}"' in modal, f"{control} escaped the modal"
-    assert UI.count('data-label="AI SETTINGS"') == 1
-    assert 'id="aiopen"' in UI.split("<script>")[0].split('id="aimodal"')[0], \
-        "no way to reach the panel from the header"
+        assert f'id="{control}"' in drawer, f"{control} escaped the drawer"
+    assert UI.count('data-label="WHO PLANS YOUR TONES"') == 1
+    assert 'id="aiopen"' in UI.split("<script>")[0].split('id="drawer"')[0], \
+        "no way to reach the settings from the hardware bar"
 
 
 def test_it_opens_closed():
-    assert re.search(r'<div class="modal" id="aimodal" hidden>', UI), \
-        "the panel must start hidden or it is not out of the way at all"
+    assert re.search(r'<div id="drawer" hidden>', UI), \
+        "the drawer must start hidden or it is not out of the way at all"
 
 
 def test_every_element_the_script_reaches_for_still_exists():
@@ -138,9 +138,9 @@ def test_a_backend_that_cannot_run_is_flagged_on_the_button():
 
 
 def test_closing_drops_a_typed_key():
-    body = SCRIPT.split("function aiModal(")[1].split("\n}")[0]
+    body = SCRIPT.split("function closeDrawer(")[1].split("\n}")[0]
     assert "$('aikey').value = ''" in body, \
-        "a typed key must not sit in the DOM after the panel closes"
+        "a typed key must not sit in the DOM after the drawer closes"
 
 
 # --- the warning has to be seen, not merely present ---
@@ -213,14 +213,14 @@ def test_the_slider_styling_is_present():
 
 def test_the_signal_chain_comes_before_the_prompt():
     """It answers "what does my rig look like right now", which is the
-    question you arrive with. Fourth panel down it started at 521px, below the
-    fold on a laptop, so the rig you came to look at needed a scroll."""
-    order = re.findall(r'data-label="([^"]+)"', UI)
-    order = [x for x in order if x not in ("PROPOSED CHANGES", "AI SETTINGS")]
-    assert order.index("SIGNAL CHAIN") < order.index("COMMAND")
-    assert order.index("SCENES") < order.index("SIGNAL CHAIN")
-    # undo is reached after a change, not before one
-    assert order.index("UNDO / COMPARE") > order.index("AMP &amp; CAB")
+    question you arrive with. The live context strip pins scenes and the
+    chain above every stage, so no stage can push them off screen."""
+    markup = UI.split("<script>")[0]
+    assert markup.index('id="scenes"') < markup.index('id="blocks"')
+    assert markup.index('id="blocks"') < markup.index('id="pane-request"')
+    # undo is reached after a change, not before one: it sits on the shelf,
+    # below the workspace, fixed
+    assert markup.index('id="workspace"') < markup.index('id="shelf"')
 
 
 def test_the_model_selectors_look_like_selectors():

@@ -165,7 +165,9 @@ def test_there_is_one_action_in_the_prompt_row():
     ui = (ROOT / "ui" / "index.html").read_text()
     row = ui.split('<div class="promptrow">')[1].split("</div>")[0]
     assert row.count("<button") == 1
-    assert 'id="engage">SEND<' in row
+    # The reserved word SEND belongs to the hardware crossing alone; the
+    # composer generates a proposal.
+    assert 'id="engage">GENERATE PLAN<' in row
     assert "TALK IT OVER" not in ui
 
 
@@ -292,7 +294,7 @@ def test_enter_sends_and_shift_enter_writes_a_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
     assert "e.shiftKey" in fn and "e.preventDefault();" in fn
-    assert "Enter sends, Shift+Enter for a new line" in ui, \
+    assert "Enter generates a plan, Shift+Enter for a new line" in ui, \
         "a box that grows implies Enter breaks a line; say which it is"
 
 
@@ -339,7 +341,7 @@ def test_reading_back_is_not_interrupted_by_a_new_message():
 
 def test_the_transcript_comes_before_the_box_you_type_into():
     ui = (ROOT / "ui" / "index.html").read_text()
-    panel = ui.split('data-label="COMMAND"')[1].split('data-label="PROPOSED')[0]
+    panel = ui.split('id="pane-request"')[1].split("</section>")[0]
     assert panel.index('id="chat"') < panel.index('class="composer"')
     assert panel.index('class="composer"') < panel.index('id="prompt"')
 
@@ -357,28 +359,32 @@ def test_the_empty_state_asks_and_suggests_in_the_middle():
     """Most people's first sight of this panel. A question and six real
     requests beat any amount of describing what the box accepts."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    empty = ui.split('id="cempty"')[1].split("</div>\n      <div")[0]
-    assert "What do you want it to sound like?" in empty
+    empty = ui.split('id="cempty"')[1].split('id="cscroll"')[0]
+    assert "WHAT SHOULD THIS RIG SOUND LIKE?" in empty
     assert 'id="egs"' in empty, "the suggestions belong in the empty state"
     css = ui.split(".cempty {")[1].split("}")[0]
     assert "align-items: center" in css and "justify-content: center" in css
 
 
-def test_the_second_text_box_is_folded_away():
-    """Two text boxes and two buttons stacked in one panel is a form. Building
-    from a video is real and rare, so it is one line until wanted."""
+def test_the_second_text_box_is_a_mode_not_a_second_form():
+    """Two text boxes and two buttons stacked in one panel is a form.
+    Building from a source is a REQUEST TYPE now: the source panel is hidden
+    until the SOURCE mode is chosen, and the composer steps aside for it."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert '<details class="srcfold">' in ui
-    fold = ui.split('<details class="srcfold">')[1].split("</details>")[0]
+    assert 'id="srcpanel" hidden' in ui
+    fold = ui.split('id="srcpanel"')[1].split("</div>\n        <!--")[0]
     assert 'id="srcinput"' in fold and 'id="analyze"' in fold
-    assert "<summary>" in fold
+    script = ui.split("<script>")[1]
+    assert "$('srcpanel').hidden = mode !== 'source';" in script
+    assert ".composer').hidden = mode === 'source';" in script
 
 
 def test_the_explaining_shrank_to_one_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     hint = ui.split('class="hint composerhint">')[1].split("</div>")[0]
-    assert len(hint) < 130, "the composer hint is a line, not a paragraph"
-    assert "Enter sends" in hint and "until you confirm" in hint
+    assert len(hint) < 140, "the composer hint is a line, not a paragraph"
+    assert "Enter generates a plan" in hint
+    assert "review, confirm, and send" in hint
 
 
 # --- saying what it is doing ----------------------------------------------
@@ -401,12 +407,16 @@ def test_building_says_so_where_the_reader_is_looking():
     assert "takes a few minutes" in wait
 
 
-def test_a_finished_plan_announces_itself_and_scrolls_into_view():
+def test_a_finished_plan_announces_itself_and_takes_the_stage():
+    """The plan used to render below the fold; now the stage machine brings
+    the PLAN stage forward the moment showPlan runs, so "done" and "nothing
+    happened" can never look identical."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "Proposed ${n} change" in fn
-    assert "Nothing has been " in fn and "press TRANSMIT" in fn
-    assert "$('planbox').scrollIntoView" in fn
+    assert "Nothing has been " in fn and "review, confirm, and send" in fn
+    shown = ui.split("function showPlan(plan)")[1].split("\nfunction ")[0]
+    assert "setStage('plan')" in shown
 
 
 def test_a_plan_with_no_actions_still_says_something():
@@ -1008,7 +1018,8 @@ def test_the_button_counts_where_the_finger_was():
     who has just pressed TRANSMIT is looking at TRANSMIT."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "SENDING ${n}/${total}" in fn
+    assert "TRANSMITTING · ${n} / ${total}" in fn, \
+        "the SEND stage header counts the transmit"
     assert "Sending ${d.done} of ${d.total}" in fn
 
 
@@ -1034,9 +1045,9 @@ def test_the_outcome_says_what_landed_and_what_did_not():
 
 def test_the_button_gets_its_own_label_back():
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert 'id="apply">TRANSMIT TO FM9<' in ui
+    assert 'id="apply" hidden>SEND TO FM9<' in ui
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "'TRANSMIT TO FM9'" in fn, "restoring a shorter label renames the button"
+    assert "'SEND TO FM9'" in fn, "restoring a shorter label renames the button"
 
 
 # --- naming the scenes too ------------------------------------------------
@@ -1138,11 +1149,15 @@ def test_the_scene_names_survive_a_reload():
 # button". An eight-scene Metallica build is 114 cards, and TRANSMIT was
 # underneath all of them.
 
-def test_the_buttons_come_before_the_changes():
+def test_the_actions_stay_visible_while_the_changes_scroll():
+    """The old fix put TRANSMIT above 140 cards; the stage layout goes
+    further: the Review footer is pinned outside the internally scrolling
+    change table, so Continue, Back and Discard never leave the screen."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    panel = ui.split('id="planbox"')[1].split("</div>\n\n")[0]
-    assert panel.index('class="plan-actions"') < panel.index('id="plandetail"')
-    assert panel.index('id="apply"') < panel.index('id="plancards"')
+    review = ui.split('id="pane-review"')[1].split("</section>")[0]
+    assert review.index('id="plancards"') < review.index('class="stagefoot"')
+    css = ui.split("#plancards.changetable {")[1].split("}")[0]
+    assert "overflow-y: auto" in css
 
 
 def test_the_changes_are_collapsed_and_say_how_many():
@@ -1316,7 +1331,7 @@ def test_a_finished_build_says_so_where_you_land():
     fn = ui.split("function showPlan(plan)")[1].split("\n}\n")[0]
     assert "'ready'" in fn
     assert "Plan ready" in fn
-    assert "TRANSMIT TO FM9" in fn
+    assert "REVIEW" in fn
     # No false comfort on store plans: UNDO never covers a store.
     assert "a.kind === 'store'" in fn
     assert "UNDO does not cover it" in fn

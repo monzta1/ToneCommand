@@ -25,6 +25,8 @@ offering a backend that silently falls through to another one:
     api     ANTHROPIC_API_KEY, CLAUDE_API_MODEL.
     grok    GROK_CLI_MODEL.
     openai  PLANNER_BASE_URL, PLANNER_MODEL, PLANNER_API_KEY (key optional).
+            Stored per SERVICE (per base URL), because ChatGPT and Gemini
+            are different accounts: see AiSettings.slot_for.
 
 API keys never travel outward: `public()` reports whether one exists and
 never what it is.
@@ -56,30 +58,69 @@ LOCAL_LLM_DEFAULT_URL = "http://127.0.0.1:1234/v1"      # LM Studio
 #: day the provider retires it.
 ENDPOINT_PRESETS = [
     {
-        "name": "ChatGPT",
-        "url": "https://api.openai.com/v1",
-        "key": "required",
-        "help": "Needs a paid ChatGPT developer key, from OpenAI (the company "
-                "behind ChatGPT) at platform.openai.com. That is a separate "
-                "account from ChatGPT Plus, and it bills per request on top "
-                "of any subscription you already pay for.",
-    },
-    {
-        "name": "A subscription you already pay for",
+        "name": "ChatGPT subscription",
         "url": CLIPROXY_DEFAULT_URL,
         "key": "no",
-        "help": "Use the ChatGPT subscription you already have, at no extra "
-                "cost per request. It needs a small free helper program "
-                "installed once, which takes about five minutes: click SHOW "
-                "ME HOW and it walks you through it a step at a time. The "
-                "same setup also covers Gemini, Grok and Kimi.",
+        "help": "The ChatGPT Plus or Pro subscription you already pay for, "
+                "at no extra cost per request and with no API key. It needs "
+                "a small free connector installed once, about five minutes: "
+                "click SHOW ME HOW and it walks you through it a step at a "
+                "time. The same setup also covers Gemini, Grok and Kimi "
+                "subscriptions on their own logins.",
     },
     {
-        "name": "A model on this laptop",
+        "name": "ChatGPT API",
+        "url": "https://api.openai.com/v1",
+        "key": "required",
+        "help": "OpenAI's pay-per-request developer API. Needs a developer "
+                "key from platform.openai.com, which is a separate account "
+                "from ChatGPT Plus and bills per request on top of any "
+                "subscription you already pay for. If you have ChatGPT Plus, "
+                "the ChatGPT subscription chip reaches the same models at no "
+                "extra cost: you probably want that one.",
+    },
+    {
+        "name": "Gemini",
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "key": "required",
+        "help": "Google's Gemini, over its ChatGPT-compatible address. Needs "
+                "a Gemini API key from Google AI Studio (aistudio.google.com), "
+                "which takes about a minute, and its free tier covers tone "
+                "planning. The model list fills in once a key is saved.",
+    },
+    {
+        "name": "Grok",
+        "url": "https://api.x.ai/v1",
+        "key": "required",
+        "help": "xAI's Grok, billed per request. Needs an xAI API key from "
+                "console.x.ai. If you already pay for Grok itself, the Grok "
+                "CLI backend in the dropdown above runs on that subscription "
+                "instead of a key.",
+    },
+    {
+        "name": "DeepSeek",
+        "url": "https://api.deepseek.com/v1",
+        "key": "required",
+        "help": "DeepSeek's own API, billed per request and notably cheap. "
+                "Needs a key from platform.deepseek.com.",
+    },
+    {
+        "name": "Kimi",
+        "url": "https://api.moonshot.ai/v1",
+        "key": "required",
+        "help": "Moonshot's Kimi, billed per request. Needs a key from "
+                "platform.moonshot.ai. If you already pay for Kimi itself, "
+                "the ChatGPT subscription chip's connector covers it at no "
+                "extra cost.",
+    },
+    {
+        "name": "Local model",
         "url": LOCAL_LLM_DEFAULT_URL,
         "key": "no",
-        "help": "LM Studio's default address. Free and offline, but small "
-                "local models get the plan format wrong more often.",
+        "help": "A model running on this computer, through LM Studio or "
+                "Ollama; whichever is running is found automatically. Free "
+                "and offline, but local models get the plan format wrong "
+                "more often.",
     },
     {
         "name": "OpenRouter",
@@ -168,7 +209,7 @@ BACKEND_LABELS = {
     "cli": "Claude Code CLI",
     "api": "Claude API",
     "grok": "Grok CLI",
-    "openai": "ChatGPT, or another service you choose",
+    "openai": "ChatGPT, Gemini, or another service you choose",
 }
 
 #: The same names with the explanation trimmed off, for places with no room to
@@ -245,13 +286,38 @@ class AiSettings:
     #: panel, so a PLANNER_BACKEND pin in .env could not be cleared from here.
     backend_explicit: bool = False
 
-    def model_for(self, backend: str | None = None) -> str:
+    def slot_for(self, backend: str | None = None) -> str:
+        """Where this backend's model and key are stored.
+
+        The openai family stores PER SERVICE, keyed by the base URL:
+        ChatGPT, Gemini and a router are different accounts with different
+        keys, and the single shared slot meant clicking the Gemini chip
+        inherited ChatGPT's model (a lie one save away from a 404) and
+        saving a Gemini key silently ate the ChatGPT one. Reported live by
+        the owner within minutes of the Gemini chip shipping, both halves.
+        """
         want = self.backend if backend is None else backend
-        return self.models.get(want or "openai", "")
+        slot = want or "openai"
+        if slot == "openai" and self.base_url:
+            return "openai@" + self.base_url.rstrip("/")
+        return slot
+
+    def model_for(self, backend: str | None = None) -> str:
+        slot = self.slot_for(backend)
+        got = self.models.get(slot, "")
+        if not got and slot.startswith("openai@"):
+            # Legacy slot: what .env provides, and what pre-per-service
+            # files stored. It applies to whichever endpoint is in use,
+            # which is exactly what setting PLANNER_MODEL by hand means.
+            got = self.models.get("openai", "")
+        return got
 
     def key_for(self, backend: str | None = None) -> str:
-        want = self.backend if backend is None else backend
-        return self.keys.get(want or "openai", "")
+        slot = self.slot_for(backend)
+        got = self.keys.get(slot, "")
+        if not got and slot.startswith("openai@"):
+            got = self.keys.get("openai", "")
+        return got
 
     def public(self) -> dict:
         """What the browser may see. Keys never leave this process."""
@@ -304,6 +370,15 @@ def _from_file() -> AiSettings:
         if isinstance(blob, dict):
             setattr(settings, attr, {k: v for k, v in blob.items()
                                      if isinstance(v, str) and v})
+    # Migrate a pre-per-service file in memory: its bare "openai" model and
+    # key belonged to the base URL stored beside them, so move them under
+    # that URL's slot. The next save persists the new shape; until then the
+    # legacy fallback in model_for/key_for covers reads either way.
+    if settings.base_url:
+        slot = "openai@" + settings.base_url.rstrip("/")
+        for blob in (settings.models, settings.keys):
+            if "openai" in blob and slot not in blob:
+                blob[slot] = blob.pop("openai")
     return settings
 
 
@@ -363,7 +438,14 @@ def save(patch: dict) -> AiSettings:
         raise ValueError(f"unknown backend {backend!r}; "
                          f"expected one of {', '.join(planner.BACKENDS)}")
     fields = BACKEND_FIELDS.get(backend, {})
-    slot = backend or "openai"          # auto shares openai's variables
+    base_url = (str(patch.get("baseUrl", stored.base_url) or "")
+                if fields.get("baseUrl") else stored.base_url)
+    # Auto shares openai's variables, and the openai family slots per
+    # SERVICE: the model and key being saved belong to the address being
+    # saved, not to every address the panel will ever hold.
+    slot = backend or "openai"
+    if slot == "openai" and base_url:
+        slot = "openai@" + base_url.rstrip("/")
     models, keys = dict(stored.models), dict(stored.keys)
 
     if fields.get("model"):
@@ -378,8 +460,20 @@ def save(patch: dict) -> AiSettings:
         elif str(patch.get("apiKey") or ""):
             keys[slot] = str(patch["apiKey"])
 
-    base_url = (str(patch.get("baseUrl", stored.base_url) or "")
-                if fields.get("baseUrl") else stored.base_url)
+    # A hosted, keyed service with no model saved is a booked 404: the
+    # planner would send the "local" default to an endpoint that has no such
+    # model. The panel promises "save a key and the model fills itself in",
+    # so honour it at the only moment there is a key to ask with. Known
+    # preset addresses only, so a save against a test or router URL never
+    # waits on a network that is not there.
+    if (slot.startswith("openai@") and not models.get(slot)
+            and keys.get(slot)
+            and any(p["url"].rstrip("/") == base_url.rstrip("/")
+                    and p["key"] == "required" for p in ENDPOINT_PRESETS)):
+        found, _why = _endpoint_models(base_url, key=keys[slot])
+        if found:
+            models[slot] = found[0]
+
     updated = AiSettings(backend=backend, base_url=base_url,
                          models=models, keys=keys, backend_explicit=explicit)
     _check_runnable(backend, updated)
@@ -403,6 +497,13 @@ def missing_setup(backend: str, settings: AiSettings | None = None) -> str:
         return "an Anthropic API key, in the key box"
     if backend == "openai" and not settings.base_url:
         return "an address"
+    if backend == "openai" and settings.base_url:
+        base = settings.base_url.rstrip("/")
+        preset = next((p for p in ENDPOINT_PRESETS
+                       if p["url"].rstrip("/") == base), None)
+        if (preset and preset["key"] == "required"
+                and not settings.key_for("openai")):
+            return f"an API key for {preset['name']}, in the key box"
     return ""
 
 
@@ -418,6 +519,21 @@ def _check_runnable(backend: str, updated: AiSettings) -> None:
     if not backend:
         return
     env = _from_env()
+    # _from_env() can see the key that apply_to_env() injected for the
+    # PREVIOUS service. That is not an underlying user setting and must not
+    # make a newly selected named service look configured. A genuine shell
+    # or .env key still counts when this process has not overlaid it.
+    if backend == "openai" and updated.base_url:
+        base = updated.base_url.rstrip("/")
+        preset = next((p for p in ENDPOINT_PRESETS
+                       if p["url"].rstrip("/") == base), None)
+        has_key = bool(updated.key_for("openai"))
+        if not has_key and "PLANNER_API_KEY" not in _APPLIED:
+            has_key = bool(env.key_for("openai"))
+        if preset and preset["key"] == "required" and not has_key:
+            raise ValueError(
+                f"{BACKEND_LABELS[backend]} needs an API key for "
+                f"{preset['name']}, in the key box")
     merged = AiSettings(
         backend=backend, base_url=updated.base_url or env.base_url,
         models=updated.models,
@@ -566,7 +682,15 @@ def _grok_models() -> tuple[list[str], str]:
 #: answer, and the first entry alphabetically is usually one of them.
 NOT_A_PLANNER = ("embedding", "whisper", "tts", "dall-e", "moderation",
                  "audio", "image", "realtime", "transcribe", "search",
-                 "sora", "clip", "rerank", "guard", "codex-mini")
+                 "sora", "clip", "rerank", "guard", "codex-mini",
+                 # Google's listing is a whole product line, not a model
+                 # menu: video (veo), music (lyria), images (nano-banana),
+                 # robotics, live translation, browser driving, retrieval
+                 # (aqa) and whatever antigravity is were all offered as
+                 # tone planners, and veo sorted FIRST. Found by the owner
+                 # on a fresh Gemini key, 2026-09-02.
+                 "veo", "lyria", "banana", "robotics", "computer-use",
+                 "aqa", "live", "translate", "antigravity")
 
 #: Older completion-only families. They answer, so nothing filters them out
 #: by shape, and they cannot follow the plan schema. Named rather than
@@ -600,9 +724,16 @@ def usable_models(ids: list[str]) -> list[str]:
     # alphabetical is not cleverness about which model is better, a thing this
     # cannot know; it is a rule that puts 5.6 above 5.4 and, more importantly,
     # gives the same answer every time. The full list is on screen either way.
-    dated = [m for m in keep if _DATED.search(m)]
-    plain = [m for m in keep if not _DATED.search(m)]
-    return sorted(plain, reverse=True) + sorted(dated, reverse=True)
+    # "-latest" before other undated names, for the same reason undated
+    # beats dated: it is the alias the provider maintains on purpose, the
+    # one that keeps working as snapshots retire. Without this, Google's
+    # gemma sorted above every gemini and became the auto-fill.
+    latest = [m for m in keep if m.lower().endswith("-latest")]
+    rest = [m for m in keep if not m.lower().endswith("-latest")]
+    dated = [m for m in rest if _DATED.search(m)]
+    plain = [m for m in rest if not _DATED.search(m)]
+    return (sorted(latest, reverse=True) + sorted(plain, reverse=True)
+            + sorted(dated, reverse=True))
 
 
 def endpoint_reachable(base_url: str) -> str:
@@ -622,7 +753,7 @@ def endpoint_reachable(base_url: str) -> str:
     if not base_url:
         return ""
     req = urllib.request.Request(f"{base_url.rstrip('/')}/models", method="GET")
-    key = load().key_for("openai")
+    key = key_for_url(base_url)
     if key:
         req.add_header("authorization", f"Bearer {key}")
     try:
@@ -639,13 +770,26 @@ def endpoint_reachable(base_url: str) -> str:
                 f"send a prompt.")
 
 
-def _endpoint_models(base_url: str = "") -> tuple[list[str], str]:
+def key_for_url(base_url: str) -> str:
+    """The stored key for THIS service, with the legacy slot as fallback.
+
+    Keys are stored per base URL (see AiSettings.slot_for), so probing the
+    Gemini address must never send the ChatGPT key to Google.
+    """
+    s = load()
+    return (s.keys.get("openai@" + base_url.rstrip("/"))
+            or s.keys.get("openai") or "")
+
+
+def _endpoint_models(base_url: str = "", key: str | None = None
+                     ) -> tuple[list[str], str]:
     """Ask the endpoint. /models is part of the shape every one of these speaks.
 
     `base_url` overrides the saved setting so the panel can list models for a
     service the moment it is picked, rather than only after a save. Picking
     ChatGPT and being shown an empty model box is the same dead end the
-    address box used to be.
+    address box used to be. `key` lets save() ask with a key that is not yet
+    persisted.
     """
     import json as _json
     import urllib.error
@@ -654,7 +798,7 @@ def _endpoint_models(base_url: str = "") -> tuple[list[str], str]:
     if not base:
         return [], "set a base URL first"
     req = urllib.request.Request(f"{base.rstrip('/')}/models", method="GET")
-    key = load().key_for("openai")
+    key = key if key is not None else key_for_url(base)
     if key:
         req.add_header("authorization", f"Bearer {key}")
     try:
@@ -728,11 +872,110 @@ def available_backends() -> list[dict]:
             "modelOptional": MODEL_ALWAYS_OPTIONAL,
             # Stored value in the box, environment value as a placeholder:
             # prefilling from the merged view and then saving the box pins
-            # what .env provided.
-            "model": stored.models.get(name or "openai", ""),
-            "modelFallback": env.models.get(name or "openai", ""),
-            "hasKey": bool(settings.keys.get(name or "openai")),
+            # what .env provided. Resolved through model_for/key_for so the
+            # openai family answers for the SERVICE its base URL names.
+            "model": stored.model_for(name),
+            "modelFallback": env.model_for(name),
+            "hasKey": bool(settings.key_for(name)),
         })
+    return out
+
+
+def planning_line() -> dict:
+    """Who will answer the next prompt, named before it is asked.
+
+    The backend and model used to introduce themselves only on the finished
+    plan ("planned by ..."), minutes after the question was typed. The
+    answer is knowable up front: the first candidate the planner will try,
+    resolved the same way the planner resolves it, with the service named
+    the way the settings panel names it. `problem` is set when that
+    candidate cannot actually run, so the page can say so beside the box
+    instead of after a failed prompt.
+    """
+    s = load()
+    try:
+        cands = planner.candidates()
+    except RuntimeError as exc:              # a pin naming a bad backend
+        return {"backend": "", "service": "", "model": "",
+                "problem": str(exc)}
+    if not cands:
+        return {"backend": "", "service": "", "model": "",
+                "problem": "no AI backend is configured yet: open the AI "
+                           "settings (the gear) and pick one"}
+    first = cands[0]
+    if first == "openai":
+        base = s.base_url or planner._env("PLANNER_BASE_URL")
+        names = {p["url"].rstrip("/"): p["name"] for p in ENDPOINT_PRESETS}
+        # The Local model card's address is detected at pick time, so both
+        # local servers answer to the card's name here.
+        names[OLLAMA_URL.rstrip("/")] = "Local model"
+        svc = names.get(base.rstrip("/"), "")
+        service = svc or base or "an OpenAI-compatible endpoint"
+        model = s.model_for("openai") or planner._env("PLANNER_MODEL") or "local"
+    elif first == "cli":
+        service = "Claude CLI"
+        model = (s.model_for("cli") or planner._env("CLAUDE_CLI_MODEL")
+                 or planner.CLI_MODEL)
+    elif first == "grok":
+        service = "Grok CLI"
+        model = (s.model_for("grok") or planner._env("GROK_CLI_MODEL")
+                 or "its own default")
+    else:
+        service = "Claude API"
+        model = (s.model_for("api") or planner._env("CLAUDE_API_MODEL")
+                 or planner.MODEL)
+    problem = missing_setup(first, s)
+    return {"backend": first, "service": service, "model": model,
+            "problem": f"{service} still needs {problem}" if problem else ""}
+
+
+OLLAMA_URL = "http://127.0.0.1:11434/v1"
+
+#: Local servers to look for, in the order the Local model card prefers
+#: them. Loopback connects fail in about a millisecond when nothing is
+#: listening, so probing both costs nothing when neither is up.
+LOCAL_LLM_CANDIDATES = (LOCAL_LLM_DEFAULT_URL, OLLAMA_URL)
+
+
+def local_llm_url() -> str:
+    """The local server actually running, or the LM Studio default.
+
+    The Local model card used to hardcode LM Studio's port, so an Ollama
+    owner got a dead address and a trip through ADVANCED to type the right
+    one, which is the exact trip this panel exists to remove.
+    """
+    import urllib.error
+    import urllib.request
+    for base in LOCAL_LLM_CANDIDATES:
+        req = urllib.request.Request(base.rstrip("/") + "/models",
+                                     method="GET")
+        try:
+            urllib.request.urlopen(req, timeout=0.5)
+            return base
+        except urllib.error.HTTPError:
+            return base                       # answered; auth quirks are fine
+        except (urllib.error.URLError, TimeoutError, OSError):
+            continue
+    return LOCAL_LLM_DEFAULT_URL
+
+
+def endpoint_presets_state() -> list[dict]:
+    """The named services, each carrying ITS OWN stored model and whether a
+    key is stored for it. Keys never travel: `hasKey` is a bool.
+
+    This is what lets the panel swap the model box and the key placeholder
+    when a chip is clicked, instead of showing one service's model under
+    another service's name.
+    """
+    s = load()
+    local = local_llm_url()
+    out = []
+    for p in ENDPOINT_PRESETS:
+        if p["name"] == "Local model" and p["url"] != local:
+            p = {**p, "url": local}
+        slot = "openai@" + p["url"].rstrip("/")
+        out.append({**p, "model": s.models.get(slot, ""),
+                    "hasKey": bool(s.keys.get(slot))})
     return out
 
 

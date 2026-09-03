@@ -200,9 +200,10 @@ def test_the_command_panel_is_set_apart():
     """Every other panel reports on the rig or acts on one block. This is the
     one that does the thing the tool exists for, and it was styled identically
     to the log."""
-    assert '<div class="console command" data-label="COMMAND">' in BODY
+    # The command surface is the Request stage pane now: its own stage,
+    # not a panel competing with the log for styling.
+    assert '<section class="stagepane" id="pane-request">' in BODY
     style = UI.split("<style>")[1]
-    assert re.search(r"^\s*\.console\.command \{", style, re.M)
     assert re.search(r"^\s*#engage \{", style, re.M)
 
 
@@ -236,10 +237,15 @@ def test_the_enlarged_view_is_a_clone_not_a_second_renderer():
     assert "renderGrid" not in fn
 
 
-def test_any_click_on_the_panel_opens_the_readable_copy():
-    """The small drawing is an overview. At 74px cells and 6.5px labels it is
-    for seeing the shape of the rig, not for aiming at."""
-    assert "$('blocks').addEventListener('click', () => openGrid());" in SCRIPT
+def test_a_block_click_selects_and_the_space_around_it_expands():
+    """The small drawing is an overview, but a block on it now SELECTS: the
+    Inspector opens on what was clicked, which is how manual control attaches
+    to the signal chain. The space around the chain still opens the enlarged
+    review, where bypass and channel have readable targets."""
+    fn = SCRIPT.split("$('blocks').addEventListener('click', e => {")[1] \
+               .split("\n});")[0]
+    assert "selectBlock(cell.dataset.fam)" in fn
+    assert "openGrid();" in fn
 
 
 def test_bypass_and_channel_move_into_the_enlarged_view():

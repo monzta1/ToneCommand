@@ -148,7 +148,8 @@ def test_narrowing_reports_what_it_took_back(monkeypatch, tmp_path):
 def test_the_settings_panel_shows_the_boundary_and_its_source():
     from pathlib import Path
     ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
-    assert 'data-label="SAVE SLOTS"' in ui
+    assert 'data-label="SAFETY &middot; ALLOWED STORE SLOTS"' in ui, \
+        "the store whitelist lives under Settings > Safety" 
     assert 'id="slotspec"' in ui and 'id="slotsrc"' in ui
     script = ui.split("<script>")[1]
     assert "not set in the app" in script and "pinned by the" in script

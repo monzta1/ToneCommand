@@ -5,8 +5,8 @@ planner runs on whichever AI you already have, and every plan reports which
 backend and model answered it.
 
 The quickest route is the gear icon in the app: pick a service by name
-(ChatGPT, Gemini, Grok, DeepSeek, Kimi, a subscription you already pay for, a
-model on this laptop, OpenRouter), and the address fills itself in, the model
+(ChatGPT API, ChatGPT subscription, Gemini, Grok, DeepSeek, Kimi, a local
+model, OpenRouter), and the address fills itself in, the model
 box lists what your key can actually reach, and the panel says whether a key
 is needed at all. Everything below is the same configuration by hand, plus
 what each route honestly is.
@@ -42,7 +42,7 @@ the store whitelist uses:
 ## Using ChatGPT
 
 Open the gear, choose **ChatGPT, Gemini, or another service you choose**, and
-click the **ChatGPT** chip. That fills in the address. Paste a key from
+click the **ChatGPT API** chip. That fills in the address. Paste a key from
 platform.openai.com and save, and the model box fills itself in with one your
 key can actually reach, picked from the service's own list. Change it from the
 dropdown if you want a different one.
@@ -75,7 +75,7 @@ do. Verified against grok 1.0.5.
 
 ## Using the ChatGPT subscription you already pay for
 
-Choose **A subscription you already pay for** and click **SHOW ME HOW**. Each
+Choose **ChatGPT subscription** and click **SHOW ME HOW**. Each
 step has a **DO IT FOR ME** button; the only one you have to do yourself is
 signing in to your own ChatGPT account, which opens in your browser. The
 terminal command for every step is still there under *or run it yourself*, for

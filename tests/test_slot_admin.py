@@ -167,9 +167,11 @@ def test_the_preset_browser_cache_is_dropped(client):
 def test_erasing_sits_with_saving_not_somewhere_quieter():
     """Both write to flash. Hiding the more destructive one elsewhere would
     make it feel like less than it is."""
-    panel = BODY.split('data-label="SAVE TO PRESET"')[1].split(
-        '<div class="console"')[0]
-    assert 'id="clearslot"' in panel
+    panel = BODY.split('id="drawer-storage"')[1].split(
+        '<div class="drawpane')[0]
+    assert 'id="clearslot"' in panel, "erase lives in the Storage drawer"
+    assert '<details class="dangerzone">' in panel, \
+        "but one deliberate disclosure deeper than storing"
     assert re.search(r"^\s*#clearslot \{", UI.split("<style>")[1], re.M)
 
 
