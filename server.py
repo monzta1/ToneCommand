@@ -2046,6 +2046,7 @@ def api_install(body: dict):
     except (TypeError, ValueError):
         return JSONResponse({"error": "slot must be a number"},
                             status_code=400)
+    name = str(body.get("name") or "").strip()
     with _lock:
         if _gig_mode["on"]:
             return JSONResponse(
@@ -2053,7 +2054,7 @@ def api_install(body: dict):
                 status_code=423)
         try:
             fm9 = get_fm9()
-            pf = fm9.install_preset(raw, slot)
+            pf = fm9.install_preset(raw, slot, name or None)
             got = fm9.slot_name(slot)
         except PermissionError as e:
             return JSONResponse({"error": str(e)}, status_code=403)

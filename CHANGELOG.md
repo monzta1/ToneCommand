@@ -5,6 +5,15 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **Installing a file is a review-and-send flow you name (#42).**
+  Dropping a preset or bundle now shows a card with an editable NAME
+  field (the name the slot will carry, footer refolded so a real device
+  accepts it), a destination picker, and a REVIEW & SEND button; sending
+  shows a live "transmitting, reading back" line and a loud DONE/ FAILED
+  announcement, and on success every slot dropdown reloads with the new
+  name at once. The old two-button layout (a generic STORE that quietly
+  acted on the edit buffer, beside the file's own install) was the trap
+  that made a bundle look stored when it was not (owner, 2026-09-03).
 - **Purchased .fasBundle packs install, cabs included, where the vendor
   says (#42).** An FM9-Edit .fasBundle is a zip holding a Bundle-Map
   that pins every cab to the user-cab bank and number the preset

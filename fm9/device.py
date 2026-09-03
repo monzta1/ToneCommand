@@ -574,15 +574,17 @@ class FM9:
         time.sleep(1.5)
         return self.current_preset()
 
-    def install_preset(self, raw: bytes, slot: int):
+    def install_preset(self, raw: bytes, slot: int, name: str | None = None):
         """Send a validated preset file to a whitelisted slot.
 
         The recipe is the official editor's own store path (Ghidra-decoded
-        upstream): the file's frames verbatim, header retargeted to `slot`,
-        footer untouched. The host-to-device direction is
-        hardware-UNVERIFIED territory, so the caller must verify by reading
-        the slot's name back; this method only transmits. Same whitelist,
-        same refusals, as store_preset: this writes flash.
+        upstream): the file's frames verbatim, header retargeted to `slot`.
+        When `name` is given, the embedded preset name is replaced first
+        and the footer refolded, so the slot ends up carrying the owner's
+        chosen name. The host-to-device direction is hardware-UNVERIFIED
+        territory, so the caller must verify by reading the slot's name
+        back; this method only transmits. Same whitelist, same refusals,
+        as store_preset: this writes flash.
         """
         from fm9 import presetfile
         allowed = get_store_slots()
@@ -596,6 +598,8 @@ class FM9:
                 f"install to slot {p.slot_label(slot)} refused: configured "
                 f"store slots are {p.slot_set_label(allowed)}")
         pf = presetfile.parse(raw)          # re-validated at this boundary
+        if name and name.strip():
+            pf = presetfile.set_name(pf, name.strip())
         frames = presetfile.retarget(pf, slot)
         self._drain()
         for frame in frames:

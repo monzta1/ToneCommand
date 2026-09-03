@@ -169,3 +169,38 @@ def test_the_page_carries_the_install_flow():
     # The confirm names the destination and says flash, like every
     # irreversible act on this surface.
     assert "This writes flash. UNDO does not cover it." in UI
+
+
+def test_set_name_rewrites_the_name_and_refolds_the_footer():
+    pf = presetfile.parse(make_file(name="Original"))
+    renamed = presetfile.set_name(pf, "My Custom Name")
+    out = bytes(b for f in renamed.frames for b in f)
+    again = presetfile.parse(out)
+    assert again.name == "My Custom Name"
+    # the footer must be a valid fold of the new body, or a real device
+    # rejects the dump on receive
+    fold = 0
+    for w in presetfile._body_words(again):
+        fold ^= w
+    foot = again.frames[-1]
+    stored = (foot[6] & 0x7F) | ((foot[7] & 0x7F) << 7) | ((foot[8] & 0x03) << 14)
+    assert fold == stored
+
+
+def test_install_with_a_name_lands_under_that_name(client):
+    d = client.post("/api/install/parse",
+                    json={"data": _b64(make_file(name="Ships As"))}).json()
+    out = client.post("/api/install", json={
+        "hash": d["hash"], "slot": 140, "name": "I Renamed It"}).json()
+    assert out["ok"] is True
+    assert out["read_back"] == "I Renamed It"
+
+
+def test_the_install_card_has_a_name_field_and_review_send():
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    assert 'class="instname"' in ui
+    assert "REVIEW &amp; SEND" in ui
+    # success reloads every slot dropdown, as the owner asked
+    fn = ui.split("function renderInstallFound")[1].split("\nasync function talk")[0]
+    assert "loadPresets(false)" in fn and "loadSaveSlots(false)" in fn
+    assert "$('installslot').innerHTML = $('saveslot').innerHTML" in fn

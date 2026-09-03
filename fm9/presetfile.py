@@ -150,6 +150,61 @@ def parse(raw: bytes, model: int = p.MODEL_FM9) -> PresetFile:
                       name="".join(name_chars).rstrip())
 
 
+def _set_word(payload: list[int], index: int, value: int) -> None:
+    off = CHUNK_BODY_OFFSET + index * 3
+    payload[off] = value & 0x7F
+    payload[off + 1] = (value >> 7) & 0x7F
+    payload[off + 2] = (value >> 14) & 0x03
+
+
+def _body_words(pf: PresetFile) -> list[int]:
+    """Every de-framed 16-bit word across the chunk bodies, in order.
+
+    The footer is a XOR-fold of exactly these (upstream: a separate layer
+    from the inner raw-patch CRC), so recomputing it after a name edit
+    means folding this list.
+    """
+    words = []
+    for f in pf.frames[1:-1]:
+        payload = f[6:-2]
+        n = (len(payload) - CHUNK_BODY_OFFSET) // 3
+        for i in range(n):
+            words.append(_word(payload, i))
+    return words
+
+
+def set_name(pf: PresetFile, name: str) -> PresetFile:
+    """Return a copy with the embedded preset name replaced.
+
+    The name lives in plaintext at chunk-0 words 4..19 (two chars per word,
+    NUL-terminated); the footer is refolded over the whole body afterward,
+    because a real device checks the 0x79 XOR on receive and rejects a
+    mismatch. The name region is patched, the footer recomputed, both
+    frames re-checksummed. Verified by parse round-trip; the footer's
+    acceptance on hardware is unproven like the rest of the write path.
+    """
+    clean = "".join(c for c in name if 32 <= ord(c) < 127)[:32]
+    frames = [list(f) for f in pf.frames]
+    chunk0 = frames[1][6:-2]
+    for i in range(NAME_MAX_WORDS):
+        lo = ord(clean[2 * i]) if 2 * i < len(clean) else 0
+        hi = ord(clean[2 * i + 1]) if 2 * i + 1 < len(clean) else 0
+        _set_word(chunk0, NAME_FIRST_WORD + i, lo | (hi << 8))
+    frames[1] = [*frames[1][:6], *chunk0, 0, 0xF7]
+    frames[1][-2] = p.checksum(frames[1][1:-2])
+    patched = PresetFile(frames=frames, model=pf.model,
+                         source_slot=pf.source_slot, name=clean.rstrip())
+    fold = 0
+    for w in _body_words(patched):
+        fold ^= w
+    foot = frames[-1]
+    foot[6] = fold & 0x7F
+    foot[7] = (fold >> 7) & 0x7F
+    foot[8] = (fold >> 14) & 0x03
+    foot[-2] = p.checksum(foot[1:-2])
+    return patched
+
+
 def retarget(pf: PresetFile, slot: int) -> list[list[int]]:
     """The file's frames, aimed at `slot`: the official editor's own store
     recipe, header index patched, checksum recomputed, footer untouched."""

@@ -1725,6 +1725,20 @@
   #installfound .cabtag { color: var(--violet); font-size: var(--fs-badge);
     letter-spacing: 0.1em; border: 1px solid var(--violet-dim);
     border-radius: 2px; padding: 1px 6px; }
+  #installfound .cabtag.pre { color: var(--cyan); border-color: var(--cyan-dim); }
+  .installcard { border: 1px solid var(--line); border-radius: 4px;
+    padding: 12px; margin: 10px 0; }
+  .installcard .instrow { display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px; }
+  .installcard .instname { flex: 1; font: inherit; font-size: var(--fs-body);
+    color: var(--text); background: transparent; border: 1px solid var(--line);
+    border-radius: 2px; padding: 5px 8px; }
+  .installcard .foundgo { white-space: nowrap; }
+  .instout { font-size: var(--fs-hint); margin-top: 4px; }
+  .instout.busy { color: var(--cyan); }
+  .instout.ok { color: var(--green); }
+  .instout.part { color: var(--amber); }
+  .instout.bad { color: var(--red); }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -2356,11 +2370,7 @@
           <input type="file" id="installfile" accept=".syx,.fasBundle">
         </div>
         <div class="hint" id="installwhat" hidden></div>
-        <div class="saverow" id="installgo" hidden>
-          <select id="installslot"></select>
-          <button id="installbtn">INSTALL</button>
-        </div>
-        <div class="hint" id="installout" hidden></div>
+        <select id="installslot" hidden></select>
         <div id="installfound" hidden></div>
       </div>
 
@@ -6096,11 +6106,18 @@ function renderInstallFound(presets, cabs) {
   const box = $('installfound');
   box.hidden = !presets.length && !cabs.length;
   box.innerHTML = presets.map(p => `
-    <div class="saverow" data-hash="${p.hash}">
-      <b class="foundname">${esc(p.name)}</b>
-      <select class="foundslot">${$('saveslot').innerHTML}</select>
-      <button class="small foundgo">INSTALL</button>
-      <span class="hint foundout"></span>
+    <div class="installcard" data-hash="${p.hash}">
+      <div class="instrow">
+        <span class="cabtag pre">PRESET</span>
+        <input class="instname" maxlength="32" value="${esc(p.name)}"
+               title="the name it will carry on the FM9; edit to rename">
+      </div>
+      <div class="instrow">
+        <span class="hint" style="margin:0">install to</span>
+        <select class="foundslot">${$('saveslot').innerHTML}</select>
+        <button class="foundgo">REVIEW &amp; SEND</button>
+      </div>
+      <div class="instout foundout" hidden></div>
     </div>`).join('')
   + cabs.map(c => {
       const bank = c.bank || 1;
@@ -6152,29 +6169,60 @@ function renderInstallFound(presets, cabs) {
     };
   }
   for (const row of box.querySelectorAll('[data-hash]')) {
-    row.querySelector('.foundgo').onclick = async () => {
+    const btn = row.querySelector('.foundgo');
+    btn.onclick = async () => {
       const slot = Number(row.querySelector('.foundslot').value);
       const sel = saveSlots.find(s => s.number === slot);
-      const name = row.querySelector('.foundname').textContent;
+      const name = row.querySelector('.instname').value.trim();
+      if (!name) { alert('give it a name first'); return; }
       if (!window.confirm(
           `Install "${name}" to slot ${sel ? sel.label : slot}, permanently `
           + `overwriting ${sel && sel.name ? '"' + sel.name + '"'
                                            : 'whatever is stored there'}?\n\n`
           + 'This writes flash. UNDO does not cover it.')) return;
-      const out = row.querySelector('.foundout');
-      out.textContent = 'installing...';
+      const out = row.querySelector('.instout');
+      out.hidden = false;
+      out.className = 'instout foundout busy';
+      out.innerHTML = '<span class="spin">◍</span> Transmitting to the FM9, '
+        + 'then reading the slot back to verify...';
+      btn.disabled = true;
+      workAnnounce(`INSTALLING "${name}" to slot ${sel ? sel.label : slot}...`,
+                   'busy');
       try {
         const r = await fetch('/api/install', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({hash: row.dataset.hash, slot})});
+          body: JSON.stringify({hash: row.dataset.hash, slot, name})});
         const d = await r.json();
         if (d.error) throw new Error(d.error);
-        out.textContent = d.detail;
+        out.className = 'instout foundout ' + (d.ok ? 'ok' : 'part');
+        out.textContent = d.ok
+          ? `DONE. "${d.installed}" is installed in slot ${d.label} and `
+            + `verified by read-back. Load it on the FM9 and play it; `
+            + `EARS: PENDING.`
+          : d.detail;
         log(`install: ${d.detail}`, d.ok ? 'ok' : 'err');
-        if (d.ok) { loadPresets(false); loadSaveSlots(false); }
+        workAnnounce(d.ok
+          ? `INSTALLED: "${d.installed}" is in slot ${d.label}, verified.`
+          : `INSTALL UNVERIFIED: check slot ${d.label} on the unit.`,
+          d.ok ? 'ok' : 'part');
+        if (d.ok) {
+          // Every dropdown that names a slot, refreshed so the new name
+          // shows everywhere at once, exactly as asked.
+          await loadPresets(false);
+          await loadSaveSlots(false);
+          if ($('installslot')) $('installslot').innerHTML = $('saveslot').innerHTML;
+          for (const s of box.querySelectorAll('.foundslot')) {
+            const keep = s.value; s.innerHTML = $('saveslot').innerHTML;
+            s.value = keep;
+          }
+        }
       } catch (e) {
-        out.textContent = `failed: ${e.message}`;
+        out.className = 'instout foundout bad';
+        out.textContent = `install failed: ${e.message}`;
         log(`install failed: ${e.message}`, 'err');
+        workAnnounce(`INSTALL FAILED: ${String(e.message).slice(0, 100)}`, 'bad');
+      } finally {
+        btn.disabled = false;
       }
     };
   }
@@ -7258,13 +7306,9 @@ $('prompt').addEventListener('keydown', e => {
 // device layer, verified by slot-name read-back. The write direction is
 // hardware-unverified protocol, and the result says so unless the
 // read-back proves it.
-let installPending = null;    // {hash, name}
-
 $('installfile').onchange = async () => {
   const f = $('installfile').files && $('installfile').files[0];
-  installPending = null;
-  $('installgo').hidden = true;
-  $('installout').hidden = true;
+  $('installfound').hidden = true;
   if (!f) { $('installwhat').hidden = true; return; }
   const buf = new Uint8Array(await f.arrayBuffer());
   let b64 = '';
@@ -7283,57 +7327,20 @@ $('installfile').onchange = async () => {
     if (d.bundle) {
       // A .fasBundle: the preset plus the cabs it depends on, each cab's
       // destination stated by the vendor's own Bundle-Map.
-      installPending = null;
       $('installwhat').innerHTML = `Valid FM9 bundle: <b>${esc(d.name)}</b>`
         + ` with ${d.cabs.length} cab${d.cabs.length === 1 ? '' : 's'}, `
         + `destinations set by the vendor. Install each below.`;
       renderInstallFound([d.preset], d.cabs);
       return;
     }
-    installPending = d;
+    // A single .syx: same review-and-send card as a bundle's preset, so
+    // the flow is one thing to learn, not two.
     $('installwhat').innerHTML = `Valid FM9 preset: <b>${esc(d.name)}</b> `
-      + `(${d.chunks} chunks, ${d.bytes} bytes, saved from slot `
-      + `${esc(d.source_label)}). Pick a destination below.`;
-    // The same whitelisted slots the STORE selector offers.
-    $('installslot').innerHTML = $('saveslot').innerHTML;
-    $('installgo').hidden = false;
+      + `(${d.chunks} chunks, saved from slot ${esc(d.source_label)}). `
+      + `Name it and pick a slot below.`;
+    renderInstallFound([{hash: d.hash, name: d.name}], []);
   } catch (e) {
     $('installwhat').textContent = `could not read the file: ${e.message}`;
-  }
-};
-
-$('installbtn').onclick = async () => {
-  if (!installPending) return;
-  const slot = Number($('installslot').value);
-  const sel = saveSlots.find(s => s.number === slot);
-  if (!window.confirm(
-      `Install "${installPending.name}" to slot `
-      + `${sel ? sel.label : slot}, permanently overwriting `
-      + `${sel && sel.name ? '"' + sel.name + '"' : 'whatever is stored there'}?\n\n`
-      + 'This writes flash. UNDO does not cover it.')) return;
-  $('installbtn').disabled = true;
-  $('installout').hidden = false;
-  $('installout').textContent = 'installing and reading the slot back...';
-  try {
-    const r = await fetch('/api/install', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({hash: installPending.hash, slot})});
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    $('installout').textContent = d.detail;
-    log(`install: ${d.detail}`, d.ok ? 'ok' : 'err');
-    if (d.ok) {
-      setDirty(false);        // flash changed, not the buffer
-      loadPresets(false);
-      loadSaveSlots(false);
-      workAnnounce(`INSTALLED: "${d.installed}" now lives in slot `
-                   + `${d.label}. Load it and play it; EARS: PENDING.`, 'ok');
-    }
-  } catch (e) {
-    $('installout').textContent = `install failed: ${e.message}`;
-    log(`install failed: ${e.message}`, 'err');
-  } finally {
-    $('installbtn').disabled = false;
   }
 };
 
