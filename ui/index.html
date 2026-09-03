@@ -1739,6 +1739,7 @@
   .instout.ok { color: var(--green); }
   .instout.part { color: var(--amber); }
   .instout.bad { color: var(--red); }
+  .instout .loadnow { margin-left: 6px; }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -6205,14 +6206,24 @@ function renderInstallFound(presets, cabs) {
         const d = await r.json();
         if (d.error) throw new Error(d.error);
         out.className = 'instout foundout ' + (d.ok ? 'ok' : 'part');
-        out.textContent = d.ok
-          ? `DONE. "${d.installed}" is installed in slot ${d.label} and `
-            + `verified by read-back. Load it on the FM9 and play it; `
-            + `EARS: PENDING.`
-          : d.detail;
+        if (d.ok) {
+          // An install writes FLASH, not the loaded edit buffer, so the
+          // preset does not start playing until it is selected. Saying so,
+          // with a button that does it, is the difference between "it
+          // worked" and "why does it still say the old name" (owner,
+          // 2026-09-03: installed to the loaded slot, saw both names).
+          out.innerHTML = `DONE. "${esc(d.installed)}" is in slot `
+            + `${esc(d.label)}, verified. It is in flash, not loaded yet: `
+            + `<button class="small loadnow">LOAD IT NOW</button> to hear it. `
+            + `EARS: PENDING.`;
+          out.querySelector('.loadnow').onclick = () => gotoPreset(d.slot);
+        } else {
+          out.textContent = d.detail;
+        }
         log(`install: ${d.detail}`, d.ok ? 'ok' : 'err');
         workAnnounce(d.ok
-          ? `INSTALLED: "${d.installed}" is in slot ${d.label}, verified.`
+          ? `INSTALLED: "${d.installed}" in slot ${d.label}, verified. `
+            + `Select it to hear it.`
           : `INSTALL UNVERIFIED: check slot ${d.label} on the unit.`,
           d.ok ? 'ok' : 'part');
         if (d.ok) {
