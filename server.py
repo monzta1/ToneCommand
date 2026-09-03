@@ -1868,6 +1868,20 @@ _preset_cache: dict = {"slots": None}
 _install_cache: dict = {}
 
 
+@app.get("/api/tone-dir")
+def api_tone_dir_get():
+    return {"dir": acquire.get_tone_dir()}
+
+
+@app.post("/api/tone-dir")
+def api_tone_dir_set(body: dict):
+    try:
+        d = acquire.set_tone_dir(body.get("dir", ""))
+    except acquire.AcquireError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"dir": d}
+
+
 @app.post("/api/acquire")
 def api_acquire(body: dict):
     """Turn "get me the Periphery tones from Gift of Tone" into parsed,
@@ -1884,15 +1898,25 @@ def api_acquire(body: dict):
     query = str(body.get("query") or "").strip()
     if not query:
         return JSONResponse({"error": "say what to get"}, status_code=400)
+    source_name, hit_url = "your tone folder", None
     try:
-        entries = acquire.catalog()
-        hit = acquire.find(query, entries)
-        if hit is None:
-            near = ", ".join(e["artist"] for e in entries[:8])
-            return JSONResponse(
-                {"error": f"nothing on Gift of Tone matches that. "
-                          f"Recent gifts: {near}..."}, status_code=404)
-        presets, cabs, skipped = acquire.fetch_bundle(hit["url"])
+        # The owner's own offline folder first: their purchases live there.
+        local = acquire.search_local(query)
+        if local:
+            presets, cabs, skipped = acquire.parse_local(local)
+        else:
+            entries = acquire.catalog()
+            hit = acquire.find(query, entries)
+            if hit is None:
+                near = ", ".join(e["artist"] for e in entries[:8])
+                where = (" or your tone folder" if acquire.get_tone_dir()
+                         else "; set a tone folder in Settings to search your "
+                              "own files too")
+                return JSONResponse(
+                    {"error": f"nothing matches that on Gift of Tone{where}. "
+                              f"Recent gifts: {near}..."}, status_code=404)
+            source_name, hit_url = hit["artist"], hit["url"]
+            presets, cabs, skipped = acquire.fetch_bundle(hit["url"])
     except acquire.AcquireError as e:
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception as e:
@@ -1909,10 +1933,11 @@ def api_acquire(body: dict):
         _install_cache[digest] = cb["raw"]
         out_cabs.append({"hash": digest, "label": cb["label"],
                          "file": cb["file"], "chunks": cb["chunks"],
-                         "default_slot": cb["default_slot"]})
-    log.info("acquired %d preset(s), %d cab(s) from %s (%s)", len(out),
-             len(out_cabs), hit["artist"], hit["url"])
-    return {"artist": hit["artist"], "year": hit["year"], "url": hit["url"],
+                         "default_slot": cb.get("default_slot"),
+                         "bank": cb.get("bank"), "number": cb.get("number")})
+    log.info("acquired %d preset(s), %d cab(s) from %s", len(out),
+             len(out_cabs), source_name)
+    return {"artist": source_name, "url": hit_url,
             "presets": out, "cabs": out_cabs, "skipped": skipped,
             "cab_slots_configured": bool(get_cab_slots())}
 

@@ -89,6 +89,7 @@ def test_the_sentence_becomes_installable_presets(client, monkeypatch):
     def fake_download(url):
         return HTML.encode() if "gift-of-tone" in url else bundle
     monkeypatch.setattr(acquire, "_download", fake_download)
+    monkeypatch.setattr(acquire, "search_local", lambda q: [])   # GoT path
     d = client.post("/api/acquire", json={
         "query": "get me the periphery tones from gift of tone"}).json()
     assert d["artist"] == "Periphery"
@@ -101,6 +102,7 @@ def test_the_sentence_becomes_installable_presets(client, monkeypatch):
 
 def test_an_unmatched_ask_names_recent_gifts(client, monkeypatch):
     monkeypatch.setattr(acquire, "_download", lambda url: HTML.encode())
+    monkeypatch.setattr(acquire, "search_local", lambda q: [])
     r = client.post("/api/acquire", json={
         "query": "get the meshuggah tones from gift of tone"})
     assert r.status_code == 404
@@ -114,3 +116,30 @@ def test_the_composer_routes_a_named_source_to_acquire():
     assert "acquireIntent(said)" in fn and "runAcquire(said)" in fn
     # Only a NAMED source intercepts; a plain tone request still converses.
     assert "gift\\s*of\\s*tone" in script
+
+
+def test_luke_finds_lukather_in_the_local_folder(client, monkeypatch, tmp_path):
+    """The owner's vision: 'find the luke tone' searches their configured
+    folder and matches the nickname to the file (Lukather), no unzip."""
+    from tests.test_install import make_file
+    bundle_dir = tmp_path / "tones"; bundle_dir.mkdir()
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(".bundle", '<Bundle-Map version="1">'
+                   '<Device deviceId="18"/>'
+                   '<Preset Name="BT Steve Lukather 01" File="p.syx"/>'
+                   '</Bundle-Map>')
+        z.writestr("p.syx", make_file(name="BT Steve Lukather 01"))
+    (bundle_dir / "BT_Steve_Lukather.fasBundle").write_bytes(buf.getvalue())
+    monkeypatch.setattr(acquire, "get_tone_dir", lambda: str(bundle_dir))
+    d = client.post("/api/acquire", json={
+        "query": "find the luke tone and load it"}).json()
+    assert d["artist"] == "your tone folder"
+    assert [p["name"] for p in d["presets"]] == ["BT Steve Lukather 01"]
+
+
+def test_the_tone_folder_is_a_setting():
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    assert 'id="tonedir"' in ui and "/api/tone-dir" in ui
+    assert "TONE LIBRARY FOLDER" in ui

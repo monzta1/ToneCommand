@@ -2446,6 +2446,18 @@
           Wire numbers (139 here = 140 on screen). List only slots you can spare.</div>
       </div>
 
+      <div class="console" data-nofold data-label="TONE LIBRARY FOLDER">
+        <div class="hint">The one folder your offline tones live in (purchased
+          packs, downloads). "find the luke tone" searches here first. Only
+          this folder is read.</div>
+        <div class="saverow">
+          <input id="tonedir" autocomplete="off" spellcheck="false"
+                 placeholder="/Users/you/Downloads">
+          <button id="tonedirsave">SET</button>
+        </div>
+        <div class="hint" id="tonedirout"></div>
+      </div>
+
       <div class="console" data-nofold data-label="APPEARANCE">
         <div class="hz">
           <span class="lbl">TEXT SIZE</span>
@@ -6073,8 +6085,12 @@ async function* sseFrom(response) {
 // intent is unmistakable when a source is NAMED, so only a named source
 // intercepts; everything else still goes to the conversation.
 function acquireIntent(said) {
-  return /gift\s*of\s*tone/i.test(said)
-    && /\b(get|download|grab|install|fetch|load|go)\b/i.test(said);
+  // A named source (Gift of Tone), or a plain "find/get/load the X tone(s)"
+  // which searches the owner's tone folder first, then Gift of Tone.
+  if (/gift\s*of\s*tone/i.test(said)
+      && /\b(get|download|grab|install|fetch|load|go)\b/i.test(said)) return true;
+  return /\b(find|get|load|install|grab|fetch)\b/i.test(said)
+      && /\btones?\b/i.test(said);
 }
 
 async function runAcquire(said) {
@@ -7998,6 +8014,20 @@ setStage('request', true);
 setRequestMode('describe');
 
 loadAiSettings();
+(async () => {
+  try {
+    const d = await (await fetch('/api/tone-dir')).json();
+    if ($('tonedir')) $('tonedir').value = d.dir || '';
+  } catch (e) { /* optional */ }
+})();
+if ($('tonedirsave')) $('tonedirsave').onclick = async () => {
+  const r = await fetch('/api/tone-dir', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({dir: $('tonedir').value.trim()})});
+  const d = await r.json();
+  $('tonedirout').textContent = d.error
+    ? d.error : (d.dir ? `Searching ${d.dir}` : 'cleared');
+};
 refresh();
 // Cached server side, so this is cheap after the first read. The SAVE panel
 // renders before the scan finishes and would say "name not read" until
