@@ -6085,12 +6085,14 @@ async function* sseFrom(response) {
 // intent is unmistakable when a source is NAMED, so only a named source
 // intercepts; everything else still goes to the conversation.
 function acquireIntent(said) {
-  // A named source (Gift of Tone), or a plain "find/get/load the X tone(s)"
-  // which searches the owner's tone folder first, then Gift of Tone.
-  if (/gift\s*of\s*tone/i.test(said)
-      && /\b(get|download|grab|install|fetch|load|go)\b/i.test(said)) return true;
-  return /\b(find|get|load|install|grab|fetch)\b/i.test(said)
-      && /\btones?\b/i.test(said);
+  // A request to find/install a preset FILE, not to design a tone. Three
+  // tells, any of which fires: a named Gift of Tone, a destination slot
+  // ("... to preset 4"), or the word "tone(s)" beside find/load/install.
+  const verb = /\b(find|get|load|install|grab|fetch|put|pull)\b/i.test(said);
+  if (/gift\s*of\s*tone/i.test(said) && verb) return true;
+  if (verb && /\b(?:to|into|on|in)\s+(?:preset|slot|number|#)?\s*\d{1,3}\b/i.test(said))
+    return true;
+  return verb && /\btones?\b/i.test(said);
 }
 
 async function runAcquire(said) {
