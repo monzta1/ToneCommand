@@ -4,6 +4,17 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **A pick-what-to-install plan for acquired presets.** When a search or a
+  Gift of Tone fetch turns up more than one preset, ToneCommand no longer
+  fires a blunt confirm dialog. It opens the Storage drawer with every
+  preset listed and checked by default, each with an editable destination
+  slot (auto-numbered from any "to preset N" you said) and a note of what
+  that slot currently holds, plus a single toggle for the pack's cabs. A
+  live line spells out exactly what WRITE will do before you press it: how
+  many presets, to which slots, which one loads first. Uncheck anything
+  you do not want; only the checked rows are written (owner, 2026-09-03).
+
 ### Changed
 - **Stripped the verbosity.** Explanation was stacked on explanation
   across the page, overwhelming for a first-timer (owner, 2026-09-03).

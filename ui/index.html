@@ -1726,6 +1726,18 @@
     letter-spacing: 0.1em; border: 1px solid var(--violet-dim);
     border-radius: 2px; padding: 1px 6px; }
   #installfound .cabtag.pre { color: var(--cyan); border-color: var(--cyan-dim); }
+  .acqplan { display: flex; flex-direction: column; gap: 8px; }
+  .acqrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .acqrow label { display: flex; align-items: center; gap: 6px; }
+  .acqcabrow { border-top: 1px solid var(--line); padding-top: 8px;
+    margin-top: 2px; }
+  .acqsel { accent-color: var(--cyan); }
+  .acqdest { width: 68px; font: inherit; font-size: var(--fs-hint);
+    color: var(--text); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 2px; padding: 2px 4px; }
+  .acqover { color: var(--amber); }
+  .acqsummary { font-size: var(--fs-hint); color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
   .installcard { border: 1px solid var(--line); border-radius: 4px;
     padding: 12px; margin: 10px 0; }
   .installcard .instrow { display: flex; align-items: center; gap: 8px;
@@ -6105,30 +6117,16 @@ async function runAcquire(said) {
       body: JSON.stringify({query: said})});
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    // "... load it to preset N" with exactly one preset: install straight
-    // there and load it, no drawer detour. Still confirmed, still verified.
-    if (d.target_editor && d.presets.length >= 1) {
-      await acquireInstallAndLoad(d, said);
-      return;
+    if (!d.presets.length && !(d.cabs || []).length) {
+      chatNote('Found nothing installable there.'); renderChat(); return;
     }
-    const names = d.presets.length
-      ? d.presets.map(x => `"${x.name}"`).join(', ')
-      : 'none in this bundle';
-    const cabBit = (d.cabs || []).length
-      ? ` Plus ${d.cabs.length} IR${d.cabs.length === 1 ? '' : 's'} the `
-        + `presets depend on (${d.cabs.map(c => `"${c.label}"`).join(', ')}), `
-        + (d.cab_slots_configured
-            ? `defaulted to the user-cab slots the artist filed them for.`
-            : `but IR installs are disabled until you set `
-              + `TONECOMMAND_CAB_SLOTS with user-cab slots you can spare.`)
-      : '';
-    chatNote(`Found in ${esc(d.artist)}. `
-      + `FM9 presets: ${names}.${cabBit} `
-      + ((d.skipped || []).length
-          ? ` Not usable here: ${d.skipped.join('; ')}.` : '')
-      + ` Every accepted file validated. Pick slots in the STORAGE drawer, `
-      + `which is open; installs write flash and are verified by reading back.`);
-    renderInstallFound(d.presets, d.cabs || []);
+    const n = d.presets.length;
+    chatNote(`Found in ${esc(d.artist)}: ${n} preset${n === 1 ? '' : 's'}`
+      + ((d.cabs || []).length ? ` and ${d.cabs.length} cab${d.cabs.length === 1 ? '' : 's'}` : '')
+      + `. Review the plan below, uncheck anything you don't want, then WRITE.`
+      + ((d.skipped || []).length ? ` (Skipped: ${d.skipped.join('; ')}.)` : ''));
+    renderChat();
+    renderAcquirePlan(d);
     openDrawer('storage');
   } catch (e) {
     chatNote(`Could not fetch that: ${e.message}`);
@@ -6136,70 +6134,106 @@ async function runAcquire(said) {
   renderChat();
 }
 
-async function acquireInstallAndLoad(d, said) {
-  // The whole pack, to consecutive slots from the one named. The owner does
-  // not need to know how many presets are in it: the confirm spells out the
-  // count, the destination range, and what each slot currently holds.
-  const n = d.presets.length;
-  const first = d.target_editor;                   // FM9-Edit slot number
-  const rows = d.presets.map((pr, i) => {
-    const editor = first + i;
-    const wire = editor - 1;
-    const cur = (allSlots.find(s => s.number === wire) || {}).name || '';
-    return {pr, editor, wire, cur};
-  });
-  const range = n === 1 ? `preset ${first}` : `presets ${first}-${first + n - 1}`;
-  const list = rows.map(r => `  preset ${r.editor}: "${r.pr.name}"`
-      + (r.cur && !/^<EMPTY>/.test(r.cur) ? ` (over "${r.cur}")` : '')).join('\n');
-  const cabN = (d.cabs || []).length;
-  const cabLine = cabN
-    ? (d.cab_slots_configured
-        ? `\nplus ${cabN} cab${cabN === 1 ? '' : 's'} to their filed User Bank slots`
-        : `\n(its ${cabN} cabs need TONECOMMAND_CAB_SLOTS set; they will be skipped)`)
-    : '';
-  chatNote(`"${esc(said)}" -> ${n} preset${n === 1 ? '' : 's'} found. `
-    + `Installing to ${range}, then loading the first.`);
-  renderChat();
-  if (!window.confirm(
-      `Install ${n} preset${n === 1 ? '' : 's'} to ${range}:\n${list}`
-      + `${cabLine}\n\nThen load "${rows[0].pr.name}". This writes flash. `
-      + `UNDO does not cover it.`)) {
-    chatNote('Cancelled. Nothing was written.'); renderChat(); return;
-  }
-  const done = [], failed = [];
-  try {
-    for (const r of rows) {
+// An interactive install plan in the Storage drawer: every preset and the
+// cabs checked by default, editable destination slots, a live line saying
+// exactly what WRITE will do. The owner asked to select, see the plan, then
+// write, rather than approve a blunt dialog.
+function renderAcquirePlan(d) {
+  const box = $('installfound');
+  box.hidden = false;
+  const first = d.target_editor || null;
+  const rows = d.presets.map((pr, i) => ({
+    pr, editor: first ? first + i : '', sel: true}));
+  const cabsOn = (d.cabs || []).length > 0 && d.cab_slots_configured;
+  box.innerHTML = `
+    <div class="acqplan">
+      <div class="navtitle">INSTALL PLAN &middot; ${esc(d.artist)}</div>
+      ${rows.map((r, i) => `
+      <div class="acqrow" data-i="${i}">
+        <label><input type="checkbox" class="acqsel" checked> <b>${esc(r.pr.name)}</b></label>
+        <span class="hint" style="margin:0">to preset</span>
+        <input class="acqdest" type="number" min="1" max="512" value="${r.editor}">
+        <span class="acqover hint" style="margin:0"></span>
+      </div>`).join('')}
+      ${(d.cabs || []).length ? `
+      <div class="acqrow acqcabrow">
+        <label><input type="checkbox" id="acqcabs" ${cabsOn ? 'checked' : ''}
+          ${d.cab_slots_configured ? '' : 'disabled'}>
+          install ${d.cabs.length} cab${d.cabs.length === 1 ? '' : 's'} to their filed User Bank slots</label>
+        ${d.cab_slots_configured ? '' : '<span class="hint" style="margin:0">set TONECOMMAND_CAB_SLOTS to enable</span>'}
+      </div>` : ''}
+      <div class="acqsummary" id="acqsummary"></div>
+      <button id="acqwrite">WRITE</button>
+    </div>`;
+
+  const state = {d, rows};
+  const refresh = () => {
+    const chosen = [];
+    box.querySelectorAll('.acqrow[data-i]').forEach(row => {
+      const i = Number(row.dataset.i);
+      const on = row.querySelector('.acqsel').checked;
+      const editor = Number(row.querySelector('.acqdest').value);
+      rows[i].sel = on; rows[i].editor = editor;
+      const cur = (allSlots.find(s => s.number === editor - 1) || {}).name || '';
+      row.querySelector('.acqover').textContent =
+        (on && cur && !/^<EMPTY>/.test(cur)) ? `over "${cur}"` : '';
+      row.style.opacity = on ? '1' : '0.45';
+      if (on && editor >= 1) chosen.push({...rows[i]});
+    });
+    const cabsChecked = $('acqcabs') && $('acqcabs').checked;
+    const cabN = cabsChecked ? (d.cabs || []).length : 0;
+    $('acqsummary').textContent = chosen.length
+      ? `WRITE will install ${chosen.length} preset`
+        + `${chosen.length === 1 ? '' : 's'} to `
+        + chosen.map(c => c.editor).sort((a, b) => a - b).join(', ')
+        + (cabN ? `, plus ${cabN} cab${cabN === 1 ? '' : 's'}` : '')
+        + `, then load "${chosen[0].pr.name}". Flash write; UNDO does not cover it.`
+      : 'Nothing selected.';
+    $('acqwrite').disabled = !chosen.length;
+    return chosen;
+  };
+  box.querySelectorAll('.acqsel, .acqdest').forEach(el =>
+    el.addEventListener('input', refresh));
+  if ($('acqcabs')) $('acqcabs').addEventListener('input', refresh);
+  refresh();
+
+  $('acqwrite').onclick = async () => {
+    const chosen = refresh();
+    if (!chosen.length) return;
+    $('acqwrite').disabled = true;
+    $('acqwrite').textContent = 'WRITING...';
+    const done = [], failed = [];
+    for (const c of chosen) {
       const res = await (await fetch('/api/install', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({hash: r.pr.hash, slot: r.wire,
-                              name: r.pr.name})})).json();
+        body: JSON.stringify({hash: c.pr.hash, slot: c.editor - 1,
+                              name: c.pr.name})})).json();
       if (res.ok) { noteSlotName(res.slot, res.installed);
-                    done.push(`${r.pr.name} -> preset ${r.editor}`); }
-      else failed.push(`${r.pr.name} (${res.error || res.detail || 'failed'})`);
+                    done.push(`${res.installed} -> preset ${c.editor}`); }
+      else failed.push(`${c.pr.name} (${res.error || res.detail || 'failed'})`);
     }
-    // Every cab the pack depends on, to its vendor-pinned slot.
     let cabOk = 0, cabBad = 0;
-    for (const c of (d.cabs || [])) {
-      if (c.bank == null || !d.cab_slots_configured) continue;
-      const cd = await (await fetch('/api/install-cab', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({hash: c.hash, bank: c.bank, number: c.number,
-                              filename: c.file})})).json();
-      cd.ok ? cabOk++ : cabBad++;
+    if ($('acqcabs') && $('acqcabs').checked) {
+      for (const cb of (d.cabs || [])) {
+        if (cb.bank == null) continue;
+        const cd = await (await fetch('/api/install-cab', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hash: cb.hash, bank: cb.bank, number: cb.number,
+                                filename: cb.file})})).json();
+        cd.ok ? cabOk++ : cabBad++;
+      }
     }
-    if (done.length) gotoPreset(rows[0].wire, true);   // load the first
-    chatNote(`Installed ${done.length} of ${n}: ${done.join('; ')}.`
+    if (done.length) gotoPreset(chosen[0].editor - 1, true);   // load the first
+    chatNote(`Installed ${done.length} of ${chosen.length}: ${done.join('; ')}.`
       + (failed.length ? ` Failed: ${failed.join('; ')}.` : '')
       + (cabOk || cabBad ? ` Cabs: ${cabOk} ok${cabBad ? ', ' + cabBad + ' failed' : ''}.` : '')
-      + (done.length ? ` Loaded "${rows[0].pr.name}". EARS: PENDING.` : ''));
+      + (done.length ? ` Loaded "${chosen[0].pr.name}". EARS: PENDING.` : ''));
+    renderChat();
     workAnnounce(done.length
-      ? `LOADED: "${rows[0].pr.name}"; installed ${done.length} preset(s).`
-      : `INSTALL FAILED`, done.length ? 'ok' : 'bad');
-  } catch (e) {
-    chatNote(`Install failed: ${e.message}`);
-    workAnnounce(`INSTALL FAILED: ${String(e.message).slice(0, 90)}`, 'bad');
-  }
-  renderChat();
+      ? `LOADED: "${chosen[0].pr.name}"; installed ${done.length} preset(s).`
+      : 'INSTALL FAILED', done.length ? 'ok' : 'bad');
+    box.hidden = true;
+  };
 }
 
 function renderInstallFound(presets, cabs) {
