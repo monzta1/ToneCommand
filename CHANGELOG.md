@@ -5,6 +5,17 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **The first-class build standard.** Identity builds (a player, band,
+  song, style, or multi-scene rig) are now held to a written standard in
+  the planner prompt: voice the full amp stack in every scene, choose the
+  cabinet deliberately, set tempo and compute delay times from it, give
+  every enabled effect real values, balance scene levels for the gig, and
+  consider Pedal 2, with depth never licensing invented parameters. Small
+  adjustments are exempt: "a bit more presence" still changes one thing.
+  Measured on the same Tom Petty request that prompted it: 69 actions
+  with tempo-synced delays and a voiced compressor, against the vanilla
+  handful before. The Plan stage also grew a DEPTH card that names what a
+  build left untouched, so laziness is visible before anything is armed.
 - **The AI picker is a question, not a form.** Settings opens on WHO PLANS
   YOUR TONES: named cards (Claude subscription, ChatGPT subscription,
   ChatGPT API, Gemini, Grok API, DeepSeek, Kimi, Local model, OpenRouter,

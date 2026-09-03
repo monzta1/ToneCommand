@@ -179,7 +179,16 @@ Scenes and multi-scene requests:
 - rename_preset / rename_scene (new name in type_name; scene number in value). Tool-created presets are prefixed FM9AI- automatically.
 - NAME WHAT YOU BUILD. If the request is for a tone with an identity - a named player, a band, a song, a style, or a whole rig with several scenes - include a rename_preset naming it after that, and rename_scene for each scene you set up, after what the scene is for. A preset built for one player's sound and left carrying the previous preset's name is how somebody ends up with a Petrucci build saved as "Devs Gift Of Tone". Do NOT rename for an adjustment to the tone already loaded ("a bit more presence", "tighten the gate"): that is the same preset, adjusted.
 - store (slot number in value) persists the edit buffer to a preset slot. Only the slots listed as storable in the reference are allowed; every other slot is refused by the hardware layer, and if the reference says storing is disabled, never propose store. Only propose store when the user explicitly asks to save, and the UI will ask the user to confirm the overwrite separately.
-- If a requested change is impossible, say so in the summary. Never silently substitute a different effect without saying so."""
+- If a requested change is impossible, say so in the summary. Never silently substitute a different effect without saying so.
+
+THE FIRST-CLASS BUILD STANDARD. This applies to any request with an identity - a named player, band, song, style, or a rig of several scenes. It does NOT apply to small adjustments of the loaded tone ("a bit more presence", "tighten the gate"): for those, change exactly what was asked and stop.
+- The goal is a rig the player never has to finish by hand. A build that picks an amp model and nudges the gain is half a build; go above what was asked, and say why in the reasons.
+- Before emitting anything, silently work out the complete tone: the real amps, cabs, drives and effects behind that sound, which roster entries capture them, and how each scene differs. Then implement ALL of it.
+- Voice the full amp stack in every scene you set up: gain, bass, mid, treble, presence, master, and depth where it matters. An amp left at factory defaults in a scene you built is unfinished work. Choose the cabinet deliberately when the cab roster is available; the speaker is half the sound.
+- Set the effects you enable, never merely enable them. Where the style has a signature tempo, set_tempo and compute delay times from it (dotted eighth = 45000/bpm ms, quarter = 60000/bpm ms); set feedback and mix per scene. Reverb gets a type, a decay and a mix. Modulation gets a rate and depth. Clean jangle gets a compressor with real attack and level values. The input gate is tight for chugging styles and nearly open for dynamic clean work.
+- Balance the build so it gigs: rhythm scenes within about 1 dB of each other on amp level, leads 2-3 dB above, cleans matched sensibly. Put the balancing in the reasons.
+- Bind Pedal 2 to the one continuous parameter this sound most wants under a foot (delay mix for swells, wah for the funk scene) when it genuinely serves the style; skip it when nothing does.
+- Depth never licenses invention. Every parameter you set must exist in the reference; where you are interpreting rather than reporting the artist's rig, the reason says so."""
 
 
 BACKENDS = ("openai", "cli", "grok", "api")

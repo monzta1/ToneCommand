@@ -1711,6 +1711,8 @@
   .navbody .nrow { display: flex; justify-content: space-between; gap: 8px;
     padding: 4px 0; border-bottom: 1px dashed var(--line); }
   .navbody .nrow b { color: var(--text); font-weight: 500; }
+  .depthnote { color: var(--amber); font-size: var(--fs-hint);
+    margin: 6px 0; line-height: 1.4; }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -7250,14 +7252,58 @@ function intentGroups(plan) {
   return groups;
 }
 
+// What the reference name in a plan action is called in the grid's
+// family terms, for the depth report only. Approximate on purpose: an
+// unknown name simply does not match, and a hint withheld is cheaper
+// than a wrong one.
+const DEPTH_ALIAS = {AMP: 'DISTORT', CAB: 'CABINET', DRIVE: 'FUZZ',
+                     GATE: 'INPUT', EQ: 'GEQ'};
+
+function depthNotes(plan) {
+  // Only for identity builds (the plan renames the preset): a two-knob
+  // adjustment is SUPPOSED to leave the rest of the rig alone. For a
+  // build, an engaged block nothing touched is unfinished work, and the
+  // owner should see the laziness before pressing anything (2026-09-03:
+  // "the presets it added are pretty vanilla").
+  if (!plan.actions.some(a => a.kind === 'rename_preset')) return [];
+  const touched = new Set();
+  for (const a of plan.actions) {
+    if (!a.block) continue;
+    const fam = String(a.block).toUpperCase();
+    touched.add(DEPTH_ALIAS[fam] || fam);
+  }
+  const notes = [];
+  const idle = (lastState.blocks || []).filter(b =>
+    b.family !== 'OUTPUT' && !b.bypassed && !touched.has(b.family));
+  if (idle.length) {
+    notes.push(`Left at current settings: ${idle.map(b => b.label).join(', ')}. `
+      + 'A first-class build voices every engaged block.');
+  }
+  const delayWork = plan.actions.some(a =>
+    String(a.block || '').toUpperCase().includes('DELAY'));
+  if (delayWork && !plan.actions.some(a => a.kind === 'set_tempo')) {
+    notes.push('Delay is set but no tempo: delay times are not synced to a song.');
+  }
+  const scenes = plan.actions.filter(a => a.kind === 'rename_scene').length;
+  if (scenes && !plan.actions.some(a => a.kind === 'bind_pedal')) {
+    notes.push('Nothing under Pedal 2. Fine if nothing earns it; worth asking for.');
+  }
+  return notes;
+}
+
 function renderPlanStage() {
   if (!currentPlan) return;
   const n = currentPlan.actions.length;
   $('reviewbtn').textContent = `REVIEW ${n} CHANGE${n === 1 ? '' : 'S'}`;
   const groups = intentGroups(currentPlan);
-  $('plannav').innerHTML = [...groups.entries()].map(([k, list]) =>
+  const depth = depthNotes(currentPlan);
+  $('plannav').innerHTML = ([...groups.entries()].map(([k, list]) =>
     `<div class="nrow"><b>${esc(k)}</b><span>${list.length}</span></div>`)
-    .join('') || '<span class="hint">no grouped work</span>';
+    .join('') || '<span class="hint">no grouped work</span>')
+    + (depth.length
+        ? `<div class="navtitle" style="margin-top:12px">DEPTH</div>`
+          + depth.map(d => `<div class="depthnote">${esc(d)}</div>`).join('')
+        : '');
   $('planintents').innerHTML = [...groups.entries()].map(([name, list]) => {
     const first = list[0] || {};
     const outcome = first.reason || describe(first);
