@@ -5,6 +5,23 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **Install preset files (#42).** Drop a .syx from Gift of Tone,
+  Axe-Change or a friend into the Storage drawer and it lands in a
+  whitelisted slot. The parser trusts nothing: every frame checksummed,
+  the documented 0x77/0x78/0x79 envelope enforced, the model byte
+  matched (a file for another Fractal device is refused by that device's
+  name), the embedded preset name decoded for the preview. Installing is
+  the official editor's own Ghidra-decoded recipe: the file's frames
+  verbatim, header retargeted, footer untouched, sent through a separate
+  transport guard that admits only the dump family, so the ordinary send
+  surface did not widen by one function. The store whitelist and gig
+  lock apply exactly as for STORE, and done is claimed only after the
+  slot's name reads back and matches. Validated against the real
+  Periphery Gift of Tone 2024 files (all three parse; their FM3 and
+  Axe-Fx III variants are refused by name). The host-to-device dump
+  direction is not yet hardware-proven anywhere, this project included:
+  the first live install is the verification, and until then the result
+  copy and the simulator both say so.
 - **The first-class build standard.** Identity builds (a player, band,
   song, style, or multi-scene rig) are now held to a written standard in
   the planner prompt: voice the full amp stack in every scene, choose the

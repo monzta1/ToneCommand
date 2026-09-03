@@ -208,6 +208,53 @@ class SimFM9Core:
         h = getattr(self, f"_fn_{fn:02x}", None)
         return h(body) if h else []
 
+    # ---- preset install (0x77/0x78/0x79 dump receive) --------------------
+    # The write direction is hardware-unverified everywhere, this simulator
+    # included, so it reports itself as undecoded territory while still
+    # modeling the documented behavior: a header names the slot, chunks
+    # carry the body, the footer commits, and the slot then reads back
+    # under the file's embedded name.
+    def _fn_77(self, b):
+        # BIG-endian septets, unlike the little-endian ids elsewhere: the
+        # dump header is the one place the wire flips (SYSEX-MAP, confirmed
+        # on captured FM9 requests).
+        self._install = {"slot": ((b[0] & 0x7F) << 7) | (b[1] & 0x7F),
+                         "chunks": []}
+        return []
+
+    def _fn_78(self, b):
+        if getattr(self, "_install", None) is not None:
+            self._install["chunks"].append(list(b))
+        return []
+
+    def _fn_79(self, b):
+        pending = getattr(self, "_install", None)
+        self._install = None
+        if not pending or not pending["chunks"]:
+            return []
+        from fm9 import presetfile
+        chunk0 = pending["chunks"][0]
+        chars = []
+        for i in range(presetfile.NAME_MAX_WORDS):
+            off = presetfile.CHUNK_BODY_OFFSET \
+                + (presetfile.NAME_FIRST_WORD + i) * 3
+            w = (chunk0[off] | (chunk0[off + 1] << 7)
+                 | (chunk0[off + 2] << 14)) & 0xFFFF
+            lo, hi = w & 0xFF, (w >> 8) & 0xFF
+            if lo == 0:
+                break
+            chars.append(chr(lo))
+            if hi == 0:
+                break
+            chars.append(chr(hi))
+        slot = pending["slot"]
+        self.st.presets.setdefault(slot, {})["name"] = "".join(chars).rstrip()
+        self.st.empty_slots.pop(slot, None)
+        self.undecoded.add(
+            "preset install (0x77/0x78/0x79 write direction) is not "
+            "hardware-verified; verify the slot name on a real unit")
+        return []
+
     # ---- official surface ----
     def _fn_0c(self, b):
         if b and b[0] != 0x7F:

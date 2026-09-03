@@ -1713,6 +1713,8 @@
   .navbody .nrow b { color: var(--text); font-weight: 500; }
   .depthnote { color: var(--amber); font-size: var(--fs-hint);
     margin: 6px 0; line-height: 1.4; }
+  .installrow input[type="file"] { font: inherit; font-size: var(--fs-hint);
+    color: var(--text); }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -2333,6 +2335,23 @@
           renaming stores it. The tone is untouched; the slot is written back
           exactly as it is, under the new name.</span>
       </div>
+      <div class="installrow">
+        <div class="navtitle" style="margin-top:14px">INSTALL A PRESET FILE</div>
+        <div class="hint">A Gift of Tone drop, an Axe-Change download, a
+          .syx a friend sent. The file is validated as an FM9 preset before
+          anything is sent, installs only to your allowed slots, and is
+          verified by reading the slot's name back.</div>
+        <div class="saverow">
+          <input type="file" id="installfile" accept=".syx">
+        </div>
+        <div class="hint" id="installwhat" hidden></div>
+        <div class="saverow" id="installgo" hidden>
+          <select id="installslot"></select>
+          <button id="installbtn">INSTALL</button>
+        </div>
+        <div class="hint" id="installout" hidden></div>
+      </div>
+
       <details class="dangerzone">
         <summary>DANGER ZONE</summary>
         <div class="saverow clearrow">
@@ -7081,6 +7100,80 @@ $('prompt').addEventListener('keydown', e => {
   e.preventDefault();
   talk();
 });
+
+// --- installing a preset file --------------------------------------------
+// Validated before preview, previewed before install, whitelisted at the
+// device layer, verified by slot-name read-back. The write direction is
+// hardware-unverified protocol, and the result says so unless the
+// read-back proves it.
+let installPending = null;    // {hash, name}
+
+$('installfile').onchange = async () => {
+  const f = $('installfile').files && $('installfile').files[0];
+  installPending = null;
+  $('installgo').hidden = true;
+  $('installout').hidden = true;
+  if (!f) { $('installwhat').hidden = true; return; }
+  const buf = new Uint8Array(await f.arrayBuffer());
+  let b64 = '';
+  for (let i = 0; i < buf.length; i += 0x8000) {
+    b64 += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  }
+  b64 = btoa(b64);
+  $('installwhat').hidden = false;
+  $('installwhat').textContent = 'reading the file...';
+  try {
+    const r = await fetch('/api/install/parse', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data: b64})});
+    const d = await r.json();
+    if (d.error) { $('installwhat').textContent = d.error; return; }
+    installPending = d;
+    $('installwhat').innerHTML = `Valid FM9 preset: <b>${esc(d.name)}</b> `
+      + `(${d.chunks} chunks, ${d.bytes} bytes, saved from slot `
+      + `${esc(d.source_label)}). Pick a destination below.`;
+    // The same whitelisted slots the STORE selector offers.
+    $('installslot').innerHTML = $('saveslot').innerHTML;
+    $('installgo').hidden = false;
+  } catch (e) {
+    $('installwhat').textContent = `could not read the file: ${e.message}`;
+  }
+};
+
+$('installbtn').onclick = async () => {
+  if (!installPending) return;
+  const slot = Number($('installslot').value);
+  const sel = saveSlots.find(s => s.number === slot);
+  if (!window.confirm(
+      `Install "${installPending.name}" to slot `
+      + `${sel ? sel.label : slot}, permanently overwriting `
+      + `${sel && sel.name ? '"' + sel.name + '"' : 'whatever is stored there'}?\n\n`
+      + 'This writes flash. UNDO does not cover it.')) return;
+  $('installbtn').disabled = true;
+  $('installout').hidden = false;
+  $('installout').textContent = 'installing and reading the slot back...';
+  try {
+    const r = await fetch('/api/install', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hash: installPending.hash, slot})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    $('installout').textContent = d.detail;
+    log(`install: ${d.detail}`, d.ok ? 'ok' : 'err');
+    if (d.ok) {
+      setDirty(false);        // flash changed, not the buffer
+      loadPresets(false);
+      loadSaveSlots(false);
+      workAnnounce(`INSTALLED: "${d.installed}" now lives in slot `
+                   + `${d.label}. Load it and play it; EARS: PENDING.`, 'ok');
+    }
+  } catch (e) {
+    $('installout').textContent = `install failed: ${e.message}`;
+    log(`install failed: ${e.message}`, 'err');
+  } finally {
+    $('installbtn').disabled = false;
+  }
+};
 
 // A conversation left open yesterday is still there today.
 loadChat();

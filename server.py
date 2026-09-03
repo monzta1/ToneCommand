@@ -23,8 +23,8 @@ from pydantic import BaseModel
 from fm9.device import FM9, FM9NotFound
 from fm9.registry import Registry
 from fm9 import (ai_settings, describe, designs, editbuffer, health,
-                 planner, recipes as recipebook, rigprofile, scratch_build,
-                 share)
+                 planner, presetfile, recipes as recipebook, rigprofile,
+                 scratch_build, share)
 # `slots` is a local variable in more than one function here, so the module
 # gets a name that cannot be shadowed by one.
 from fm9 import slots as slotops
@@ -1859,6 +1859,98 @@ _gig_mode = {"on": _os.environ.get("TONECOMMAND_GIG_MODE") == "1"}
 # 512 costs about 15 seconds of MIDI, so it is read once and kept. Refresh is
 # explicit rather than automatic: silently re-scanning would stall a prompt.
 _preset_cache: dict = {"slots": None}
+
+
+# --- installing preset files (Gift of Tone, Axe-Change, a friend's .syx) --
+
+#: The one parsed file awaiting install, keyed by content hash so the
+#: confirm step installs exactly what was previewed, byte for byte.
+_install_cache: dict = {}
+
+
+@app.post("/api/install/parse")
+def api_install_parse(body: dict):
+    """Validate an uploaded .syx as an FM9 preset file and preview it.
+
+    Read-only: nothing reaches hardware here. The file must parse as the
+    documented 0x77/0x78/0x79 dump envelope for the FM9's model byte, with
+    every checksum valid, or it is refused with the reason. A file for a
+    different Fractal device is named as such rather than "wrong byte".
+    """
+    import base64
+    import hashlib
+    try:
+        raw = base64.b64decode(str(body.get("data") or ""), validate=True)
+    except Exception:
+        return JSONResponse({"error": "could not read the file data"},
+                            status_code=400)
+    try:
+        pf = presetfile.parse(raw)
+    except presetfile.PresetFileError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    digest = hashlib.sha1(raw).hexdigest()
+    _install_cache.clear()               # one pending install at a time
+    _install_cache[digest] = raw
+    return {"hash": digest, "name": pf.name, "chunks": pf.chunks,
+            "bytes": len(raw),
+            "source_label": proto.slot_label(pf.source_slot)}
+
+
+@app.post("/api/install")
+def api_install(body: dict):
+    """Send the previewed file to a whitelisted slot. A FLASH WRITE.
+
+    Gig lock refuses it; the whitelist is enforced at the device layer,
+    exactly as for store; and because the host-to-device dump direction is
+    hardware-unverified territory, done is only claimed after the slot's
+    name is read back and matches the file's embedded name.
+    """
+    raw = _install_cache.get(str(body.get("hash") or ""))
+    if raw is None:
+        return JSONResponse(
+            {"error": "no parsed file is pending; choose the file again"},
+            status_code=409)
+    try:
+        slot = int(body.get("slot"))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "slot must be a number"},
+                            status_code=400)
+    with _lock:
+        if _gig_mode["on"]:
+            return JSONResponse(
+                {"error": "GIG LOCK is on: refusing a flash write."},
+                status_code=423)
+        try:
+            fm9 = get_fm9()
+            pf = fm9.install_preset(raw, slot)
+            got = fm9.slot_name(slot)
+        except PermissionError as e:
+            return JSONResponse({"error": str(e)}, status_code=403)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "FM9 not connected"},
+                                status_code=503)
+        except presetfile.PresetFileError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    read_back = got.name if got else None
+    ok = bool(read_back and read_back.strip() == pf.name.strip())
+    if ok:
+        log.info("installed %r to %s", pf.name, proto.slot_label(slot))
+        if _preset_cache["slots"]:
+            for s in _preset_cache["slots"]:
+                if s["number"] == slot:
+                    s["name"] = pf.name
+                    s["empty"] = False
+    return {"ok": ok, "installed": pf.name, "read_back": read_back,
+            "slot": slot, "label": proto.slot_label(slot),
+            "detail": (f"slot {proto.slot_label(slot)} reads back as "
+                       f"{read_back!r}: verified" if ok else
+                       f"the slot read back as {read_back!r}, not "
+                       f"{pf.name!r}. The write direction is not yet "
+                       "hardware-proven; treat this install as failed and "
+                       "check the unit before trusting the slot")}
 
 
 @app.get("/api/store-slots")

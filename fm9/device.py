@@ -246,6 +246,12 @@ class FM9:
     SENDABLE_FNS = frozenset({0x01, 0x08, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
                               0x13, 0x14, 0x1F})
     guard = sysex_guard("FM9", SENDABLE_FNS)
+    #: The preset-dump family (0x77/0x78/0x79), sendable ONLY through
+    #: install_preset, which takes nothing but frames the presetfile module
+    #: has validated. A separate guard, so no other code path can emit them
+    #: and the main surface stays exactly as narrow as it was.
+    install_guard = sysex_guard("FM9-preset-install",
+                                frozenset({0x77, 0x78, 0x79}))
 
     def _send(self, frame: list[int]):
         if len(frame) > 5 and frame[0] == 0xF0:
@@ -523,6 +529,39 @@ class FM9:
         self._send(p.build_store_preset(slot))
         time.sleep(1.5)
         return self.current_preset()
+
+    def install_preset(self, raw: bytes, slot: int):
+        """Send a validated preset file to a whitelisted slot.
+
+        The recipe is the official editor's own store path (Ghidra-decoded
+        upstream): the file's frames verbatim, header retargeted to `slot`,
+        footer untouched. The host-to-device direction is
+        hardware-UNVERIFIED territory, so the caller must verify by reading
+        the slot's name back; this method only transmits. Same whitelist,
+        same refusals, as store_preset: this writes flash.
+        """
+        from fm9 import presetfile
+        allowed = get_store_slots()
+        if not allowed:
+            raise PermissionError(
+                "installing is disabled: no store slots configured. Set "
+                "TONECOMMAND_STORE_SLOTS (env or .env) with slots on YOUR "
+                "unit that are safe to overwrite")
+        if slot not in allowed:
+            raise PermissionError(
+                f"install to slot {p.slot_label(slot)} refused: configured "
+                f"store slots are {p.slot_set_label(allowed)}")
+        pf = presetfile.parse(raw)          # re-validated at this boundary
+        frames = presetfile.retarget(pf, slot)
+        self._drain()
+        for frame in frames:
+            self.install_guard.check(frame[5])
+            self.outp.send(mido.Message("sysex", data=frame[1:-1]))
+            # The unit ingests a 3 KB chunk fine; firing eight back to back
+            # is exactly the untested part, so give each a breath.
+            time.sleep(0.03)
+        time.sleep(1.5)                     # let flash settle before reads
+        return pf
 
     def rename_preset(self, name: str):
         self._drain()
