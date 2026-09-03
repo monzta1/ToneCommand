@@ -2673,6 +2673,33 @@ function filteredSlots() {
     || String(s.number + 1) === q);      // the number FM9-Edit shows
 }
 
+// A slot's name just changed on flash (an install, a rename). Patch every
+// client cache that names it and repaint, so the top picker, the storage
+// dropdown and the pill all show the new name at once. No rescan: the name
+// is known, and reading 512 slots to learn one is exactly the wait the
+// owner should never have to trigger by hand (2026-09-03).
+function noteSlotName(number, name) {
+  const s = allSlots.find(x => x.number === number);
+  if (s) { s.name = name; s.empty = false; }
+  const ss = saveSlots.find(x => x.number === number);
+  if (ss) { ss.name = name; ss.empty = false; }
+  if (allSlots.length && !$('ppop').hidden) renderPresets(false);
+  if (saveSlots.length) {
+    const cur = $('saveslot').value;
+    $('saveslot').innerHTML = saveSlots.map(x => {
+      const holds = x.name ? `"${x.name}"` : (x.empty === true ? 'empty' : 'name not read');
+      return `<option value="${x.number}">${esc(x.label)}  ${esc(holds)}</option>`;
+    }).join('');
+    $('saveslot').value = cur;
+  }
+  if (number === currentPresetNumber && lastState.preset) {
+    lastState.preset.name = name;
+    $('preset').innerHTML =
+      `<span class="lbl">PRESET</span><span class="pnum">${lastState.preset.editor ?? number}</span>`
+      + `<b>${esc(name)}</b><span class="caret"></span>`;
+  }
+}
+
 function renderPresets(scrollToCurrent) {
   const hits = filteredSlots();
   $('pcount').textContent = hits.length === allSlots.length
@@ -6206,11 +6233,10 @@ function renderInstallFound(presets, cabs) {
           : `INSTALL UNVERIFIED: check slot ${d.label} on the unit.`,
           d.ok ? 'ok' : 'part');
         if (d.ok) {
-          // Every dropdown that names a slot, refreshed so the new name
-          // shows everywhere at once, exactly as asked.
-          await loadPresets(false);
-          await loadSaveSlots(false);
-          if ($('installslot')) $('installslot').innerHTML = $('saveslot').innerHTML;
+          // The name is known, so patch every cache that shows it directly:
+          // instant, no rescan, no MIDI. This is what the top picker was
+          // missing before.
+          noteSlotName(d.slot, d.installed);
           for (const s of box.querySelectorAll('.foundslot')) {
             const keep = s.value; s.innerHTML = $('saveslot').innerHTML;
             s.value = keep;

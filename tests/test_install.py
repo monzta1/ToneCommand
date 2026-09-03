@@ -202,5 +202,21 @@ def test_the_install_card_has_a_name_field_and_review_send():
     assert "REVIEW &amp; SEND" in ui
     # success reloads every slot dropdown, as the owner asked
     fn = ui.split("function renderInstallFound")[1].split("\nasync function talk")[0]
-    assert "loadPresets(false)" in fn and "loadSaveSlots(false)" in fn
-    assert "$('installslot').innerHTML = $('saveslot').innerHTML" in fn
+    # success patches the caches directly rather than forcing a rescan
+    assert "noteSlotName(d.slot, d.installed)" in fn
+
+
+def test_install_patches_the_client_caches_without_a_rescan():
+    """The top preset picker read from a client cache the install never
+    touched, so a new name only appeared after a manual 512-slot rescan
+    (owner, 2026-09-03). Success now patches every cache directly."""
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    assert "function noteSlotName(number, name)" in ui
+    fn = ui.split("function renderInstallFound")[1].split("\nasync function talk")[0]
+    assert "noteSlotName(d.slot, d.installed)" in fn
+    # and it must NOT force a full reload on that path
+    assert "await loadPresets(false)" not in fn
+    note = ui.split("function noteSlotName(number, name)")[1].split("\nfunction renderPresets")[0]
+    for touched in ("allSlots.find", "saveSlots.find", "renderPresets(false)",
+                    "currentPresetNumber"):
+        assert touched in note, touched
