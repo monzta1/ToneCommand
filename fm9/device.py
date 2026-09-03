@@ -107,6 +107,44 @@ def parse_store_slots(raw: str) -> set[int]:
     return _parse_slots(raw)
 
 
+def get_cab_slots() -> set[int]:
+    """The ONLY user-cab slots this tool may write IRs into. Same shape and
+    same philosophy as the preset whitelist: user cabs are user property,
+    an installed IR permanently overwrites one, and nobody but the owner
+    knows which of theirs are disposable. TONECOMMAND_CAB_SLOTS, env or
+    .env, 0-based wire indices ("0-15" covers what the editor shows as
+    User Cab 1-16). DEFAULT IS EMPTY: cab installs are disabled until the
+    owner designates slots."""
+    import os
+    raw = os.environ.get("TONECOMMAND_CAB_SLOTS", "").strip()
+    if not raw:
+        env_file = Path(__file__).resolve().parent.parent / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.strip().startswith("TONECOMMAND_CAB_SLOTS="):
+                    raw = line.split("=", 1)[1].strip()
+                    break
+    # User-cab indices run past the preset range, so the preset parser's
+    # 0-511 cap does not apply here.
+    slots: set[int] = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, _, b = part.partition("-")
+            try:
+                slots.update(range(int(a), int(b) + 1))
+            except ValueError:
+                pass
+        else:
+            try:
+                slots.add(int(part))
+            except ValueError:
+                pass
+    return {n for n in slots if 0 <= n <= 1023}
+
+
 def get_store_slots() -> set[int]:
     """The ONLY preset slots this tool is allowed to store to, configured by
     the user for their own unit. Sources, first match wins:
@@ -252,6 +290,12 @@ class FM9:
     #: and the main surface stays exactly as narrow as it was.
     install_guard = sysex_guard("FM9-preset-install",
                                 frozenset({0x77, 0x78, 0x79}))
+    #: Likewise for user-cab (IR) installs: the 0x7A/0x7B/0x7C family,
+    #: reachable only through install_user_cab with parser-validated
+    #: frames. The read REQUEST (fn 0x19) sits in SENDABLE_FNS' spirit but
+    #: gets its own guard here too, keeping the main surface untouched.
+    cab_guard = sysex_guard("FM9-cab-install",
+                            frozenset({0x19, 0x7A, 0x7B, 0x7C}))
 
     def _send(self, frame: list[int]):
         if len(frame) > 5 and frame[0] == 0xF0:
@@ -562,6 +606,68 @@ class FM9:
             time.sleep(0.03)
         time.sleep(1.5)                     # let flash settle before reads
         return pf
+
+    def install_user_cab(self, raw: bytes, slot: int, filename: str = ""):
+        """Send a validated IR file to a whitelisted user-cab slot.
+
+        Same discipline as install_preset: parser-validated frames only,
+        their own guard, a whitelist with an empty default. The model-byte
+        rewrite (artists export IRs under whatever device their editor
+        had) and the slot addressing are UNVERIFIED on hardware until the
+        first live install; callers verify via read_user_cab.
+        """
+        from fm9 import cabfile
+        allowed = get_cab_slots()
+        if not allowed:
+            raise PermissionError(
+                "IR installs are disabled: no user-cab slots configured. "
+                "Set TONECOMMAND_CAB_SLOTS (env or .env), e.g. "
+                "TONECOMMAND_CAB_SLOTS=0-15 for what the editor shows as "
+                "User Cab 1-16, choosing slots on YOUR unit that are safe "
+                "to overwrite")
+        if slot not in allowed:
+            raise PermissionError(
+                f"IR install to user cab {slot + 1} (index {slot}) refused: "
+                f"configured cab slots are "
+                f"{sorted(allowed)[0]}-{sorted(allowed)[-1]}")
+        cf = cabfile.parse(raw, filename)   # re-validated at this boundary
+        frames = cabfile.retarget(cf, slot)
+        self._drain()
+        for frame in frames:
+            self.cab_guard.check(frame[5])
+            self.outp.send(mido.Message("sysex", data=frame[1:-1]))
+            time.sleep(0.03)
+        time.sleep(1.0)
+        return cf
+
+    def read_user_cab(self, slot: int, timeout: float = 4.0):
+        """Request user-cab `slot` back (fn 0x19) and collect the dump.
+
+        Returns the 0x7B chunk payload bytes, or None when nothing
+        answered. The read direction is the upstream-documented one; used
+        to verify an install by comparing what came back to what was sent.
+        """
+        req = p.envelope(0x19, [(slot >> 7) & 0x7F, slot & 0x7F, 0x10])
+        self.cab_guard.check(req[5])
+        self._drain()
+        self.outp.send(mido.Message("sysex", data=req[1:-1]))
+        deadline = time.time() + timeout
+        chunks: list[list[int]] = []
+        done = False
+        while time.time() < deadline and not done:
+            for msg in self.inp.iter_pending():
+                if msg.type != "sysex":
+                    continue
+                data = list(msg.data)
+                if len(data) < 6 or data[:3] != list(p.MFR):
+                    continue
+                if data[4] == 0x7B:
+                    chunks.append(data[5:-1])
+                elif data[4] == 0x7C:
+                    done = True
+                    break
+            time.sleep(0.005)
+        return chunks or None
 
     def rename_preset(self, name: str):
         self._drain()

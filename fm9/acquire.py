@@ -21,7 +21,7 @@ import re
 import urllib.request
 import zipfile
 
-from . import presetfile
+from . import cabfile, presetfile
 
 GOT_URL = "https://www.fractalaudio.com/gift-of-tone/"
 
@@ -103,11 +103,20 @@ def find(query: str, entries: list[dict]) -> dict | None:
 
 
 def fetch_presets(url: str, fetch=None) -> tuple[list[dict], list[str]]:
-    """Download a bundle and validate every FM9 preset inside.
+    """Back-compat face of fetch_bundle: presets and skip notes only."""
+    presets, _cabs, skipped = fetch_bundle(url, fetch)
+    return presets, skipped
 
-    Returns (presets, skipped): presets as {name, file, raw, chunks}; and
-    honest notes for everything in the bundle that was not an FM9 preset,
-    so "it found 3 of 9 files" never reads as silent loss.
+
+def fetch_bundle(url: str, fetch=None
+                 ) -> tuple[list[dict], list[dict], list[str]]:
+    """Download a bundle; validate every FM9 preset AND user-cab IR inside.
+
+    Returns (presets, cabs, skipped). Presets as {name, file, raw, chunks};
+    cabs as {label, file, raw, chunks, default_slot} where default_slot is
+    the artist's own U{n} filing when the filename states one - the slot
+    their presets reference, which is the step players get wrong by hand.
+    Skips carry honest notes so "found 3 of 9 files" never reads as loss.
     """
     fetch = fetch or _download
     data = fetch(url)
@@ -117,27 +126,45 @@ def fetch_presets(url: str, fetch=None) -> tuple[list[dict], list[str]]:
             zf = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile as exc:
             raise AcquireError(f"the download is not a readable zip: {exc}")
+        fasbundles = []
         for info in zf.infolist():
             base = info.filename.rsplit("/", 1)[-1]
-            if not base.lower().endswith(".syx") or base.startswith("._"):
-                continue                    # extras and AppleDouble junk
+            if base.startswith("._"):
+                continue                    # AppleDouble junk
+            if base.lower().endswith(".fasbundle"):
+                fasbundles.append(base)     # noted below, never silent
+                continue
+            if not base.lower().endswith(".syx"):
+                continue                    # readmes and extras
             candidates.append((base, zf.read(info)))
     elif data[:1] == b"\xf0":
         candidates.append((url.rsplit("/", 1)[-1], data))
     else:
         raise AcquireError("the download is neither a zip nor a .syx; "
                            "nothing here to install")
-    presets, skipped = [], []
+    presets, cabs, skipped = [], [], []
+    for base in (fasbundles if data[:2] == b"PK" else []):
+        skipped.append(f"{base}: FM9-Edit bundle format (.fasBundle), not "
+                       "yet supported here; import it with FM9-Edit")
     for base, raw in candidates:
         try:
             pf = presetfile.parse(raw)
-        except presetfile.PresetFileError as exc:
-            skipped.append(f"{base}: {exc}")
+            presets.append({"name": pf.name, "file": base, "raw": raw,
+                            "chunks": pf.chunks})
             continue
-        presets.append({"name": pf.name, "file": base, "raw": raw,
-                        "chunks": pf.chunks})
-    if not presets:
+        except presetfile.PresetFileError as exc:
+            preset_why = str(exc)   # `as` names unbind after the block
+        try:
+            cf = cabfile.parse(raw, base)
+            cabs.append({"label": cf.label, "file": base, "raw": raw,
+                         "chunks": cf.chunks,
+                         "default_slot": cabfile.default_slot(base)})
+            continue
+        except cabfile.CabFileError:
+            pass
+        skipped.append(f"{base}: {preset_why}")
+    if not presets and not cabs:
         raise AcquireError(
-            "the bundle held no FM9 presets. "
+            "the bundle held no FM9 presets or cabs. "
             + ("; ".join(skipped[:4]) if skipped else "it was empty"))
-    return presets, skipped
+    return presets, cabs, skipped

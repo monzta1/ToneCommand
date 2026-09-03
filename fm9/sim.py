@@ -255,6 +255,44 @@ class SimFM9Core:
             "hardware-verified; verify the slot name on a real unit")
         return []
 
+    # ---- user-cab (IR) install and read-back (0x19, 0x7A/0x7B/0x7C) ------
+    def _fn_7a(self, b):
+        self._cab_install = {"slot": ((b[0] & 0x7F) << 7) | (b[1] & 0x7F),
+                             "chunks": []}
+        return []
+
+    def _fn_7b(self, b):
+        pending = getattr(self, "_cab_install", None)
+        if pending is not None:
+            pending["chunks"].append(list(b))
+        return []
+
+    def _fn_7c(self, b):
+        pending = getattr(self, "_cab_install", None)
+        self._cab_install = None
+        if not pending or not pending["chunks"]:
+            return []
+        if not hasattr(self, "user_cabs"):
+            self.user_cabs = {}
+        self.user_cabs[pending["slot"]] = pending["chunks"]
+        self.undecoded.add(
+            "user-cab install (0x7A/0x7B/0x7C write direction, model-byte "
+            "rewrite, slot addressing) is not hardware-verified; verify by "
+            "reading the cab back on a real unit")
+        return []
+
+    def _fn_19(self, b):
+        slot = ((b[0] & 0x7F) << 7) | (b[1] & 0x7F)
+        stored = getattr(self, "user_cabs", {}).get(slot)
+        if not stored:
+            return []
+        out = [p.envelope(0x7A, [(slot >> 7) & 0x7F, slot & 0x7F, 0x00,
+                                 0x10, 0x7F])]
+        for chunk in stored:
+            out.append(p.envelope(0x7B, chunk))
+        out.append(p.envelope(0x7C, [0x00, 0x00, 0x00, 0x00, 0x00]))
+        return out
+
     # ---- official surface ----
     def _fn_0c(self, b):
         if b and b[0] != 0x7F:

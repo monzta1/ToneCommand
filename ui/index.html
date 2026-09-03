@@ -1720,6 +1720,11 @@
   #installfound .foundout { margin: 0; }
   #installfound .foundslot { min-width: 180px; }
   #installfound .foundgo { white-space: nowrap; }
+  #installfound .cabslot { width: 80px; font: inherit;
+    font-size: var(--fs-hint); }
+  #installfound .cabtag { color: var(--violet); font-size: var(--fs-badge);
+    letter-spacing: 0.1em; border: 1px solid var(--violet-dim);
+    border-radius: 2px; padding: 1px 6px; }
 
   /* Request pane hosts the conversation; the composer stays pinned. */
   #pane-request #chat { flex: 1; height: auto; min-height: 0; max-height: none; }
@@ -6060,13 +6065,24 @@ async function runAcquire(said) {
       body: JSON.stringify({query: said})});
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    const names = d.presets.map(x => `"${x.name}"`).join(', ');
-    chatNote(`Found ${d.artist} (Gift of Tone ${d.year}): ${d.presets.length} `
-      + `FM9 preset${d.presets.length === 1 ? '' : 's'}: ${names}. Every file `
-      + `validated. Pick a slot for each in the STORAGE drawer, which is `
-      + `open; installing writes flash and is verified by reading the slot `
-      + `back.`);
-    renderInstallFound(d.presets);
+    const names = d.presets.length
+      ? d.presets.map(x => `"${x.name}"`).join(', ')
+      : 'none in this bundle';
+    const cabBit = (d.cabs || []).length
+      ? ` Plus ${d.cabs.length} IR${d.cabs.length === 1 ? '' : 's'} the `
+        + `presets depend on (${d.cabs.map(c => `"${c.label}"`).join(', ')}), `
+        + (d.cab_slots_configured
+            ? `defaulted to the user-cab slots the artist filed them for.`
+            : `but IR installs are disabled until you set `
+              + `TONECOMMAND_CAB_SLOTS with user-cab slots you can spare.`)
+      : '';
+    chatNote(`Found ${d.artist} (Gift of Tone ${d.year}). `
+      + `FM9 presets: ${names}.${cabBit} `
+      + ((d.skipped || []).length
+          ? ` Not usable here: ${d.skipped.join('; ')}.` : '')
+      + ` Every accepted file validated. Pick slots in the STORAGE drawer, `
+      + `which is open; installs write flash and are verified by reading back.`);
+    renderInstallFound(d.presets, d.cabs || []);
     openDrawer('storage');
   } catch (e) {
     chatNote(`Could not fetch that: ${e.message}`);
@@ -6074,16 +6090,54 @@ async function runAcquire(said) {
   renderChat();
 }
 
-function renderInstallFound(presets) {
+function renderInstallFound(presets, cabs) {
+  cabs = cabs || [];
   const box = $('installfound');
-  box.hidden = !presets.length;
+  box.hidden = !presets.length && !cabs.length;
   box.innerHTML = presets.map(p => `
     <div class="saverow" data-hash="${p.hash}">
       <b class="foundname">${esc(p.name)}</b>
       <select class="foundslot">${$('saveslot').innerHTML}</select>
       <button class="small foundgo">INSTALL</button>
       <span class="hint foundout"></span>
+    </div>`).join('')
+  + cabs.map(c => `
+    <div class="saverow" data-cabhash="${c.hash}" data-file="${esc(c.file)}">
+      <span class="cabtag">IR</span>
+      <b class="foundname">${esc(c.label)}</b>
+      <input class="cabslot" type="number" min="1" max="1024"
+             value="${c.default_slot != null ? c.default_slot + 1 : 1}"
+             title="user cab number, as the editor shows it">
+      <button class="small foundgo">INSTALL IR</button>
+      <span class="hint foundout">${c.default_slot != null
+        ? 'the artist filed this for User Cab ' + (c.default_slot + 1)
+        : 'no slot named in the file; pick one'}</span>
     </div>`).join('');
+  for (const row of box.querySelectorAll('[data-cabhash]')) {
+    row.querySelector('.foundgo').onclick = async () => {
+      const cabNo = Number(row.querySelector('.cabslot').value);
+      const name = row.querySelector('.foundname').textContent;
+      if (!window.confirm(
+          `Install IR "${name}" to User Cab ${cabNo}, permanently `
+          + `overwriting whatever IR is stored there?\n\n`
+          + 'This writes flash. UNDO does not cover it.')) return;
+      const out = row.querySelector('.foundout');
+      out.textContent = 'installing and reading the cab back...';
+      try {
+        const r = await fetch('/api/install-cab', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({hash: row.dataset.cabhash, slot: cabNo - 1,
+                                filename: row.dataset.file})});
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        out.textContent = d.detail;
+        log(`IR install: ${d.detail}`, d.ok ? 'ok' : 'err');
+      } catch (e) {
+        out.textContent = `failed: ${e.message}`;
+        log(`IR install failed: ${e.message}`, 'err');
+      }
+    };
+  }
   for (const row of box.querySelectorAll('[data-hash]')) {
     row.querySelector('.foundgo').onclick = async () => {
       const slot = Number(row.querySelector('.foundslot').value);

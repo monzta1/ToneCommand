@@ -20,9 +20,9 @@ from fastapi.responses import (FileResponse, JSONResponse,
                                StreamingResponse)
 from pydantic import BaseModel
 
-from fm9.device import FM9, FM9NotFound
+from fm9.device import FM9, FM9NotFound, get_cab_slots
 from fm9.registry import Registry
-from fm9 import (acquire, ai_settings, describe, designs, editbuffer, health,
+from fm9 import (acquire, ai_settings, cabfile, describe, designs, editbuffer, health,
                  planner, presetfile, recipes as recipebook, rigprofile,
                  scratch_build, share)
 # `slots` is a local variable in more than one function here, so the module
@@ -1892,7 +1892,7 @@ def api_acquire(body: dict):
             return JSONResponse(
                 {"error": f"nothing on Gift of Tone matches that. "
                           f"Recent gifts: {near}..."}, status_code=404)
-        presets, skipped = acquire.fetch_presets(hit["url"])
+        presets, cabs, skipped = acquire.fetch_bundle(hit["url"])
     except acquire.AcquireError as e:
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception as e:
@@ -1903,10 +1903,71 @@ def api_acquire(body: dict):
         _install_cache[digest] = pr["raw"]
         out.append({"hash": digest, "name": pr["name"], "file": pr["file"],
                     "chunks": pr["chunks"], "bytes": len(pr["raw"])})
-    log.info("acquired %d preset(s) from %s (%s)", len(out),
-             hit["artist"], hit["url"])
+    out_cabs = []
+    for cb in cabs:
+        digest = hashlib.sha1(cb["raw"]).hexdigest()
+        _install_cache[digest] = cb["raw"]
+        out_cabs.append({"hash": digest, "label": cb["label"],
+                         "file": cb["file"], "chunks": cb["chunks"],
+                         "default_slot": cb["default_slot"]})
+    log.info("acquired %d preset(s), %d cab(s) from %s (%s)", len(out),
+             len(out_cabs), hit["artist"], hit["url"])
     return {"artist": hit["artist"], "year": hit["year"], "url": hit["url"],
-            "presets": out, "skipped": skipped}
+            "presets": out, "cabs": out_cabs, "skipped": skipped,
+            "cab_slots_configured": bool(get_cab_slots())}
+
+
+@app.post("/api/install-cab")
+def api_install_cab(body: dict):
+    """Send a previewed IR file to a whitelisted user-cab slot. FLASH.
+
+    Same discipline as preset installs, plus the two honest unknowns of
+    this direction (model-byte rewrite and slot addressing are
+    hardware-unverified): done is claimed only after the cab is read back
+    and its body matches what was sent, byte for byte.
+    """
+    raw = _install_cache.get(str(body.get("hash") or ""))
+    if raw is None:
+        return JSONResponse(
+            {"error": "no parsed file is pending; fetch or choose it again"},
+            status_code=409)
+    try:
+        slot = int(body.get("slot"))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "slot must be a number"},
+                            status_code=400)
+    filename = str(body.get("filename") or "")
+    with _lock:
+        if _gig_mode["on"]:
+            return JSONResponse(
+                {"error": "GIG LOCK is on: refusing a flash write."},
+                status_code=423)
+        try:
+            fm9 = get_fm9()
+            cf = fm9.install_user_cab(raw, slot, filename)
+            got = fm9.read_user_cab(slot)
+        except PermissionError as e:
+            return JSONResponse({"error": str(e)}, status_code=403)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "FM9 not connected"},
+                                status_code=503)
+        except cabfile.CabFileError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    sent = [f[6:-2] for f in cabfile.retarget(cf, slot)[1:-1]]
+    ok = bool(got) and got == sent
+    if ok:
+        log.info("installed IR %r to user cab %d", cf.label, slot + 1)
+    return {"ok": ok, "installed": cf.label, "slot": slot,
+            "user_cab": slot + 1,
+            "detail": (f"user cab {slot + 1} reads back byte-identical: "
+                       f"verified" if ok else
+                       f"user cab {slot + 1} did not read back matching "
+                       "what was sent. The IR write direction is not yet "
+                       "hardware-proven; treat as failed and check the "
+                       "unit's cab manager")}
 
 
 @app.post("/api/install/parse")

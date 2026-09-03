@@ -5,6 +5,21 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **IRs install to the slots the artist filed them for (#42 phase 4).**
+  When a fetched bundle ships user-cab IRs, they appear beside the
+  presets with their destination already set from Fractal's own U{n}
+  export naming: the user-cab slot the presets actually reference, which
+  is the step players get wrong by hand. The cab envelope
+  (0x7A/0x7B/0x7C) was verified against a real artist export (Wes Hauch,
+  GoT 2023); artists export IRs under whatever device their editor had,
+  so installs rewrite the model byte with checksums recomputed. IR
+  writes have their own whitelist (TONECOMMAND_CAB_SLOTS, disabled by
+  default because user cabs are user property), their own transport
+  guard, and are verified by reading the cab back byte-identical.
+  FM9-Edit .fasBundle files are named as not-yet-supported instead of
+  vanishing. The write direction, model rewrite and slot addressing are
+  hardware-unverified until the first live install, and every surface
+  says so.
 - **"Get me the Periphery tones from Gift of Tone" now works as a
   sentence (#42).** A named source in the COMMAND box routes to a fetch
   instead of the tone planner, which would have built an imitation of a
