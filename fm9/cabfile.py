@@ -100,15 +100,23 @@ def parse(raw: bytes, filename: str = "") -> CabFile:
     return CabFile(frames=frames, source_model=models.pop(), label=label)
 
 
-def retarget(cf: CabFile, slot: int, model: int = p.MODEL_FM9
-             ) -> list[list[int]]:
-    """The file's frames aimed at user-cab `slot` on `model`.
+#: The head's fourth payload byte on a captured export. Reads and the
+#: bank encoding are probed against the device before any write, so this
+#: is a starting point, never an assumption sent blind.
+DEFAULT_TAG = 0x10
+
+
+def retarget(cf: CabFile, slot: int, model: int = p.MODEL_FM9,
+             tag: int = DEFAULT_TAG) -> list[list[int]]:
+    """The file's frames aimed at user-cab index `slot` on `model`.
 
     Model byte rewritten on every frame (IRs are family-shared; the frames
-    must claim the device they are entering), the head's slot field set
-    big-endian like the preset head, every touched frame re-checksummed.
-    Both rewrites are UNVERIFIED on hardware until the first live install,
-    and callers must verify by reading the slot back.
+    must claim the device they are entering), the head's index field set
+    big-endian like the preset head, the head's tag byte set to the value
+    the device itself confirmed for the destination (see the device
+    layer's probe), every touched frame re-checksummed. The write
+    direction is UNVERIFIED on hardware until the first live install, and
+    callers must verify by reading the slot back.
     """
     if not 0 <= slot <= 0x3FFF:
         raise CabFileError(f"user cab slot {slot} is out of range")
@@ -119,6 +127,8 @@ def retarget(cf: CabFile, slot: int, model: int = p.MODEL_FM9
         if i == 0:
             g[6] = (slot >> 7) & 0x7F
             g[7] = slot & 0x7F
+            if len(g) > 10:
+                g[9] = tag & 0x7F
         g[-2] = p.checksum(g[1:-2])
         out.append(g)
     return out

@@ -2348,11 +2348,12 @@
       <div class="installrow">
         <div class="navtitle" style="margin-top:14px">INSTALL A PRESET FILE</div>
         <div class="hint">A Gift of Tone drop, an Axe-Change download, a
-          .syx a friend sent. The file is validated as an FM9 preset before
-          anything is sent, installs only to your allowed slots, and is
-          verified by reading the slot's name back.</div>
+          purchased .fasBundle, a .syx a friend sent. Everything is
+          validated before anything is sent; bundles bring their cabs with
+          the vendor's own destinations; installs land only in your allowed
+          slots and are verified by reading back.</div>
         <div class="saverow">
-          <input type="file" id="installfile" accept=".syx">
+          <input type="file" id="installfile" accept=".syx,.fasBundle">
         </div>
         <div class="hint" id="installwhat" hidden></div>
         <div class="saverow" id="installgo" hidden>
@@ -6101,32 +6102,44 @@ function renderInstallFound(presets, cabs) {
       <button class="small foundgo">INSTALL</button>
       <span class="hint foundout"></span>
     </div>`).join('')
-  + cabs.map(c => `
-    <div class="saverow" data-cabhash="${c.hash}" data-file="${esc(c.file)}">
+  + cabs.map(c => {
+      const bank = c.bank || 1;
+      const number = c.number != null ? c.number
+        : (c.default_slot != null ? c.default_slot + 1 : 1);
+      const fixed = c.bank != null;   // a Bundle-Map destination is law
+      return `
+    <div class="saverow" data-cabhash="${c.hash}" data-file="${esc(c.file)}"
+         data-bank="${bank}">
       <span class="cabtag">IR</span>
       <b class="foundname">${esc(c.label)}</b>
-      <input class="cabslot" type="number" min="1" max="1024"
-             value="${c.default_slot != null ? c.default_slot + 1 : 1}"
+      <span class="hint" style="margin:0">Bank ${bank} #</span>
+      <input class="cabslot" type="number" min="1" max="512"
+             value="${number}" ${fixed ? 'readonly' : ''}
              title="user cab number, as the editor shows it">
       <button class="small foundgo">INSTALL IR</button>
-      <span class="hint foundout">${c.default_slot != null
-        ? 'the artist filed this for User Cab ' + (c.default_slot + 1)
-        : 'no slot named in the file; pick one'}</span>
-    </div>`).join('');
+      <span class="hint foundout">${fixed
+        ? 'destination fixed by the bundle: where the preset looks'
+        : (c.default_slot != null
+            ? 'the artist filed this for User Cab ' + number
+            : 'no slot named in the file; pick one')}</span>
+    </div>`;
+    }).join('');
   for (const row of box.querySelectorAll('[data-cabhash]')) {
     row.querySelector('.foundgo').onclick = async () => {
       const cabNo = Number(row.querySelector('.cabslot').value);
+      const bank = Number(row.dataset.bank || 1);
       const name = row.querySelector('.foundname').textContent;
       if (!window.confirm(
-          `Install IR "${name}" to User Cab ${cabNo}, permanently `
-          + `overwriting whatever IR is stored there?\n\n`
+          `Install IR "${name}" to User Cab bank ${bank} number ${cabNo}, `
+          + `permanently overwriting whatever IR is stored there?\n\n`
           + 'This writes flash. UNDO does not cover it.')) return;
       const out = row.querySelector('.foundout');
-      out.textContent = 'installing and reading the cab back...';
+      out.textContent = 'probing the destination, installing, reading back...';
       try {
         const r = await fetch('/api/install-cab', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({hash: row.dataset.cabhash, slot: cabNo - 1,
+          body: JSON.stringify({hash: row.dataset.cabhash, bank,
+                                number: cabNo,
                                 filename: row.dataset.file})});
         const d = await r.json();
         if (d.error) throw new Error(d.error);
@@ -7267,6 +7280,16 @@ $('installfile').onchange = async () => {
       body: JSON.stringify({data: b64})});
     const d = await r.json();
     if (d.error) { $('installwhat').textContent = d.error; return; }
+    if (d.bundle) {
+      // A .fasBundle: the preset plus the cabs it depends on, each cab's
+      // destination stated by the vendor's own Bundle-Map.
+      installPending = null;
+      $('installwhat').innerHTML = `Valid FM9 bundle: <b>${esc(d.name)}</b>`
+        + ` with ${d.cabs.length} cab${d.cabs.length === 1 ? '' : 's'}, `
+        + `destinations set by the vendor. Install each below.`;
+      renderInstallFound([d.preset], d.cabs);
+      return;
+    }
     installPending = d;
     $('installwhat').innerHTML = `Valid FM9 preset: <b>${esc(d.name)}</b> `
       + `(${d.chunks} chunks, ${d.bytes} bytes, saved from slot `

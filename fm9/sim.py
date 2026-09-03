@@ -258,6 +258,7 @@ class SimFM9Core:
     # ---- user-cab (IR) install and read-back (0x19, 0x7A/0x7B/0x7C) ------
     def _fn_7a(self, b):
         self._cab_install = {"slot": ((b[0] & 0x7F) << 7) | (b[1] & 0x7F),
+                             "tag": b[3] if len(b) > 3 else 0x10,
                              "chunks": []}
         return []
 
@@ -274,7 +275,7 @@ class SimFM9Core:
             return []
         if not hasattr(self, "user_cabs"):
             self.user_cabs = {}
-        self.user_cabs[pending["slot"]] = pending["chunks"]
+        self.user_cabs[(pending["slot"], pending["tag"])] = pending["chunks"]
         self.undecoded.add(
             "user-cab install (0x7A/0x7B/0x7C write direction, model-byte "
             "rewrite, slot addressing) is not hardware-verified; verify by "
@@ -282,13 +283,17 @@ class SimFM9Core:
         return []
 
     def _fn_19(self, b):
+        # A cab read ALWAYS answers: an empty slot answers with an all-0x7F
+        # body (upstream capture), which is what makes read-probing a
+        # destination conclusive before any write. The sim models the
+        # tag-carries-bank candidate; a real device that answers the flat
+        # candidate instead simply confirms that one at probe time.
         slot = ((b[0] & 0x7F) << 7) | (b[1] & 0x7F)
-        stored = getattr(self, "user_cabs", {}).get(slot)
-        if not stored:
-            return []
+        tag = b[2] if len(b) > 2 else 0x10
+        stored = getattr(self, "user_cabs", {}).get((slot, tag))
         out = [p.envelope(0x7A, [(slot >> 7) & 0x7F, slot & 0x7F, 0x00,
-                                 0x10, 0x7F])]
-        for chunk in stored:
+                                 tag & 0x7F, 0x7F])]
+        for chunk in (stored or [[0x7F] * 8]):
             out.append(p.envelope(0x7B, chunk))
         out.append(p.envelope(0x7C, [0x00, 0x00, 0x00, 0x00, 0x00]))
         return out

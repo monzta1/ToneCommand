@@ -630,30 +630,24 @@ class FM9:
                 f"IR install to user cab {slot + 1} (index {slot}) refused: "
                 f"configured cab slots are "
                 f"{sorted(allowed)[0]}-{sorted(allowed)[-1]}")
-        cf = cabfile.parse(raw, filename)   # re-validated at this boundary
-        frames = cabfile.retarget(cf, slot)
-        self._drain()
-        for frame in frames:
-            self.cab_guard.check(frame[5])
-            self.outp.send(mido.Message("sysex", data=frame[1:-1]))
-            time.sleep(0.03)
-        time.sleep(1.0)
+        cf, _idx, _tag = self.install_user_cab_at(raw, 1, slot + 1,
+                                                  filename)
         return cf
 
-    def read_user_cab(self, slot: int, timeout: float = 4.0):
-        """Request user-cab `slot` back (fn 0x19) and collect the dump.
+    def read_user_cab_addr(self, idx: int, tag: int, timeout: float = 4.0):
+        """Request the user cab at (idx, tag) back via fn 0x19.
 
-        Returns the 0x7B chunk payload bytes, or None when nothing
-        answered. The read direction is the upstream-documented one; used
-        to verify an install by comparing what came back to what was sent.
+        Returns (head_payload, chunk_payloads) when the device answered,
+        else None. An empty slot still ANSWERS (all-0x7F body per the
+        upstream capture), which is what makes read-probing a destination
+        safe and conclusive before any write.
         """
-        req = p.envelope(0x19, [(slot >> 7) & 0x7F, slot & 0x7F, 0x10])
+        req = p.envelope(0x19, [(idx >> 7) & 0x7F, idx & 0x7F, tag & 0x7F])
         self.cab_guard.check(req[5])
         self._drain()
         self.outp.send(mido.Message("sysex", data=req[1:-1]))
         deadline = time.time() + timeout
-        chunks: list[list[int]] = []
-        done = False
+        head, chunks, done = None, [], False
         while time.time() < deadline and not done:
             for msg in self.inp.iter_pending():
                 if msg.type != "sysex":
@@ -661,13 +655,78 @@ class FM9:
                 data = list(msg.data)
                 if len(data) < 6 or data[:3] != list(p.MFR):
                     continue
-                if data[4] == 0x7B:
+                if data[4] == 0x7A:
+                    head = data[5:-1]
+                elif data[4] == 0x7B:
                     chunks.append(data[5:-1])
                 elif data[4] == 0x7C:
                     done = True
                     break
             time.sleep(0.005)
-        return chunks or None
+        if head is None and not chunks:
+            return None
+        return (head or [], chunks)
+
+    #: How a (bank, number) shown by the editor might encode on the wire.
+    #: Candidate A: the head tag carries the bank (0x10 = bank 1). B: a
+    #: flat index across 512-slot banks under the captured 0x10 tag.
+    #: NEITHER is assumed: the device is read-probed and only an encoding
+    #: it answered for is ever used to write. See install_user_cab_at.
+    @staticmethod
+    def _cab_addr_candidates(bank: int, number: int):
+        yield (number - 1, 0x10 + (bank - 1))
+        yield ((bank - 1) * 512 + (number - 1), 0x10)
+
+    def probe_cab_encoding(self, bank: int, number: int):
+        """The (idx, tag) this device actually answers for (bank, number).
+
+        Read-only. Raises PermissionError-free RuntimeError when nothing
+        answers, so callers never fall through to a guessed write.
+        """
+        for idx, tag in self._cab_addr_candidates(bank, number):
+            got = self.read_user_cab_addr(idx, tag, timeout=2.0)
+            if got is not None:
+                return idx, tag
+        raise RuntimeError(
+            f"the device did not answer a read for user cab bank {bank} "
+            f"number {number} under any known addressing; refusing to "
+            "write blind")
+
+    def install_user_cab_at(self, raw: bytes, bank: int, number: int,
+                            filename: str = ""):
+        """Send a validated IR to user-cab (bank, number), as the editor
+        numbers them. Whitelisted flat as (bank-1)*512+(number-1); the
+        destination is read-probed first and the write uses only the
+        addressing the device itself answered for; verified by callers via
+        read_user_cab_addr comparing byte-for-byte.
+        """
+        from fm9 import cabfile
+        if bank < 1 or number < 1:
+            raise ValueError("bank and number are 1-based, as FM9-Edit "
+                             "shows them")
+        flat = (bank - 1) * 512 + (number - 1)
+        allowed = get_cab_slots()
+        if not allowed:
+            raise PermissionError(
+                "IR installs are disabled: no user-cab slots configured. "
+                "Set TONECOMMAND_CAB_SLOTS (env or .env) with flat indices "
+                "(bank 1 = 0-511, bank 2 = 512-1023), choosing cabs on "
+                "YOUR unit that are safe to overwrite")
+        if flat not in allowed:
+            raise PermissionError(
+                f"IR install to user cab bank {bank} number {number} "
+                f"(flat index {flat}) refused: it is outside "
+                "TONECOMMAND_CAB_SLOTS")
+        cf = cabfile.parse(raw, filename)   # re-validated at this boundary
+        idx, tag = self.probe_cab_encoding(bank, number)
+        frames = cabfile.retarget(cf, idx, tag=tag)
+        self._drain()
+        for frame in frames:
+            self.cab_guard.check(frame[5])
+            self.outp.send(mido.Message("sysex", data=frame[1:-1]))
+            time.sleep(0.03)
+        time.sleep(1.0)
+        return cf, idx, tag
 
     def rename_preset(self, name: str):
         self._drain()

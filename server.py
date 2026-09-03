@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from fm9.device import FM9, FM9NotFound, get_cab_slots
 from fm9.registry import Registry
-from fm9 import (acquire, ai_settings, cabfile, describe, designs, editbuffer, health,
+from fm9 import (acquire, ai_settings, bundlefile, cabfile, describe, designs, editbuffer, health,
                  planner, presetfile, recipes as recipebook, rigprofile,
                  scratch_build, share)
 # `slots` is a local variable in more than one function here, so the module
@@ -1931,12 +1931,20 @@ def api_install_cab(body: dict):
         return JSONResponse(
             {"error": "no parsed file is pending; fetch or choose it again"},
             status_code=409)
-    try:
-        slot = int(body.get("slot"))
-    except (TypeError, ValueError):
-        return JSONResponse({"error": "slot must be a number"},
-                            status_code=400)
     filename = str(body.get("filename") or "")
+    try:
+        bank = int(body.get("bank") or 1)
+        if body.get("number") is not None:
+            number = int(body.get("number"))
+        elif body.get("slot") is not None:
+            number = int(body.get("slot")) + 1     # legacy flat, bank 1
+        else:
+            raise ValueError
+    except (TypeError, ValueError):
+        return JSONResponse(
+            {"error": "say where: a bank and number, as the editor shows "
+                      "them"}, status_code=400)
+    where = f"user cab bank {bank} number {number}"
     with _lock:
         if _gig_mode["on"]:
             return JSONResponse(
@@ -1944,8 +1952,9 @@ def api_install_cab(body: dict):
                 status_code=423)
         try:
             fm9 = get_fm9()
-            cf = fm9.install_user_cab(raw, slot, filename)
-            got = fm9.read_user_cab(slot)
+            cf, idx, tag = fm9.install_user_cab_at(raw, bank, number,
+                                                   filename)
+            got = fm9.read_user_cab_addr(idx, tag)
         except PermissionError as e:
             return JSONResponse({"error": str(e)}, status_code=403)
         except FM9NotFound:
@@ -1956,16 +1965,15 @@ def api_install_cab(body: dict):
             return JSONResponse({"error": str(e)}, status_code=422)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-    sent = [f[6:-2] for f in cabfile.retarget(cf, slot)[1:-1]]
-    ok = bool(got) and got == sent
+    sent = [f[6:-2] for f in cabfile.retarget(cf, idx, tag=tag)[1:-1]]
+    ok = bool(got) and got[1] == sent
     if ok:
-        log.info("installed IR %r to user cab %d", cf.label, slot + 1)
-    return {"ok": ok, "installed": cf.label, "slot": slot,
-            "user_cab": slot + 1,
-            "detail": (f"user cab {slot + 1} reads back byte-identical: "
-                       f"verified" if ok else
-                       f"user cab {slot + 1} did not read back matching "
-                       "what was sent. The IR write direction is not yet "
+        log.info("installed IR %r to %s", cf.label, where)
+    return {"ok": ok, "installed": cf.label, "bank": bank, "number": number,
+            "detail": (f"{where} reads back byte-identical: verified"
+                       if ok else
+                       f"{where} did not read back matching what was "
+                       "sent. The IR write direction is not yet "
                        "hardware-proven; treat as failed and check the "
                        "unit's cab manager")}
 
@@ -1986,12 +1994,33 @@ def api_install_parse(body: dict):
     except Exception:
         return JSONResponse({"error": "could not read the file data"},
                             status_code=400)
+    _install_cache.clear()               # one pending file at a time
+    if raw[:2] == b"PK":
+        # An FM9-Edit .fasBundle: a preset plus the cabs it depends on,
+        # each cab's destination stated by the vendor's own Bundle-Map.
+        try:
+            bf = bundlefile.parse(raw)
+        except bundlefile.BundleFileError as e:
+            return JSONResponse({"error": str(e)}, status_code=422)
+        ph = hashlib.sha1(bf.preset_raw).hexdigest()
+        _install_cache[ph] = bf.preset_raw
+        cabs = []
+        for cb in bf.cabs:
+            ch = hashlib.sha1(cb.raw).hexdigest()
+            _install_cache[ch] = cb.raw
+            cabs.append({"hash": ch, "label": cb.name, "file": cb.file,
+                         "bank": cb.bank, "number": cb.number,
+                         "chunks": cb.cab.chunks})
+        return {"bundle": True, "name": bf.preset_name,
+                "preset": {"hash": ph, "name": bf.preset.name,
+                           "chunks": bf.preset.chunks,
+                           "file": bf.preset_name},
+                "cabs": cabs}
     try:
         pf = presetfile.parse(raw)
     except presetfile.PresetFileError as e:
         return JSONResponse({"error": str(e)}, status_code=422)
     digest = hashlib.sha1(raw).hexdigest()
-    _install_cache.clear()               # one pending install at a time
     _install_cache[digest] = raw
     return {"hash": digest, "name": pf.name, "chunks": pf.chunks,
             "bytes": len(raw),

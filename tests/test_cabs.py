@@ -84,9 +84,10 @@ def _stage(client, raw):
 def test_install_ir_and_read_back_byte_identical(client):
     h = _stage(client, make_cab())
     out = client.post("/api/install-cab",
-                      json={"hash": h, "slot": 0,
+                      json={"hash": h, "bank": 1, "number": 1,
                             "filename": "U1-Cab_Test.syx"}).json()
-    assert out["ok"] is True and out["user_cab"] == 1
+    assert out["ok"] is True
+    assert out["bank"] == 1 and out["number"] == 1
     assert "byte-identical" in out["detail"]
     assert any("user-cab install" in u
                for u in server._fm9.sim_core.undecoded)
@@ -125,3 +126,50 @@ def test_the_page_offers_ir_rows_with_the_artists_slot():
     assert "INSTALL IR" in UI
     assert "/api/install-cab" in UI
     assert "the artist filed this for User Cab" in UI
+
+
+def test_a_purchased_bundle_installs_preset_and_cabs_where_the_map_says(
+        client, monkeypatch):
+    """The .fasBundle road: the vendor's Bundle-Map pins each cab to the
+    user-cab bank/number the preset references; nothing is left to the
+    player to get wrong. Whitelists still bound both writes."""
+    import base64
+    import io
+    import zipfile
+    from tests.test_install import make_file
+    monkeypatch.setenv("TONECOMMAND_CAB_SLOTS", "512-1023")   # bank 2
+    monkeypatch.setattr(server, "_preset_cache", {"slots": None})
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(".bundle", """<?xml version="1.0"?>
+<Bundle-Map version="1">
+  <Device deviceId="18" deviceMajor="9" deviceMinor="2"/>
+  <Preset Location="401" Name="BT Test" File="BT Test.syx"/>
+  <CabData CabID="62" Channel="0" SlotIndex="0" Bank="2" Number="72"
+           Name="BT_Cab_01" File="cabs/BT_Cab_01.syx"/>
+</Bundle-Map>""")
+        z.writestr("BT Test.syx", make_file(name="BT Test"))
+        z.writestr("cabs/BT_Cab_01.syx", make_cab())
+    d = client.post("/api/install/parse", json={
+        "data": base64.b64encode(buf.getvalue()).decode()}).json()
+    assert d["bundle"] is True and d["name"] == "BT Test"
+    assert d["cabs"][0]["bank"] == 2 and d["cabs"][0]["number"] == 72
+    out = client.post("/api/install", json={
+        "hash": d["preset"]["hash"], "slot": 140}).json()
+    assert out["ok"] is True and out["read_back"] == "BT Test"
+    cab = client.post("/api/install-cab", json={
+        "hash": d["cabs"][0]["hash"], "bank": 2, "number": 72,
+        "filename": "cabs/BT_Cab_01.syx"}).json()
+    assert cab["ok"] is True and "byte-identical" in cab["detail"]
+
+
+def test_a_bundle_for_another_device_is_refused():
+    from fm9 import bundlefile
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(".bundle", '<Bundle-Map version="1">'
+                   '<Device deviceId="16"/></Bundle-Map>')
+    with pytest.raises(bundlefile.BundleFileError, match="device id 16"):
+        bundlefile.parse(buf.getvalue())

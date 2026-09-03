@@ -5,6 +5,16 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **Purchased .fasBundle packs install, cabs included, where the vendor
+  says (#42).** An FM9-Edit .fasBundle is a zip holding a Bundle-Map
+  that pins every cab to the user-cab bank and number the preset
+  references. Drop one on the Storage drawer and the preset plus each IR
+  appear with those destinations fixed, so nothing is left to the player
+  to get wrong. Verified against real purchased BoutiqueTones packs (six
+  presets, thirty vendor-pinned cab destinations, all parsing). Bank
+  addressing on the wire is not assumed: the destination is read-probed
+  first and the write uses only an addressing the device itself answered
+  for. Bundles for other Fractal devices are refused by device id.
 - **IRs install to the slots the artist filed them for (#42 phase 4).**
   When a fetched bundle ships user-cab IRs, they appear beside the
   presets with their destination already set from Fractal's own U{n}
