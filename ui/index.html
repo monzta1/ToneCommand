@@ -1848,6 +1848,26 @@
     border-radius: 2px; padding: 1px 6px; margin: 2px 4px 2px 0;
     font-variant-numeric: tabular-nums; }
   #inspector .console { margin-bottom: 12px; padding: 14px; }
+  /* The Inspector rail is 356px, and the amp/cab pair plus the knob
+     grids were laid out for a full-width page: two columns here gave each
+     ~150px, so the amp value overflowed into the cab and the cab's
+     description wrapped one word per line (owner, 2026-09-03). Stack them
+     in the rail; the EXPAND overlay below is where two columns belong. */
+  #inspector:not(.wide) .picks { grid-template-columns: 1fr; gap: 12px;
+    margin-bottom: 14px; }
+  #inspector .audbtn .l { white-space: normal; overflow-wrap: anywhere;
+    line-height: 1.4; }
+  /* EXPAND: the Inspector floats over the work canvas so every slider and
+     the full cab description have room. columns:340px on .knobs then flows
+     to two or three columns on its own. */
+  #inspector.wide { position: fixed; top: 132px; right: 16px; bottom: 64px;
+    width: min(860px, calc(100vw - 280px)); z-index: 60; overflow-y: auto;
+    background: rgba(8,14,22,0.99); border: 1px solid var(--cyan-dim);
+    border-radius: 4px; padding: 14px 18px;
+    box-shadow: 0 8px 44px rgba(0,0,0,0.7); }
+  #inspector.wide .picks { grid-template-columns: 1fr 1fr; }
+  #inspexpand.on { color: var(--cyan); border-color: var(--cyan-dim); }
+  .insphead .spacer { flex: 1; }
   .insphead { display: flex; align-items: center; justify-content:
     space-between; margin-bottom: 10px; color: var(--violet);
     letter-spacing: 0.12em; font-size: var(--fs-label); }
@@ -2219,6 +2239,8 @@
       <div id="inspector" hidden>
         <div class="insphead">
           <span id="inspname">BLOCK</span>
+          <span class="spacer"></span>
+          <button class="small" id="inspexpand" title="more room for the controls">EXPAND</button>
           <button class="mclose" id="inspclose" title="back to impact">&#10005;</button>
         </div>
         <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
@@ -7842,7 +7864,14 @@ function selectBlock(fam) {
 }
 $('inspclose').onclick = () => {
   $('inspector').hidden = true;
+  $('inspector').classList.remove('wide');
+  $('inspexpand').classList.remove('on');
   $('stagerail').hidden = false;
+};
+$('inspexpand').onclick = () => {
+  const wide = $('inspector').classList.toggle('wide');
+  $('inspexpand').classList.toggle('on', wide);
+  $('inspexpand').textContent = wide ? 'COLLAPSE' : 'EXPAND';
 };
 $('openamp').onclick = () => selectBlock('DISTORT');
 

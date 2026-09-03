@@ -4,6 +4,16 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **The Inspector no longer garbles amp/cab names, and EXPANDs for room.**
+  The amp/cab pair and knob grids were laid out for a full-width page, so
+  in the 356px Inspector rail the amp value overflowed into the cabinet
+  and the cab's description wrapped one word per line (owner,
+  2026-09-03). They stack cleanly in the rail now, and a new EXPAND button
+  floats the Inspector over the work canvas: amp and cab side by side with
+  the full description readable, the whole tone stack and effects in
+  multiple columns, every slider visible at once.
+
 ### Added
 - **Installing a file is a review-and-send flow you name (#42).**
   Dropping a preset or bundle now shows a card with an editable NAME
