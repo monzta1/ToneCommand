@@ -85,6 +85,23 @@ def catalog(fetch=None) -> list[dict]:
     return out
 
 
+def parse_query(query: str) -> tuple:
+    """Split a spoken request into (search terms, destination editor slot).
+
+    "find the luke tone and load it to preset 2" -> ("luke", 2). The
+    destination clause (to/into/on preset|slot N) is pulled out so its
+    number is not mistaken for a search term, and returned as the FM9-Edit
+    slot number the caller should install to. None when no slot was named.
+    """
+    m = re.search(r"\b(?:to|into|on|in)\s+(?:preset|slot|number|#)?\s*"
+                  r"(\d{1,3})\b", query.lower())
+    target = int(m.group(1)) if m else None
+    clean = query
+    if m:
+        clean = query[:m.start()] + query[m.end():]
+    return clean.strip(), target
+
+
 def find(query: str, entries: list[dict]) -> dict | None:
     """The best-matching gift for a plain-words ask, or None.
 

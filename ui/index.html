@@ -6095,7 +6095,7 @@ function acquireIntent(said) {
 
 async function runAcquire(said) {
   chatLog.push({role: 'user', content: said});
-  chatNote('Going to Gift of Tone...');
+  chatNote('Looking for it...');
   renderChat();
   try {
     const r = await fetch('/api/acquire', {
@@ -6103,6 +6103,12 @@ async function runAcquire(said) {
       body: JSON.stringify({query: said})});
     const d = await r.json();
     if (d.error) throw new Error(d.error);
+    // "... load it to preset N" with exactly one preset: install straight
+    // there and load it, no drawer detour. Still confirmed, still verified.
+    if (d.target_editor && d.presets.length >= 1) {
+      await acquireInstallAndLoad(d, said);
+      return;
+    }
     const names = d.presets.length
       ? d.presets.map(x => `"${x.name}"`).join(', ')
       : 'none in this bundle';
@@ -6114,7 +6120,7 @@ async function runAcquire(said) {
             : `but IR installs are disabled until you set `
               + `TONECOMMAND_CAB_SLOTS with user-cab slots you can spare.`)
       : '';
-    chatNote(`Found ${d.artist} (Gift of Tone ${d.year}). `
+    chatNote(`Found in ${esc(d.artist)}. `
       + `FM9 presets: ${names}.${cabBit} `
       + ((d.skipped || []).length
           ? ` Not usable here: ${d.skipped.join('; ')}.` : '')
@@ -6124,6 +6130,56 @@ async function runAcquire(said) {
     openDrawer('storage');
   } catch (e) {
     chatNote(`Could not fetch that: ${e.message}`);
+  }
+  renderChat();
+}
+
+async function acquireInstallAndLoad(d, said) {
+  const pr = d.presets[0];
+  const extra = d.presets.slice(1).map(x => `"${x.name}"`).join(', ');
+  const wire = d.target_editor - 1;               // editor -> wire
+  const sel = saveSlots.find(s => s.number === wire);
+  chatNote(`Found "${pr.name}". Installing to preset ${d.target_editor}`
+    + `${sel && sel.name ? ` (over "${sel.name}")` : ''} and loading it.`);
+  renderChat();
+  if (!window.confirm(
+      `Install "${pr.name}" to preset ${d.target_editor}, overwriting `
+      + `${sel && sel.name ? '"' + sel.name + '"' : "whatever is there"}, `
+      + `and load it?\n\nThis writes flash. UNDO does not cover it.`)) {
+    chatNote('Cancelled. Nothing was written.');
+    renderChat();
+    return;
+  }
+  try {
+    const r = await fetch('/api/install', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hash: pr.hash, slot: wire, name: pr.name})});
+    const out = await r.json();
+    if (out.error) throw new Error(out.error);
+    if (!out.ok) { chatNote(out.detail); renderChat(); return; }
+    noteSlotName(out.slot, out.installed);
+    // Install the cabs it depends on, to their vendor-pinned slots.
+    let cabMsg = '';
+    for (const c of (d.cabs || [])) {
+      if (c.bank == null || !d.cab_slots_configured) continue;
+      const cr = await fetch('/api/install-cab', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({hash: c.hash, bank: c.bank, number: c.number,
+                              filename: c.file})});
+      const cd = await cr.json();
+      cabMsg += cd.ok ? ` cab "${c.label}" ok;` : ` cab "${c.label}" FAILED;`;
+    }
+    gotoPreset(wire, true);                        // load it, no nag
+    chatNote(`Done. "${out.installed}" is installed to preset `
+      + `${d.target_editor}, loaded, and verified.${cabMsg}`
+      + (extra ? ` This pack also has ${extra}, staged in the STORAGE `
+                 + `drawer to install where you like.` : '')
+      + ` EARS: PENDING.`);
+    if (extra) { renderInstallFound(d.presets.slice(1), []); }
+    workAnnounce(`LOADED: "${out.installed}" on preset ${d.target_editor}.`, 'ok');
+  } catch (e) {
+    chatNote(`Install failed: ${e.message}`);
+    workAnnounce(`INSTALL FAILED: ${String(e.message).slice(0, 90)}`, 'bad');
   }
   renderChat();
 }

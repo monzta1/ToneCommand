@@ -1898,15 +1898,18 @@ def api_acquire(body: dict):
     query = str(body.get("query") or "").strip()
     if not query:
         return JSONResponse({"error": "say what to get"}, status_code=400)
+    # A named destination ("... to preset 2") is pulled out so its number is
+    # not searched for, and returned so the page can install straight there.
+    search_q, target_editor = acquire.parse_query(query)
     source_name, hit_url = "your tone folder", None
     try:
         # The owner's own offline folder first: their purchases live there.
-        local = acquire.search_local(query)
+        local = acquire.search_local(search_q)
         if local:
             presets, cabs, skipped = acquire.parse_local(local)
         else:
             entries = acquire.catalog()
-            hit = acquire.find(query, entries)
+            hit = acquire.find(search_q, entries)
             if hit is None:
                 near = ", ".join(e["artist"] for e in entries[:8])
                 where = (" or your tone folder" if acquire.get_tone_dir()
@@ -1939,6 +1942,7 @@ def api_acquire(body: dict):
              len(out_cabs), source_name)
     return {"artist": source_name, "url": hit_url,
             "presets": out, "cabs": out_cabs, "skipped": skipped,
+            "target_editor": target_editor,
             "cab_slots_configured": bool(get_cab_slots())}
 
 
