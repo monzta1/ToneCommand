@@ -6137,48 +6137,64 @@ async function runAcquire(said) {
 }
 
 async function acquireInstallAndLoad(d, said) {
-  const pr = d.presets[0];
-  const extra = d.presets.slice(1).map(x => `"${x.name}"`).join(', ');
-  const wire = d.target_editor - 1;               // editor -> wire
-  const sel = saveSlots.find(s => s.number === wire);
-  chatNote(`Found "${pr.name}". Installing to preset ${d.target_editor}`
-    + `${sel && sel.name ? ` (over "${sel.name}")` : ''} and loading it.`);
+  // The whole pack, to consecutive slots from the one named. The owner does
+  // not need to know how many presets are in it: the confirm spells out the
+  // count, the destination range, and what each slot currently holds.
+  const n = d.presets.length;
+  const first = d.target_editor;                   // FM9-Edit slot number
+  const rows = d.presets.map((pr, i) => {
+    const editor = first + i;
+    const wire = editor - 1;
+    const cur = (allSlots.find(s => s.number === wire) || {}).name || '';
+    return {pr, editor, wire, cur};
+  });
+  const range = n === 1 ? `preset ${first}` : `presets ${first}-${first + n - 1}`;
+  const list = rows.map(r => `  preset ${r.editor}: "${r.pr.name}"`
+      + (r.cur && !/^<EMPTY>/.test(r.cur) ? ` (over "${r.cur}")` : '')).join('\n');
+  const cabN = (d.cabs || []).length;
+  const cabLine = cabN
+    ? (d.cab_slots_configured
+        ? `\nplus ${cabN} cab${cabN === 1 ? '' : 's'} to their filed User Bank slots`
+        : `\n(its ${cabN} cabs need TONECOMMAND_CAB_SLOTS set; they will be skipped)`)
+    : '';
+  chatNote(`"${esc(said)}" -> ${n} preset${n === 1 ? '' : 's'} found. `
+    + `Installing to ${range}, then loading the first.`);
   renderChat();
   if (!window.confirm(
-      `Install "${pr.name}" to preset ${d.target_editor}, overwriting `
-      + `${sel && sel.name ? '"' + sel.name + '"' : "whatever is there"}, `
-      + `and load it?\n\nThis writes flash. UNDO does not cover it.`)) {
-    chatNote('Cancelled. Nothing was written.');
-    renderChat();
-    return;
+      `Install ${n} preset${n === 1 ? '' : 's'} to ${range}:\n${list}`
+      + `${cabLine}\n\nThen load "${rows[0].pr.name}". This writes flash. `
+      + `UNDO does not cover it.`)) {
+    chatNote('Cancelled. Nothing was written.'); renderChat(); return;
   }
+  const done = [], failed = [];
   try {
-    const r = await fetch('/api/install', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({hash: pr.hash, slot: wire, name: pr.name})});
-    const out = await r.json();
-    if (out.error) throw new Error(out.error);
-    if (!out.ok) { chatNote(out.detail); renderChat(); return; }
-    noteSlotName(out.slot, out.installed);
-    // Install the cabs it depends on, to their vendor-pinned slots.
-    let cabMsg = '';
+    for (const r of rows) {
+      const res = await (await fetch('/api/install', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({hash: r.pr.hash, slot: r.wire,
+                              name: r.pr.name})})).json();
+      if (res.ok) { noteSlotName(res.slot, res.installed);
+                    done.push(`${r.pr.name} -> preset ${r.editor}`); }
+      else failed.push(`${r.pr.name} (${res.error || res.detail || 'failed'})`);
+    }
+    // Every cab the pack depends on, to its vendor-pinned slot.
+    let cabOk = 0, cabBad = 0;
     for (const c of (d.cabs || [])) {
       if (c.bank == null || !d.cab_slots_configured) continue;
-      const cr = await fetch('/api/install-cab', {
+      const cd = await (await fetch('/api/install-cab', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({hash: c.hash, bank: c.bank, number: c.number,
-                              filename: c.file})});
-      const cd = await cr.json();
-      cabMsg += cd.ok ? ` cab "${c.label}" ok;` : ` cab "${c.label}" FAILED;`;
+                              filename: c.file})})).json();
+      cd.ok ? cabOk++ : cabBad++;
     }
-    gotoPreset(wire, true);                        // load it, no nag
-    chatNote(`Done. "${out.installed}" is installed to preset `
-      + `${d.target_editor}, loaded, and verified.${cabMsg}`
-      + (extra ? ` This pack also has ${extra}, staged in the STORAGE `
-                 + `drawer to install where you like.` : '')
-      + ` EARS: PENDING.`);
-    if (extra) { renderInstallFound(d.presets.slice(1), []); }
-    workAnnounce(`LOADED: "${out.installed}" on preset ${d.target_editor}.`, 'ok');
+    if (done.length) gotoPreset(rows[0].wire, true);   // load the first
+    chatNote(`Installed ${done.length} of ${n}: ${done.join('; ')}.`
+      + (failed.length ? ` Failed: ${failed.join('; ')}.` : '')
+      + (cabOk || cabBad ? ` Cabs: ${cabOk} ok${cabBad ? ', ' + cabBad + ' failed' : ''}.` : '')
+      + (done.length ? ` Loaded "${rows[0].pr.name}". EARS: PENDING.` : ''));
+    workAnnounce(done.length
+      ? `LOADED: "${rows[0].pr.name}"; installed ${done.length} preset(s).`
+      : `INSTALL FAILED`, done.length ? 'ok' : 'bad');
   } catch (e) {
     chatNote(`Install failed: ${e.message}`);
     workAnnounce(`INSTALL FAILED: ${String(e.message).slice(0, 90)}`, 'bad');
