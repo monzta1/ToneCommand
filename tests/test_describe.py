@@ -179,7 +179,7 @@ def test_the_copy_calls_it_an_interpretation_not_a_copy():
     # Whitespace-insensitive: the copy is wrapped for readability and its
     # indentation moved when the panel was folded into a <details>. Pinning
     # the line breaks pins the layout, which is not the claim being made.
-    assert "An interpretation to review and tweak, not a copy" in \
+    assert "An interpretation of the source, to review and tweak" in \
         " ".join(UI.split())
 
 

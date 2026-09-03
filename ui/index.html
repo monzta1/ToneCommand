@@ -4097,8 +4097,8 @@ function aimAtLoadedPreset() {
     const flash = (hit.name || '').trim();
     const buffer = (cur.name || '').trim();
     el.innerHTML = (flash && buffer && flash !== buffer)
-      ? `Loaded <b>${esc(cur.label)}</b>. STORE overwrites it with your `
-        + `edits <b>"${esc(buffer)}"</b>.`
+      ? `The slot holds "${esc(flash)}"; your unsaved edits are `
+        + `<b>"${esc(buffer)}"</b>. STORE writes your edits.`
       : `Loaded <b>${esc(cur.label)}</b> `
         + `${buffer ? '"' + esc(buffer) + '"' : ''}.`;
   } else {
