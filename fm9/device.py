@@ -598,18 +598,53 @@ class FM9:
                 f"install to slot {p.slot_label(slot)} refused: configured "
                 f"store slots are {p.slot_set_label(allowed)}")
         pf = presetfile.parse(raw)          # re-validated at this boundary
-        if name and name.strip():
-            pf = presetfile.set_name(pf, name.strip())
-        frames = presetfile.retarget(pf, slot)
+        # FM9-Edit's own recipe, captured on the wire 2026-09-03: a sub 0x27
+        # "prepare", then the preset dumped into the EDIT BUFFER (header
+        # 7F 7F) with FLOW CONTROL (the device acks every frame with a 0x64;
+        # firing frames blind drops chunks and the body never lands), then a
+        # STORE (sub 0x26) of the buffer to the slot.
+        frames = presetfile.for_edit_buffer(pf)
         self._drain()
+        # prepare: fn 0x01 sub 0x27, all-zero payload; device replies.
+        self._request(p.envelope(0x01, [0x27] + [0x00] * 14),
+                      lambda d: True if len(d) > 5 and d[4] == 0x01
+                      and d[5] == 0x27 else None, timeout=1.0)
         for frame in frames:
             self.install_guard.check(frame[5])
-            self.outp.send(mido.Message("sysex", data=frame[1:-1]))
-            # The unit ingests a 3 KB chunk fine; firing eight back to back
-            # is exactly the untested part, so give each a breath.
-            time.sleep(0.03)
+            self._send_await_dump_ack(frame)
+        time.sleep(0.3)
+        # Rename via the device's OWN name command on the buffer (not by
+        # patching the file body: rewriting the name in the dump and
+        # recomputing the footer produced a body the device rejected, so
+        # the slot stored empty). The dump populated the buffer; rename it,
+        # then store.
+        if name and name.strip():
+            self._send(p.build_rename_preset(name.strip()[:32]))
+            time.sleep(0.3)
+            pf.name = name.strip()[:32]     # so verification expects this
+        self._send(p.build_store_preset(slot))   # fn 0x01 sub 0x26, allowed
         time.sleep(1.5)                     # let flash settle before reads
         return pf
+
+    def _send_await_dump_ack(self, frame, timeout: float = 2.0):
+        """Send one dump frame and wait for the device's 0x64 ack.
+
+        The FM9 acks each 0x77/0x78/0x79 frame with `fn 0x64 [acked-fn] ..`.
+        Waiting for it is the flow control that keeps chunks from being
+        dropped; the sim answers instantly, real hardware in a few ms.
+        """
+        self.outp.send(mido.Message("sysex", data=frame[1:-1]))
+        want = frame[5]                     # the fn we expect acked
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for msg in self.inp.iter_pending():
+                if msg.type != "sysex":
+                    continue
+                d = list(msg.data)
+                if len(d) > 5 and d[4] == 0x64 and d[5] == want:
+                    return d
+            time.sleep(0.002)
+        return None                         # proceed; the read-back is the judge
 
     def install_user_cab(self, raw: bytes, slot: int, filename: str = ""):
         """Send a validated IR file to a whitelisted user-cab slot.

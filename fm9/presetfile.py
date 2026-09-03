@@ -205,13 +205,24 @@ def set_name(pf: PresetFile, name: str) -> PresetFile:
     return patched
 
 
-def retarget(pf: PresetFile, slot: int) -> list[list[int]]:
-    """The file's frames, aimed at `slot`: the official editor's own store
-    recipe, header index patched, checksum recomputed, footer untouched."""
-    if not 0 <= slot <= 0x3FFF:
-        raise PresetFileError(f"slot {slot} is out of range")
+#: The header payload FM9-Edit sends on an import: 7F 7F is the edit-buffer
+#: sentinel, NOT a slot. Captured from FM9-Edit importing a preset on
+#: 2026-09-03. The earlier code retargeted this field to the destination
+#: slot, which made the name land but the body not: the device only accepts
+#: a preset dump into the edit buffer, then a separate STORE writes it to a
+#: slot. The dump goes to the buffer; the caller stores afterward.
+EDIT_BUFFER_HEADER = [0x7F, 0x7F, 0x00, 0x40, 0x00]
+
+
+def for_edit_buffer(pf: PresetFile) -> list[list[int]]:
+    """The file's frames aimed at the EDIT BUFFER, exactly as FM9-Edit does.
+
+    The header is forced to the edit-buffer sentinel and re-checksummed;
+    the body and footer travel verbatim. The caller sends these, then
+    issues a STORE to write the buffer to the destination slot.
+    """
     head = list(pf.frames[0])
-    head[6] = (slot >> 7) & 0x7F
-    head[7] = slot & 0x7F
+    for i, b in enumerate(EDIT_BUFFER_HEADER):
+        head[6 + i] = b
     head[-2] = p.checksum(head[1:-2])
     return [head, *[list(f) for f in pf.frames[1:]]]

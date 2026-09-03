@@ -85,14 +85,19 @@ def test_random_fractal_messages_are_not_a_preset():
         presetfile.parse(raw)
 
 
-def test_retarget_patches_the_header_only_and_stays_checksummed():
+def test_the_dump_goes_to_the_edit_buffer_not_a_slot():
+    """FM9-Edit's captured recipe (2026-09-03): the preset dump header is the
+    7F 7F edit-buffer sentinel, never a slot. Retargeting it to the slot
+    landed the name but not the body; a separate STORE writes the buffer to
+    the slot."""
     pf = presetfile.parse(make_file(slot=273))
-    frames = presetfile.retarget(pf, 140)
+    frames = presetfile.for_edit_buffer(pf)
     head = frames[0]
-    assert ((head[6] << 7) | head[7]) == 140
-    assert p.checksum(head[1:-2]) == head[-2], "retarget must re-checksum"
+    assert head[6] == 0x7F and head[7] == 0x7F, "dump targets the edit buffer"
+    assert head[8:11] == [0x00, 0x40, 0x00]
+    assert p.checksum(head[1:-2]) == head[-2]
     assert frames[1:] == [list(f) for f in pf.frames[1:]], \
-        "chunks and footer travel verbatim, per the editor's own recipe"
+        "chunks and footer travel verbatim"
 
 
 # --- rule zero stays structural -------------------------------------------

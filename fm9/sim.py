@@ -220,12 +220,12 @@ class SimFM9Core:
         # on captured FM9 requests).
         self._install = {"slot": ((b[0] & 0x7F) << 7) | (b[1] & 0x7F),
                          "chunks": []}
-        return []
+        return [p.envelope(0x64, [0x77, 0x00, 0x04])]
 
     def _fn_78(self, b):
         if getattr(self, "_install", None) is not None:
             self._install["chunks"].append(list(b))
-        return []
+        return [p.envelope(0x64, [0x78, 0x00, 0x04])]
 
     def _fn_79(self, b):
         pending = getattr(self, "_install", None)
@@ -247,19 +247,15 @@ class SimFM9Core:
             if hi == 0:
                 break
             chars.append(chr(hi))
-        slot = pending["slot"]
-        # A real device writes a COMPLETE preset to the slot; model that so
-        # loading it afterward works. Base it on a default preset (a full
-        # grid/scenes/params dict) and stamp the installed name, rather than
-        # leaving a name-only stub that select_preset cannot load.
-        if slot not in self.st.presets or "grid" not in self.st.presets[slot]:
-            self.st.presets[slot] = _default_preset(slot, self.st.reg)
-        self.st.presets[slot]["name"] = "".join(chars).rstrip()
-        self.st.empty_slots.pop(slot, None)
+        # The dump lands in the EDIT BUFFER (header is 7F 7F), exactly as
+        # FM9-Edit sends it; a following STORE (fn 0x01 sub 0x26) writes the
+        # buffer to a slot. Stamp the installed name onto the buffer, which
+        # is already a complete preset dict.
+        self.st.buffer["name"] = "".join(chars).rstrip()
         self.undecoded.add(
-            "preset install (0x77/0x78/0x79 write direction) is not "
-            "hardware-verified; verify the slot name on a real unit")
-        return []
+            "preset install (0x77/0x78/0x79 to edit buffer, then store) is "
+            "not hardware-verified; verify the loaded preset on a real unit")
+        return [p.envelope(0x64, [0x79, 0x00, 0x0A])]
 
     # ---- user-cab (IR) install and read-back (0x19, 0x7A/0x7B/0x7C) ------
     def _fn_7a(self, b):
@@ -417,6 +413,11 @@ class SimFM9Core:
             return self._cable(b)
         if sub == (0x2E, 0x00):
             return self._grid_read(b)
+        if sub == (0x27, 0x00):
+            # Prepare handshake before a preset dump; device replies.
+            return [p.envelope(0x01, [0x27, 0, 0, 0, 0, 0,
+                                      0x1A, 0x79, 0x65, 0x76, 0x03,
+                                      0, 0, 0, 0])]
         if sub == (0x28, 0x00):
             self.st.buffer["name"] = self._unpack_name(b)
             return []
