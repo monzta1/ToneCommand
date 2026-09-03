@@ -143,3 +143,32 @@ def test_the_tone_folder_is_a_setting():
     ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
     assert 'id="tonedir"' in ui and "/api/tone-dir" in ui
     assert "TONE LIBRARY FOLDER" in ui
+
+
+def test_plurals_and_pronouns_do_not_break_a_local_search(tmp_path, monkeypatch):
+    """'find the luke TONES and load THEM ON my SYSTEM' must reach the same
+    file as the singular. The filler rides along on a natural request; if any
+    of it stays a required search word, the whole search matches nothing
+    (owner, 2026-09-03)."""
+    from tests.test_install import make_file
+    d = tmp_path / "tones"; d.mkdir()
+    (d / "BT Steve Lukather 01.syx").write_bytes(
+        make_file(name="BT Steve Lukather 01"))
+    monkeypatch.setattr(acquire, "get_tone_dir", lambda: str(d))
+    for phrase in ("find the luke tone and load it",
+                   "find the luke tones and load them",
+                   "find the luke tones and load them on my system",
+                   "clear this preset and load luke again"):
+        assert acquire.search_local(phrase), phrase
+
+
+def test_a_copy_button_exports_the_whole_conversation():
+    """One click to paste a conversation into a help thread (owner,
+    2026-09-03). The button is in the chat controls and the exporter keeps
+    every turn with its speaker."""
+    assert 'id="ccopy"' in UI
+    script = UI.split("<script>")[1]
+    assert "function conversationText" in script
+    fn = script.split("function conversationText")[1].split("function ")[0]
+    # user, assistant and system-note turns each get a label
+    assert "YOU:" in fn and "TONECOMMAND" in fn and "m.model" in fn

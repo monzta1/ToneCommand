@@ -5,6 +5,11 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **COPY a whole conversation.** A COPY button in the chat controls puts
+  the entire exchange on the clipboard as plain text, each turn labelled
+  the way the page shows it (YOU, TONECOMMAND with its model, and system
+  notes), so a snag can be pasted straight into a help thread without
+  retyping (owner, 2026-09-03).
 - **A pick-what-to-install plan for acquired presets.** When a search or a
   Gift of Tone fetch turns up more than one preset, ToneCommand no longer
   fires a blunt confirm dialog. It opens the Storage drawer with every
@@ -27,6 +32,13 @@ Notable changes to ToneCommand. Dates are UTC.
   just tighter. Nothing about behavior changed.
 
 ### Fixed
+- **Plurals and pronouns no longer break a local search.** "find the luke
+  TONES and load THEM ON my SYSTEM" was matching nothing while the
+  singular worked: the extra words stayed required search terms with no
+  file to match. Those fillers, common command verbs (clear, reload,
+  store, ...) and location words (system, folder, local) are now ignored
+  the same way "tone" and "it" already were, so the natural phrasing
+  finds the file (owner, 2026-09-03).
 - **The Inspector no longer garbles amp/cab names, and EXPANDs for room.**
   The amp/cab pair and knob grids were laid out for a full-width page, so
   in the 356px Inspector rail the amp value overflowed into the cabinet

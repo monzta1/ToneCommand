@@ -5934,6 +5934,21 @@ function renderWorking() {
 let chatViewStale = false;   // a rewrite was skipped while reading back
 let chatAgreedSeen = '';     // which agreement was already scrolled to
 
+// The conversation as plain text for pasting into a help thread. Same
+// speaker labels the page shows, model name kept on each AI turn, notes
+// (LOOKING FOR IT, INSTALLED...) marked so they read as system lines and
+// not as something the person or the model said.
+function conversationText() {
+  const lines = chatLog.map(m => {
+    if (m.role === 'note') return `[TONECOMMAND] ${m.content}`;
+    if (m.role === 'user') return `YOU: ${m.content}`;
+    const who = 'TONECOMMAND' + (m.model ? ` (${m.model})` : '');
+    return `${who}: ${m.content}`;
+  });
+  const head = `ToneCommand conversation, copied ${new Date().toLocaleString()}`;
+  return head + '\n\n' + lines.join('\n\n') + '\n';
+}
+
 function renderChat() {
   const box = $('chat');
   // Measured BEFORE the rewrite, because after it scrollTop is meaningless.
@@ -6006,6 +6021,8 @@ function renderChat() {
       chatBusy ? '<button id="cstop">STOP</button>' : ''
     }${chatReady && chatRequest && !chatBusy
         ? '<button id="cbuild">GENERATE PLAN</button>' : ''
+    }${chatLog.length
+        ? '<button id="ccopy" title="Copy the whole conversation as text to paste for troubleshooting">COPY</button>' : ''
     }<button id="cclear" title="Delete this conversation and start a new one">CLEAR</button></div>`;
   // Follow the newest message only when already at the bottom. Yanking
   // somebody back down while they are reading something further up is worse
@@ -6028,6 +6045,25 @@ function renderChat() {
   // reloading the page, which until recently also lost the conversation.
   if ($('cstop')) $('cstop').onclick = () => {
     if (chatAbort) chatAbort.abort();
+  };
+  if ($('ccopy')) $('ccopy').onclick = async () => {
+    // The whole conversation as plain text, so a snag can be pasted
+    // straight into a message for help. Roles are labelled the way the
+    // page shows them; the model name rides along with each AI turn.
+    const text = conversationText();
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; }
+    catch (e) {
+      // Clipboard API needs a secure context; fall back to a select-copy.
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+      ta.remove();
+    }
+    const b = $('ccopy'); const was = b.textContent;
+    b.textContent = ok ? 'COPIED' : 'COPY FAILED';
+    setTimeout(() => { if ($('ccopy')) $('ccopy').textContent = was; }, 1400);
   };
   $('cclear').onclick = () => {
     // Four turns is real work, so this asks once rather than making CLEAR a

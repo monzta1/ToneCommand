@@ -33,7 +33,18 @@ _NAME_RE = re.compile(r"FAS-gift(\d\d)-[0-9]+[a-z0-9]*-(.+)\.zip$")
 _STOPWORDS = frozenset(
     "get me the a an tones tone preset presets from gift of got download "
     "grab install fetch load and please for my fm9 find go it straight "
-    "some can you please pull bring".split())
+    "some can you please pull bring "
+    # pronouns and filler that ride along on a natural request: "find the
+    # luke tones and load THEM ON my SYSTEM AGAIN". None narrow a file
+    # search; leaving them in makes every one a required word that matches
+    # nothing, so the whole search fails.
+    "them they these those this that here there again now on in at to into "
+    "onto system machine computer folder local offline just also want need "
+    "looking searching search have has "
+    # command verbs the owner mixes into a request ("CLEAR this preset and
+    # LOAD luke again", "RELOAD it"). Never an artist name.
+    "clear reload delete remove store save put set send transmit copy "
+    "replace overwrite again".split())
 
 #: Bundles can be tens of MB of extras; refuse anything absurd.
 MAX_DOWNLOAD = 64 * 1024 * 1024
