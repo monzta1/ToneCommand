@@ -20,6 +20,35 @@ Run:
 # open http://127.0.0.1:8909 with the FM9 connected and powered on
 ```
 
+## Windows
+
+Untested by the maintainer, and expected to work: everything here is
+cross-platform Python, and the one macOS-only piece (instant cable
+detection through CoreMIDI) degrades cleanly to the five-second poll and
+the link pill's reconnect. If you run it on Windows, please report how it
+went, either way, in an issue.
+
+```bat
+git clone https://github.com/monzta1/ToneCommand.git
+cd ToneCommand
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -e .
+.venv\Scripts\tonecommand
+:: open http://127.0.0.1:8909 with the FM9 connected and powered on
+```
+
+Windows notes:
+
+- The FM9 needs Fractal's Windows USB driver installed (the same one
+  FM9-Edit uses) before its MIDI ports appear.
+- For video builds, install ffmpeg with `winget install ffmpeg` instead
+  of Homebrew.
+- The guided one-click setup for the ChatGPT subscription route is
+  Homebrew-based, so on Windows install
+  [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by hand as
+  its own documentation directs, or use any of the key-based services,
+  the Claude CLI, or a local model, which need no helper at all.
+
 Planner configuration (which AI answers your sentences) is in
 [AI-BACKENDS.md](AI-BACKENDS.md). The default needs nothing: a signed-in
 Claude Code CLI is found on its own.

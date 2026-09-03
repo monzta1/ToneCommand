@@ -142,7 +142,9 @@ unreachable, on every device, forever.
 
 ## Quick start
 
-Tested on macOS with Python 3.12, FM9 firmware 11.00 and 12.00:
+Tested on macOS with Python 3.12, FM9 firmware 11.00 and 12.00
+(Windows steps are in [docs/SETUP.md](docs/SETUP.md), untested but
+expected to work):
 
 ```bash
 git clone https://github.com/monzta1/ToneCommand.git
