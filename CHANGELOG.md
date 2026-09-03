@@ -4,6 +4,17 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **Stripped the verbosity.** Explanation was stacked on explanation
+  across the page, overwhelming for a first-timer (owner, 2026-09-03).
+  Every always-visible hint was cut to its essence, with the full detail
+  moved into a hover title where it still helps: the Storage drawer's
+  three paragraphs became short lines, the store-slots help went from ~90
+  words to one, the source, recipe, design, compare, diagnostics and grid
+  hints all shrank, and the loaded-slot and slot-count messages are
+  single lines now. Safety warnings (flash writes, "no copy kept") stay,
+  just tighter. Nothing about behavior changed.
+
 ### Fixed
 - **The Inspector no longer garbles amp/cab names, and EXPANDs for room.**
   The amp/cab pair and knob grids were laid out for a full-width page, so

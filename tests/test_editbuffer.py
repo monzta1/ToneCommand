@@ -234,7 +234,8 @@ def test_nothing_here_can_touch_a_saved_preset():
     src = inspect.getsource(eb)
     for forbidden in ("build_store", "select_preset", "store_preset"):
         assert forbidden not in src, forbidden
-    assert "Nothing here touches a stored preset" in UI
+    # The Compare panel's copy states its scope in three words now.
+    assert "Edit buffer only; A/B is a round trip" in UI
 
 
 # --- a restore writes wire values, never display numbers ------------------

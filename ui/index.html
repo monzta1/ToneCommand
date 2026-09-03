@@ -2047,7 +2047,7 @@
           <span class="k"><span class="sw" style="background:var(--cyan)"></span>carrying signal</span>
           <span class="k"><span class="sw" style="background:#3b5262"></span>not reached</span>
           <span class="k">dashed = bypassed</span>
-          <span class="k">click a block to open it, its letter to change channel</span>
+          <span class="k">click a block to open it</span>
           <button class="k gridzoom" id="gridzoom">EXPAND</button>
           <span class="k" id="gridwhy"></span>
         </div>
@@ -2107,7 +2107,7 @@
                       placeholder="Describe the result you want to hear..."></textarea>
             <button id="engage">GENERATE PLAN</button>
           </div>
-          <div class="hint composerhint">Enter generates a plan, Shift+Enter for a new line. No change reaches the FM9 until you review, confirm, and send.</div>
+          <div class="hint composerhint">Enter to generate a plan. Nothing reaches the FM9 until you send.</div>
         </div>
         <!-- Source mode: one input, one action. -->
         <div class="srcfold" id="srcpanel" hidden>
@@ -2117,12 +2117,8 @@
                    placeholder="paste a YouTube link, a page, or the transcript itself">
             <button id="analyze">ANALYZE SOURCE</button>
           </div>
-          <div class="hint" id="srchint">Reads what the source actually says and
-            proposes a build for <em>your</em> rig. An interpretation to review and
-            tweak, not a copy: sources rarely state everything, and what it had to
-            guess is marked separately. YouTube links read the description and the
-            captions, and transcribe the audio here if the video has none, which
-            takes a few minutes on a long one.</div>
+          <div class="hint" id="srchint"
+               title="Reads the source and proposes a build for your rig, marking anything it had to guess. YouTube links use the description and captions, or transcribe the audio (a few minutes on a long video).">An interpretation of the source, to review and tweak.</div>
         </div>
         <!-- Between reading and building: the two questions whose answers
              change the work, asked before the plan is generated. -->
@@ -2133,8 +2129,7 @@
           <div class="abrow">
             <button id="buildscratch">PROPOSE STARTING CHAIN</button>
             <span class="hint" id="buildwhat">Input &rarr; Amp &rarr; Cab &rarr;
-              Output. Creates a reversible starting chain in the edit buffer;
-              the slot still reads &lt;EMPTY&gt; until you store it yourself.</span>
+              Output, in the edit buffer. Reversible.</span>
           </div>
         </div>
       </section>
@@ -2246,7 +2241,7 @@
         <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
           <div id="picks"></div>
           <div class="knobs" id="knobs-amp"><span class="hint">awaiting link...</span></div>
-          <div class="hint">Drag a slider to set it. Edit buffer only; UNDO covers it.</div>
+          <div class="hint">Edit buffer only; UNDO covers it.</div>
         </div>
         <div class="console needs-rig" data-label="GRAPHIC EQ" id="geqpanel" style="display:none">
           <div class="geqbar">
@@ -2292,9 +2287,7 @@
           <button class="small" id="holdb">HOLD B</button>
           <button class="small" id="recb" disabled>RECALL B</button>
         </div>
-        <div class="hint">Snapshots are silent reads of the edit buffer, taken
-          before every change. Recalling one holds the other first, so A/B is
-          a round trip. Nothing here touches a stored preset.</div>
+        <div class="hint" title="Snapshots are silent reads of the edit buffer, taken before every change. Recalling one holds the other first, so A/B is a round trip.">Edit buffer only; A/B is a round trip.</div>
       </div>
     </span>
     <span class="spacer"></span>
@@ -2315,9 +2308,7 @@
     <div class="drawpane needs-rig" id="drawer-diagnostics" hidden>
       <div class="hz">
         <button id="scan">SCAN ALL SCENES</button>
-        <span class="hint" style="margin:0" id="scanhint">Changes scenes and
-          may produce sound for several seconds. Not a background check, and
-          never on a timer.</span>
+        <span class="hint" style="margin:0" id="scanhint">Steps every scene, audibly, for a few seconds.</span>
       </div>
       <div id="hout"></div>
     </div>
@@ -2336,27 +2327,20 @@
         </div>
         <div id="rlist"></div>
         <div class="hint" id="rshare"></div>
-        <div class="hint">Tones other people have built, shared as instructions
-          rather than as preset files. USE validates every step against YOUR
-          device first, then enters the same Plan, Review, Confirm, Send road
-          as any other plan.</div>
+        <div class="hint" title="Shared as instructions, not preset files. PROPOSE validates every step against your device, then enters the normal Plan-Review-Confirm-Send flow.">Tones others built, validated against your rig first.</div>
       </div>
       <div class="libpane" id="lib-designs" hidden>
         <div id="dlist"></div>
-        <div class="hint">Tones you built with the rig switched off. Each one
-          was validated when it was saved, so it would actually run, but
-          nothing has been read back from hardware yet: a design is
-          <span class="savewarn">designed, not verified</span>, until it lands.
-          SEND checks the preset has not moved underneath it first.</div>
+        <div class="hint">Built with the rig off:
+          <span class="savewarn">designed, not verified</span> until it lands.</div>
       </div>
       <div class="libpane" id="lib-profiles" hidden>
         <div class="profbar" id="profbar" hidden></div>
         <div class="profrow">
           <button class="small" id="profexport">EXPORT MY RIG</button>
           <button class="small" id="profimport">IMPORT PROFILE</button>
-          <span class="hint" style="margin:0">A rig profile describes which
-            blocks a preset has and how they are wired, never the parameter
-            values, so nobody's paid preset travels with it.</span>
+          <span class="hint" style="margin:0"
+                title="A rig profile is the block layout and wiring only, never parameter values, so no paid preset travels with it.">The block layout only. No paid preset travels with it.</span>
         </div>
       </div>
     </div>
@@ -2369,25 +2353,17 @@
         <button id="save" disabled>STORE PRESET</button>
         <button class="small" id="savescan" title="read the current names of these slots">RELOAD SLOT NAMES</button>
       </div>
-      <div class="hint"><span id="savecount"></span> Everything else in this
-        app is edit buffer only and reversible. This is not: it overwrites
-        whatever is stored in the slot, permanently, and
+      <div class="hint"><span id="savecount"></span> Overwrites the slot permanently.
         <span class="savewarn">UNDO does not cover it</span>.</div>
       <div class="saverow renamerow">
         <input id="newname" maxlength="32" autocomplete="off" spellcheck="false"
                placeholder="rename the selected preset (32 characters)">
         <button class="small" id="renameslot" disabled>RENAME</button>
-        <span class="hint">The FM9 keeps the name inside the preset, so
-          renaming stores it. The tone is untouched; the slot is written back
-          exactly as it is, under the new name.</span>
+        <span class="hint" title="The FM9 keeps the name inside the preset, so renaming writes the slot back under the new name. The tone is untouched.">Renaming stores the preset. Tone untouched.</span>
       </div>
       <div class="installrow">
         <div class="navtitle" style="margin-top:14px">INSTALL A PRESET FILE</div>
-        <div class="hint">A Gift of Tone drop, an Axe-Change download, a
-          purchased .fasBundle, a .syx a friend sent. Everything is
-          validated before anything is sent; bundles bring their cabs with
-          the vendor's own destinations; installs land only in your allowed
-          slots and are verified by reading back.</div>
+        <div class="hint" title="A Gift of Tone drop, an Axe-Change download, a purchased .fasBundle, or a .syx a friend sent. Bundles bring their cabs with the vendor's destinations. Everything is validated, installed only to allowed slots, and verified by read-back.">Drop a preset file or bundle. Validated before anything is sent.</div>
         <div class="saverow">
           <input type="file" id="installfile" accept=".syx,.fasBundle">
         </div>
@@ -2400,20 +2376,15 @@
         <summary>DANGER ZONE</summary>
         <div class="saverow clearrow">
           <button class="small" id="clearslot" disabled>ERASE SLOT&hellip;</button>
-          <span class="hint" id="clearwhat">Empties the selected slot so it
-            reads &lt;EMPTY&gt; on the unit, the same as clearing it from the
-            FM9's own Utility menu. There is
-            <span class="savewarn">no copy kept anywhere</span>: a preset
-            erased here is gone.</span>
+          <span class="hint" id="clearwhat">Empties the slot.
+            <span class="savewarn">No copy kept: it is gone.</span></span>
         </div>
       </details>
     </div>
 
     <div class="drawpane" id="drawer-activity" hidden>
       <div id="log"></div>
-      <div id="logempty"><div class="lefoot">Nothing logged yet. Every
-        hardware read, write, refusal and verification lands here as it
-        happens.</div></div>
+      <div id="logempty"><div class="lefoot">Nothing logged yet.</div></div>
     </div>
 
     <div class="drawpane" id="drawer-settings" hidden>
@@ -2452,7 +2423,7 @@
         </div>
         <div class="hint" id="ainote"></div>
         <div class="hint" id="aisrc"></div>
-        <div class="hint">Takes effect on the next plan, no restart. Keys are stored on this machine and never sent to the browser.</div>
+        <div class="hint">Takes effect next plan. Keys stay on this machine.</div>
       </div>
 
       <div class="console" data-nofold data-label="SAFETY &middot; ALLOWED STORE SLOTS">
@@ -2469,14 +2440,9 @@
           <button class="eg" data-eg="133,139-170">133,139-170</button>
           <button class="eg" data-eg="">none</button>
         </div>
-        <div class="hint">One slot, a range with a dash, or several separated by
-          commas. Click an example to fill the box, then SET.<br>
-          These are <b>wire</b> numbers, 0-511. Your unit and FM9-Edit number the
-          same slots 1-512, so <b>139 here is 140 on the screen</b>. Read the range
-          off the wire or the whole list sits one slot out.<br>
-          This is the only thing standing between a mis-click and a preset you
-          cannot get back, so list only slots you genuinely do not mind losing.
-          "none" switches storing off entirely.</div>
+        <div class="hint"
+             title="Wire numbers, 0-511: the FM9 and FM9-Edit show these same slots as 1-512, so 139 here is 140 on screen. This is the only guard against overwriting a preset you cannot get back, so list only slots you can spare. 'none' switches storing off.">
+          Wire numbers (139 here = 140 on screen). List only slots you can spare.</div>
       </div>
 
       <div class="console" data-nofold data-label="APPEARANCE">
@@ -2505,16 +2471,14 @@
          placeholder="type to filter, arrows to audition, Enter to load">
   <div class="audlist" id="audlist"></div>
   <div class="audfoot"><span id="audcount"></span>
-    <span>each step loads on the unit, UNDO covers it</span></div>
+    <span>UNDO covers each step</span></div>
 </div>
 
 <div class="modal gridmodal" id="gridmodal" hidden>
   <div class="console" data-label="SIGNAL CHAIN">
     <button class="mclose" id="gridclose" title="close">&#10005;</button>
     <div id="gridbig"></div>
-    <div class="hint">Drawn at twice size, so it scrolls sideways on a long
-      chain. Click a block to bypass it, its letter to change channel, or
-      anywhere off the chain to close.</div>
+    <div class="hint">Click a block to bypass it, its letter to change channel.</div>
   </div>
 </div>
 
@@ -4097,8 +4061,7 @@ async function loadSaveSlots(withNames) {
     // reads as a half-finished load rather than as a safety catch, which is
     // exactly how it was read.
     $('savecount').textContent = saveSlots.length
-      ? `Offering the ${saveSlots.length} slots you marked disposable in ` +
-        `TONECOMMAND_STORE_SLOTS, out of 512 on the unit.`
+      ? `${saveSlots.length} of 512 slots marked disposable.`
       : '';
     aimAtLoadedPreset();
   } catch (e) {
@@ -4134,17 +4097,15 @@ function aimAtLoadedPreset() {
     const flash = (hit.name || '').trim();
     const buffer = (cur.name || '').trim();
     el.innerHTML = (flash && buffer && flash !== buffer)
-      ? `Loaded: <b>${esc(cur.label)}</b>. The slot holds "${esc(flash)}"; `
-        + `your unsaved edits in the edit buffer are named <b>"${esc(buffer)}"</b>. STORE `
-        + `overwrites the slot with your edits, under your edits' name.`
-      : `Loaded: <b>${esc(cur.label)}</b> `
-        + `${buffer ? '"' + esc(buffer) + '"' : ''}. STORE writes back to it.`;
+      ? `Loaded <b>${esc(cur.label)}</b>. STORE overwrites it with your `
+        + `edits <b>"${esc(buffer)}"</b>.`
+      : `Loaded <b>${esc(cur.label)}</b> `
+        + `${buffer ? '"' + esc(buffer) + '"' : ''}.`;
   } else {
     el.className = 'savenow blocked';
-    el.innerHTML = `Loaded: <b>${esc(cur.label)}</b> ` +
-      `${cur.name ? '"' + esc(cur.name) + '"' : ''}, which is not in your save ` +
-      `list, so it cannot be overwritten from here. Choose a slot below, or ` +
-      `add it to TONECOMMAND_STORE_SLOTS if it really is disposable.`;
+    el.innerHTML = `Loaded <b>${esc(cur.label)}</b> `
+      + `${cur.name ? '"' + esc(cur.name) + '" ' : ''}is not in your save `
+      + `list. Pick a slot below.`;
   }
   updateSaveButton();
 }

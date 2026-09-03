@@ -208,5 +208,5 @@ def test_the_panel_says_how_many_slots_and_why():
     reason are on screen rather than in the source."""
     script = UI.split("<script>")[1]
     assert "savecount" in UI
-    assert "slots you marked disposable" in script
-    assert "out of 512" in script
+    assert "marked disposable" in script
+    assert "of 512" in script

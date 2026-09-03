@@ -294,8 +294,7 @@ def test_enter_sends_and_shift_enter_writes_a_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
     assert "e.shiftKey" in fn and "e.preventDefault();" in fn
-    assert "Enter generates a plan, Shift+Enter for a new line" in ui, \
-        "a box that grows implies Enter breaks a line; say which it is"
+    assert "Enter to generate a plan" in ui
 
 
 # --- and the small things that make it feel finished ----------------------
@@ -382,9 +381,9 @@ def test_the_second_text_box_is_a_mode_not_a_second_form():
 def test_the_explaining_shrank_to_one_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     hint = ui.split('class="hint composerhint">')[1].split("</div>")[0]
-    assert len(hint) < 140, "the composer hint is a line, not a paragraph"
-    assert "Enter generates a plan" in hint
-    assert "review, confirm, and send" in hint
+    assert len(hint) < 100, "the composer hint is a line, not a paragraph"
+    assert "Enter to generate a plan" in hint
+    assert "reaches the FM9 until you send" in hint
 
 
 # --- saying what it is doing ----------------------------------------------
