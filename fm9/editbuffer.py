@@ -245,6 +245,71 @@ def restore(fm9, reg, snap: dict) -> Restore:
     return out
 
 
+def transplant(fm9, reg, source_snap: dict, families) -> Restore:
+    """Copy the given effect families (e.g. {"DELAY", "REVERB"}) from a snapshot
+    of ANOTHER preset onto the current edit buffer.
+
+    This is the deliberate cross-preset copy behind "make the delay like that
+    tone's": unlike restore it does NOT refuse a preset mismatch, since copying
+    across presets is the whole point. It writes the source's exact wire values
+    and bypass state for the named blocks onto the matching blocks here. A block
+    the current preset does not have is reported, not invented, and the signal
+    chain ORDER is left alone; only each block's settings are copied.
+    """
+    fams = {str(f).upper() for f in families}
+    now = capture(fm9, reg)
+    now_by = {b["effect_id"]: b for b in now["blocks"]}
+    out = Restore()
+
+    # diff(source, now): each Change carries the SOURCE value in frm_wire, so
+    # writing frm_wire makes this buffer match the source. Keep only the named
+    # families, and only where a matching block exists here to write onto.
+    d = diff(reg, source_snap, now)
+    changes = [c for c in d["params"]
+               if c.family in fams and c.effect_id in now_by]
+    where = {eid: b["channel"] for eid, b in now_by.items()}
+    from itertools import groupby
+    changes.sort(key=lambda c: (c.effect_id, c.channel))
+    for (eid, ch), group in groupby(changes, key=lambda c: (c.effect_id, c.channel)):
+        group = list(group)
+        if where.get(eid) != ch:
+            fm9.set_channel(eid, ch)
+            where[eid] = ch
+        for c in group:
+            try:
+                spec = reg.spec(c.family, c.param_id, c.instance)
+            except Exception:
+                spec = None
+            if spec is None:
+                out.failed.append(f"{c.family} {c.instance} {c.label}: "
+                                  f"not in the registry, left as it is")
+                continue
+            res = fm9.set_param_wire(spec, c.frm_wire)
+            if getattr(res, "ok", False):
+                shown = c.frm if c.frm is not None else c.frm_wire
+                out.applied.append(f"{c.family} {c.instance} {c.label} -> {shown}")
+            else:
+                out.failed.append(f"{c.family} {c.instance} {c.label}: "
+                                  f"{getattr(res, 'detail', 'write not verified')}")
+
+    # Match the source's bypass for each copied block, so a delay the source
+    # runs engaged comes across engaged.
+    for sb in source_snap["blocks"]:
+        if sb["family"] not in fams:
+            continue
+        tb = now_by.get(sb["effect_id"])
+        if tb is None:
+            out.failed.append(f"{sb['family']} {sb['instance']}: not present in "
+                              "the current preset, so there is nothing to copy "
+                              "it onto (add the block first)")
+            continue
+        if sb["bypassed"] != tb["bypassed"]:
+            fm9.set_bypass(sb["effect_id"], sb["bypassed"])
+            out.applied.append(f"{sb['family']} {sb['instance']}: "
+                               f"{'bypassed' if sb['bypassed'] else 'engaged'}")
+    return out
+
+
 def summarise(d: dict, limit: int = 6) -> str:
     """One line saying what a restore would do, for a button that needs to be
     honest about its blast radius before it is pressed."""

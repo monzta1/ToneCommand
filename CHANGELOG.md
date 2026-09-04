@@ -4,6 +4,16 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Copy an effect from another preset ("make the delay like that tone's").**
+  A new copy-effects action reads a reference preset's delay, reverb (or any
+  named block) with all its settings and writes them onto the current build's
+  matching blocks, wire for wire. It is a better path to an artist tone than
+  guessing effect parameters from scratch, and it came straight out of the
+  Marco Sfogli experiment, where the pro preset's clean delay was a full
+  stereo setup no from-scratch guess would reproduce. Copies settings and
+  bypass; the signal-chain order is not moved yet (owner, 2026-09-04).
+
 ### Changed
 - **Builds match the amp to each scene's role, and spend effort where the
   tone actually lives.** The planner picked one amp family and moved the gain

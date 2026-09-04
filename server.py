@@ -2350,6 +2350,77 @@ def api_preset(body: PresetBody):
                        "label": proto.slot_label(got[0]), "name": got[1]}}
 
 
+class CopyEffectsBody(BaseModel):
+    source: str                 # source preset: a wire number, or a name to match
+    effects: list[str] = ["DELAY", "REVERB"]
+
+
+def _resolve_source_slot(fm9, source: str):
+    """A source preset given as a wire number or a name to match -> wire number."""
+    s = str(source).strip()
+    if s.isdigit():
+        n = int(s)
+        return n if 0 <= n <= 511 else None
+    slots = _preset_cache["slots"]
+    if slots is None:
+        slots = [{"number": x.number, "name": x.name}
+                 for x in fm9.scan_slots(0, 511)]
+    sl = s.lower()
+    for entry in slots:
+        if entry.get("name") and sl in str(entry["name"]).lower():
+            return entry["number"]
+    return None
+
+
+@app.post("/api/copy-effects")
+def api_copy_effects(body: CopyEffectsBody):
+    """Copy an effect from another preset onto the current edit buffer.
+
+    "Make the delay like BT Marco Sfogli's": load the source preset, read its
+    named blocks (delay, reverb, ...) with all their settings, come back, and
+    write those exact settings onto the matching blocks here. A better path to
+    an artist tone than guessing effect parameters from scratch. The current
+    build must already have the blocks; the signal-chain ORDER is not moved,
+    only each block's settings. Cross-preset by design.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: copying effects loads another preset to read "
+                      "it, which discards the edit buffer. Not while you play."},
+            status_code=423)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            target = fm9.current_preset()
+            if not target:
+                return JSONResponse(
+                    {"error": "no preset is loaded to copy the effects into"},
+                    status_code=409)
+            target_num = target[0]
+            src_num = _resolve_source_slot(fm9, body.source)
+            if src_num is None:
+                return JSONResponse(
+                    {"error": f"could not find a preset matching {body.source!r}"},
+                    status_code=404)
+            # Read the source, then come back to the buffer we are copying into.
+            # Selecting a preset discards the edit buffer, so the caller must
+            # have stored the build first; that is the same rule as everywhere.
+            fm9.select_preset(src_num)
+            source_snap = editbuffer.capture(fm9, reg)
+            fm9.select_preset(target_num)
+            res = editbuffer.transplant(fm9, reg, source_snap, body.effects)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    return {"ok": res.ok, "source": source_snap.get("preset_name"),
+            "effects": body.effects, "applied": res.applied, "failed": res.failed,
+            "note": "settings copied onto the matching blocks; the signal-chain "
+                    "order was not changed"}
+
+
 _shared_cache: dict = {"preset": None, "map": None}
 
 #: The last state read from real hardware, kept so a design can be planned
