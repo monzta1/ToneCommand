@@ -446,6 +446,32 @@ def test_a_failed_build_is_not_silence():
     assert "Give it another go" in tr
 
 
+def test_waiting_never_mentions_servers_or_timeouts_to_the_player():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    for name in ("buildNote()", "waitLine()"):
+        fn = ui.split(f"function {name}")[1].split("\n}\n")[0]
+        assert "server" not in fn.lower()
+        assert "timeout" not in fn.lower()
+        assert "taking longer than usual" in fn
+
+
+def test_send_failures_keep_internal_detail_in_the_log_only():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert "function plainDeviceError" in ui
+    fn = ui.split("async function apply()")[1].split("\n}\n")[0]
+    catch = fn.rsplit("} catch (e) {", 1)[1]
+    assert "log(`transmit failed: ${e.message}`" in catch
+    assert "planResult(`<b>Nothing was sent.</b> ${esc(plain)}`" in catch
+    assert "chatNote(`Nothing was sent: ${e.message}`)" not in catch
+
+
+def test_plan_warnings_are_translated_before_rendering():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    cards = ui.split("function renderPlanCards(plan, filter)")[1].split("\n}\n")[0]
+    assert "plainActionIssue(m, !!errs.length)" in cards
+    assert "function plainActionIssue(message, blocked)" in ui
+
+
 def test_transmitting_reports_into_the_conversation_too():
     """It reported itself only into the LOG, which is two panels further down
     the page from where somebody five turns into a conversation is looking."""
@@ -453,7 +479,7 @@ def test_transmitting_reports_into_the_conversation_too():
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
     assert "chatWorking = 'sending to the FM9...'" in fn
     assert "Sent ${good} change" in fn
-    assert "Nothing was sent:" in fn
+    assert "Nothing was sent. ${plain}" in fn
 
 
 def test_the_count_is_what_landed_not_what_was_asked_for():
@@ -636,7 +662,7 @@ def test_the_stream_pings_while_it_is_quiet():
 def test_the_browser_tells_slow_apart_from_stuck():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function waitLine()")[1].split("\n}\n")[0]
-    assert "It may be stuck" in fn, "no answer at all has to say so"
+    assert "taking longer than usual" in fn
     assert "Longer than usual" in fn, "slow is not the same as broken"
     assert "writing..." in fn
     assert "chatAlive" in fn, "stuck is judged on pings, not on words"
@@ -668,13 +694,14 @@ def test_a_stream_that_ends_early_is_a_failure_not_a_reply():
     assert "if (!landed) throw" in fn
 
 
-def test_which_model_answered_is_on_the_reply_it_produced():
-    """It was returned on every turn and thrown away, so "who am I talking
-    to" had no answer anywhere on the page."""
+def test_internal_model_names_do_not_enter_the_conversation():
     ui = (ROOT / "ui" / "index.html").read_text()
+    # Kept in saved metadata for diagnostics, never shown to the player.
     assert "model: d.model || ''" in ui
     fn = ui.split("function renderChat()")[1].split("\n}\n")[0]
-    assert "m.model ? `<i>${esc(m.model)}</i>`" in fn
+    assert "m.model ?" not in fn
+    copied = ui.split("function conversationText()")[1].split("\n}\n")[0]
+    assert "m.model" not in copied
 
 
 # --- naming what gets built -----------------------------------------------
@@ -843,7 +870,7 @@ def test_a_long_build_can_be_left():
     # planner subprocess on disconnect.
     caught = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
     assert "e.name === 'AbortError'" in caught
-    assert "nothing was built and nothing was sent" in caught
+    assert "Nothing was built and nothing was sent" in caught
 
 
 def test_stopping_a_build_leaves_nothing_running():
@@ -983,7 +1010,7 @@ def test_the_bar_does_not_pretend_to_know_how_far_along_it_is():
 def test_the_banner_says_when_it_has_stopped_hearing_anything():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function buildNote()")[1].split("\n}\n")[0]
-    assert "It may be stuck" in fn
+    assert "taking longer than usual" in fn
     assert "chatAlive" in fn
     assert "takes a few minutes" in fn
 
@@ -1033,8 +1060,8 @@ def test_the_button_counts_where_the_finger_was():
     who has just pressed TRANSMIT is looking at TRANSMIT."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "TRANSMITTING · ${n} / ${total}" in fn, \
-        "the SEND stage header counts the transmit"
+    assert "SENDING · ${n} / ${total}" in fn, \
+        "the SEND stage header counts each change"
     assert "Sending ${d.done} of ${d.total}" in fn
 
 

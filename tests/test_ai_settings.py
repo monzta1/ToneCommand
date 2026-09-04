@@ -291,17 +291,18 @@ def test_a_backend_the_panel_can_configure_stays_selectable(store):
     assert entry("openai")["needs"] == ""
 
 
-# --- the UI surfaces which backend answered ---
+# --- the UI keeps provider machinery out of the plan ---
 
 def _ui() -> str:
     from pathlib import Path
     return (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
 
 
-def test_the_ui_shows_the_answering_backend():
+def test_the_ui_does_not_show_backend_or_model_ids_on_a_plan():
     ui = _ui()
-    assert "planned by" in ui, "a plan must be attributable to the model behind it"
-    assert "plan.backend" in ui and "plan.model" in ui
+    assert "planned by" not in ui
+    show = ui.split("function showPlan(plan)")[1].split("\n}\n")[0]
+    assert "plan.backend" not in show and "plan.model" not in show
 
 
 def test_no_em_dashes_in_the_ui_or_the_settings_module():
@@ -415,7 +416,7 @@ def test_the_key_field_states_the_whole_rule(store):
     from pathlib import Path
     ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
     assert "model (optional)" in ui
-    assert "API key (required for Claude API but optional for others)" in ui
+    assert "Access key, when this service requires one" in ui
     assert "keyOptional" not in ui, "that flag drove the old per-backend label"
 
 
@@ -545,10 +546,10 @@ def test_an_env_model_is_not_pinned_into_the_file_either(store, monkeypatch):
 
 # --- model strings from an endpoint are not trusted markup (#25, findings 4, 5)
 
-def test_the_answering_model_is_written_as_text_not_markup():
+def test_advanced_provider_fields_are_not_player_facing():
     ui = _ui()
-    assert "by.textContent" in ui, "plan.model must not be inserted as HTML"
-    assert "insertAdjacentHTML('afterend'" not in ui
+    assert '<details id="aiadvanced" hidden>' in ui
+    assert 'id="aisrc" hidden' in ui
 
 
 def test_remote_model_ids_are_not_interpolated_into_an_attribute():
@@ -576,7 +577,7 @@ def test_settings_drawer_keeps_fields_on_separate_rows_and_names_stored_keys():
     assert "renderKeyStatus(card.preset.hasKey)" in ui
     assert "renderKeyStatus(b.hasKey)" in ui
     assert "renderKeyStatus(svc.hasKey)" in ui
-    assert "API KEY · ${current.name.toUpperCase()}" in ui
+    assert "ACCESS KEY · ${current.name.toUpperCase()}" in ui
     assert "esc(a.reason" in ui
 
 
@@ -973,7 +974,7 @@ def test_the_key_box_stops_contradicting_the_service_above_it():
     sends "local" and earns a 404 for a model nobody typed."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function renderAiPresets()")[1].split("\n}\n")[0]
-    assert "API key, required for this service" in fn
+    assert "Access key required for this service" in fn
     assert "no key needed for this service" in fn
     assert "fills itself in once you save a key" in fn
     # a stored key must still say so rather than demand another

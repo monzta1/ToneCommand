@@ -54,8 +54,8 @@ def test_refusals_name_themselves():
 
 def test_the_ui_shows_the_two_consequences_differently():
     assert "spliceNote" in UI
-    assert "re-selecting the preset puts them back" in UI
-    assert "nothing here puts" in UI
+    assert "reloading the preset puts them back" in UI
+    assert "only way to restore it" in UI
     assert ".splice .oneway" in UI, "the one-way step needs its own styling"
     assert "ONE WAY" in UI
 
@@ -66,16 +66,16 @@ def test_the_one_way_claim_is_the_one_hardware_supports():
     along with every other block. So the cell is unrecoverable ON ITS OWN,
     not unrecoverable full stop, and the copy says exactly that."""
     assert "does not come back, even after re-selecting" not in UI
-    assert "throws away " in UI and "every other change too" in UI
-    assert "Store the preset and it is gone for good" in UI
+    assert "discards every other unsaved change" in UI
+    assert "Saving the preset makes this permanent" in UI
 
 
 def test_transmit_asks_before_spending_a_shunt():
     """Distinct from the existing store confirmation, and it must name what
     is reversible so the two are not conflated."""
-    assert "spends a pass-through cell" in UI
-    assert "Moving the blocks one column" in UI and "is reversible" in UI
-    assert "storing the preset makes it permanent" in UI
+    assert "uses the last open routing space" in UI
+    assert "Reloading the preset is the only way" in UI
+    assert "Saving the preset makes this permanent" in UI
     assert "splice not confirmed; transmit cancelled" in UI
 
 

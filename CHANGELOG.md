@@ -5,6 +5,15 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **The main workflow now speaks like a player, not a control protocol.**
+  Waiting no longer mentions a server or reports silence in seconds. Plans
+  no longer display AI backend or model identifiers. The review rail now says
+  WHAT WILL CHANGE, READY CHECK, and IF YOU CHANGE YOUR MIND instead of blast
+  radius, preflight, and reversibility. Internal validation messages are
+  translated into safe next steps, routing warnings describe the audible
+  consequence without grid terminology, and send failures keep their exact
+  detail in Activity while the workflow gives a calm recovery step. Advanced
+  AI address and model fields are no longer exposed (owner, 2026-09-03).
 - **Empty slots now build themselves when a tone needs one.** The EMPTY SLOT
   panel and PROPOSE STARTING CHAIN button are gone. Ask for a tone while an
   empty slot is loaded and ToneCommand creates the basic signal path inside
