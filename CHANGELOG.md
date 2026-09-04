@@ -5,6 +5,15 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **Builds match the amp to each scene's role, and spend effort where the
+  tone actually lives.** The planner picked one amp family and moved the gain
+  knob from clean to lead. It now puts a clean-voiced amp on clean scenes and
+  a high-gain amp on lead/rhythm scenes (on their own channels), and weights
+  its voicing by role: a clean signal is nearly linear so the cabinet carries
+  it, while distortion is the amp's to make so a lead's gain structure and
+  sustain carry the feel and no cab can fake it. Learned by comparing a blind
+  ToneCommand build to a pro artist preset, which used a different amp per
+  scene role under captured IRs (owner, 2026-09-04).
 - **Sending shows a progress bar, not a wall of actions.** The send used to
   stream every one of a hundred-plus writes past the player ("Sending 113 of
   129: AMP 1 DISTORT_MASTER"). It now shows a filling bar and a percentage,
