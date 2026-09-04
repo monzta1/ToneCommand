@@ -2417,6 +2417,7 @@ def api_copy_effects(body: CopyEffectsBody):
             return JSONResponse({"error": str(e)}, status_code=500)
     return {"ok": res.ok, "source": source_snap.get("preset_name"),
             "effects": body.effects, "applied": res.applied, "failed": res.failed,
+            "normalized": res.normalized,
             "note": "settings copied onto the matching blocks; the signal-chain "
                     "order was not changed"}
 
@@ -2485,7 +2486,8 @@ def api_compose(body: ComposeBody):
                 r = editbuffer.transplant(fm9, reg, snaps[n], t.blocks)
                 took.append({"source": snaps[n].get("preset_name"),
                              "blocks": t.blocks, "applied": len(r.applied),
-                             "failed": r.failed})
+                             "failed": r.failed,
+                             "normalized": len(r.normalized)})
 
             # 4. Name and store the result.
             if body.name:

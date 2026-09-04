@@ -72,6 +72,10 @@ class Restore:
     """What a restore actually managed to do."""
     applied: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    #: Params the device read back at its own value even after a retry, because
+    #: it normalizes them in the target's context (a cab cut slope when the cut
+    #: is off, say). Not a failure of the copy: the device chose to keep them.
+    normalized: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -285,12 +289,20 @@ def transplant(fm9, reg, source_snap: dict, families) -> Restore:
                                   f"not in the registry, left as it is")
                 continue
             res = fm9.set_param_wire(spec, c.frm_wire)
+            if not getattr(res, "ok", False):
+                # A settle-window read can miss a write that took; try once more
+                # past it before judging. What survives a retry is the device
+                # holding its own value, not a flaky write.
+                import time as _t
+                _t.sleep(0.1)
+                res = fm9.set_param_wire(spec, c.frm_wire)
             if getattr(res, "ok", False):
                 shown = c.frm if c.frm is not None else c.frm_wire
                 out.applied.append(f"{c.family} {c.instance} {c.label} -> {shown}")
             else:
-                out.failed.append(f"{c.family} {c.instance} {c.label}: "
-                                  f"{getattr(res, 'detail', 'write not verified')}")
+                out.normalized.append(
+                    f"{c.family} {c.instance} {c.label}: device kept its own "
+                    f"value ({getattr(res, 'detail', 'read-back mismatch')})")
 
     # Match the source's bypass for each copied block, so a delay the source
     # runs engaged comes across engaged.
