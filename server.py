@@ -1265,10 +1265,9 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                     if fm9.read_grid() == []:
                         adds[0]["validation_warnings"] = (
                             adds[0]["validation_warnings"] + [
-                                "this slot is empty, so a starting chain "
-                                "(Input, Amp, Cab, Output, cabled end to "
-                                "end) will be built into it before these "
-                                "changes are applied"])
+                                "This slot is empty. ToneCommand will build "
+                                "the basic signal path first, then voice "
+                                "the requested tone."])
                 except FM9NotFound:
                     drop_fm9()
         return result
@@ -1449,11 +1448,8 @@ def _no_placement_detail(a: Action, pos: str, cells: list | None) -> str:
                 f"unknown; nothing was sent. Check the FM9 is connected and "
                 f"not in use by FM9-Edit, then retry")
     if not cells:
-        return (f"this preset is empty: it has no grid cells at all, not even "
-                f"pass-through cells, so there is nothing to place {a.block} "
-                f"onto. Load a preset with a signal chain, or use BUILD A "
-                f"STARTING CHAIN in the EMPTY SLOT panel to make one from "
-                f"nothing")
+        return (f"this slot is empty. ToneCommand will create the basic "
+                f"signal path before placing {a.block}")
     return (f"no free pass-through cell {where} to place {a.block} on; "
             f"refusing rather than rewiring the grid")
 
@@ -3461,8 +3457,10 @@ def _apply_for(body: ApplyBody, on_step=None):
                         results.append({
                             "action": {"kind": "build_chain"},
                             "ok": bool(chain.get("ok")),
-                            "detail": "empty slot, so a starting chain went "
-                                      "in first: " + chain.get("detail", "")})
+                            "detail": "Built the basic signal path first, "
+                                      "then continued with your tone."})
+                        log.info("apply: empty slot foundation: %s",
+                                 chain.get("detail", ""))
                         if on_step is not None:
                             try:
                                 on_step({"done": 0,

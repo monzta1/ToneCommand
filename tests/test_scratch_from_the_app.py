@@ -113,43 +113,29 @@ def test_the_reply_says_what_it_did_to_your_rig(client):
     assert any("target: slot" in s for s in r["steps"])
 
 
-# --- what the browser offers ----------------------------------------------
+# --- what the browser hides -----------------------------------------------
 
-def test_the_panel_appears_only_for_an_empty_slot():
-    assert 'id="emptypanel"' in BODY
-    assert 'id="mode-empty" hidden' in BODY, \
-        "the EMPTY SLOT request type is offered only when the slot is empty"
-    assert "$('mode-empty').hidden = !emptySlot;" in SCRIPT
+def test_no_empty_slot_mode_or_setup_button_reaches_the_player():
+    assert 'id="emptypanel"' not in BODY
+    assert 'id="mode-empty"' not in BODY
+    assert 'id="buildscratch"' not in BODY
     render = SCRIPT.split("function renderParams")[1].split("\nfunction ")[0]
     assert "const emptySlot = lastState.connected !== false && !(s.blocks || []).length;" in render
-    assert "$('emptypanel').style.display = emptySlot ? '' : 'none';" in render
 
 
 def test_an_empty_slot_is_not_reported_as_a_missing_rig():
     """"awaiting link" over a slot the device is happily reporting as <EMPTY>
     sends people looking for a cable fault they do not have."""
     render = SCRIPT.split("function renderParams")[1].split("\nfunction ")[0]
-    assert "This preset slot is empty" in render
+    assert "This slot is ready for a new tone" in render
     assert "lastState.connected !== false" in render
 
 
-def test_the_button_confirms_and_says_what_it_costs():
-    fn = SCRIPT.split("$('buildscratch').onclick")[1].split("\n};")[0]
-    assert "window.confirm(" in fn
-    assert "discards whatever is in the edit buffer" in fn
-    assert "Nothing is stored" in fn
-    assert "factory defaults" in fn
-
-
-def test_the_refusal_points_at_the_button_not_a_terminal():
-    """The refusal named tools/build_from_scratch.py, which was accurate and
-    useless to anyone not in a shell. That WAS issue #36."""
+def test_the_empty_slot_message_promises_the_internal_fix():
     a = server.Action(kind="add_block", block="amp", instance=1, position="any")
-    # the rendered sentence, not the source: the phrase is split over two
-    # lines in the f-string and a source scan would miss it either way
     empty = server._no_placement_detail(a, "any", [])
-    assert "BUILD A STARTING CHAIN" in empty
-    assert "build_from_scratch.py" not in empty
+    assert "ToneCommand will create the basic signal path" in empty
+    assert "STARTING CHAIN" not in empty
     # and the other two walls are untouched by this
     assert "did not answer" in server._no_placement_detail(a, "any", None)
 
@@ -203,7 +189,7 @@ def test_a_transmit_onto_an_empty_slot_builds_the_chain_first(client):
     rows = r["results"]
     assert rows[0]["action"]["kind"] == "build_chain"
     assert rows[0]["ok"], rows[0]["detail"]
-    assert "starting chain" in rows[0]["detail"]
+    assert "Built the basic signal path first" in rows[0]["detail"]
     # amp 1 arrived with the chain, so the add is satisfied, not a failure
     amp = rows[1]
     assert amp["ok"], amp["detail"]
@@ -224,5 +210,5 @@ def test_an_occupied_slot_gets_no_chain(client):
 def test_the_plan_warns_about_the_provisioning_up_front():
     import inspect
     src = inspect.getsource(server._plan_for)
-    assert "starting chain" in src
+    assert "ToneCommand will build" in src and "then voice" in src
     assert "validation_warnings" in src.split("read_grid() == []")[1][:400]

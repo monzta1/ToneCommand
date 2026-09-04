@@ -78,7 +78,7 @@ def test_an_empty_grid_is_provisioned_not_lectured(client, monkeypatch):
         "actions": [{"kind": "add_block", "block": "amp", "instance": 1}]}).json()["results"]
     first = results[0]
     assert first["action"]["kind"] == "build_chain"
-    assert "starting chain" in first["detail"]
+    assert "Built the basic signal path first" in first["detail"]
     assert all("no free pass-through cell" not in r["detail"] for r in results)
 
 

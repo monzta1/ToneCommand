@@ -2130,15 +2130,6 @@
         <!-- Between reading and building: the two questions whose answers
              change the work, asked before the plan is generated. -->
         <div id="srcask" class="srcask" hidden></div>
-        <!-- Empty-slot mode: the same Plan, Review, Confirm, Send road. -->
-        <div class="console" data-nofold id="emptypanel" style="display:none">
-          <p class="hint" id="emptywhy"></p>
-          <div class="abrow">
-            <button id="buildscratch">PROPOSE STARTING CHAIN</button>
-            <span class="hint" id="buildwhat">Input &rarr; Amp &rarr; Cab &rarr;
-              Output, in the edit buffer. Reversible.</span>
-          </div>
-        </div>
       </section>
 
       <!-- STAGE: PLAN. What the machine believes you asked for, before the
@@ -4631,14 +4622,6 @@ function renderParams(s) {
   // saying "awaiting link" over a slot the device is happily reporting as
   // <EMPTY> sends people looking for a cable fault they do not have.
   const emptySlot = lastState.connected !== false && !(s.blocks || []).length;
-  $('emptypanel').style.display = emptySlot ? '' : 'none';
-  if (emptySlot) {
-    $('emptywhy').textContent =
-      `This preset slot is empty. An FM9 slot in this state has no grid cells `
-      + `at all, not even pass-through cells, so there is nothing here to `
-      + `place a block onto or to splice into. A chain has to be built from `
-      + `nothing, which is what this does.`;
-  }
   if (!Object.keys(meta).length) {
     // Everything the previous preset put on the page has to go, not just the
     // parameter columns. The graphic EQ panel is not one of the SECTIONS and
@@ -4646,7 +4629,9 @@ function renderParams(s) {
     // pointing at them, so FLATTEN ALL stayed live over a page that was
     // otherwise showing "awaiting link". The amp and cab pickers were left
     // behind for the same reason, naming a preset no longer loaded.
-    $('knobs-amp').innerHTML = '<span class="hint">awaiting link...</span>';
+    $('knobs-amp').innerHTML = emptySlot
+      ? '<span class="hint">This slot is ready for a new tone.</span>'
+      : '<span class="hint">awaiting link...</span>';
     $('picks').innerHTML = '';
     geqKeys = [];
     $('geqpanel').style.display = 'none';
@@ -5046,36 +5031,6 @@ eachBox(box => box.addEventListener('click', async e => {
   await blockAction({kind: 'set_bypass', block: fam, instance: Number(inst),
                      bypassed: false}, null);
 }));
-
-$('buildscratch').onclick = async () => {
-  if (!window.confirm(
-      'Build Input, amp, cab and output into a free slot?\n\n'
-      + '\u2022 The FM9 will switch to the first slot it reports as EMPTY, '
-      + 'which discards whatever is in the edit buffer right now.\n'
-      + '\u2022 Nothing is stored. The slot still reads <EMPTY> in flash '
-      + 'until you store it yourself from STORE PRESET.\n'
-      + '\u2022 The blocks arrive at factory defaults, so it will sound '
-      + 'plain until you voice it.')) return;
-  const b = $('buildscratch');
-  b.disabled = true;
-  b.classList.add('busy');
-  try {
-    const r = await fetch('/api/build-scratch', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({}),
-    });
-    const out = await r.json();
-    if (out.error || !out.ok) throw new Error(out.error || out.detail);
-    for (const step of out.steps || []) log(step);
-    log(out.detail, 'ok');
-  } catch (e) {
-    log(`build failed: ${e.message}`, 'err');
-  } finally {
-    b.disabled = false;
-    b.classList.remove('busy');
-    await refresh();
-  }
-};
 
 // Build from a video or a description.
 //

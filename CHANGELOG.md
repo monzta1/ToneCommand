@@ -5,6 +5,12 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **Empty slots now build themselves when a tone needs one.** The EMPTY SLOT
+  panel and PROPOSE STARTING CHAIN button are gone. Ask for a tone while an
+  empty slot is loaded and ToneCommand creates the basic signal path inside
+  the reviewed send, then continues voicing the requested sound. The plan
+  says this will happen before anything reaches the FM9. The same guarded,
+  read-back-checked path still performs every change (owner, 2026-09-03).
 - **One request box for every kind of tone request.** Describe a sound, ask
   for a whole rig, request a small adjustment, or paste a link in the same
   place. ToneCommand now recognizes what was entered and chooses the right
