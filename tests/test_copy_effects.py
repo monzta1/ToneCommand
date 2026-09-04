@@ -119,3 +119,29 @@ def test_compose_refuses_a_target_outside_the_whitelist(monkeypatch):
     monkeypatch.setenv("TONECOMMAND_STORE_SLOTS", "100-110")  # so narrow it after
     r = c.post("/api/compose", json={"target": 20, "base": "5"})
     assert r.status_code == 403
+
+
+# --- scene-aware copy (#48): sim can only cover that it runs and copies; the
+#     per-scene REMAPPING needs hardware, because the sim does not model
+#     per-scene channel assignment. ------------------------------------------
+
+def test_transplant_by_scene_runs_and_copies(monkeypatch):
+    """Sweeps both presets, copies the source's per-scene effect onto the
+    target. The sim keeps every scene on channel 0, so this proves the sweep +
+    copy mechanism, not the cross-channel remapping (hardware-only)."""
+    server, c = _client(monkeypatch)
+    fm9, reg = server._fm9, server.reg
+    # give preset 6 a distinctive delay
+    fm9.select_preset(6)
+    snap6 = editbuffer.capture(fm9, reg)
+    d6 = _delay(snap6)
+    d6["values"][0] = (d6["values"][0] + 22222) % 65534
+    editbuffer.transplant(fm9, reg, snap6, {"DELAY"})
+    fm9.store_preset(6)
+    want = d6["values"][0]
+
+    res = editbuffer.transplant_by_scene(fm9, reg, 6, 5, {"DELAY"})
+    assert res.applied, "scene-aware copy applied nothing"
+    # it ends on the target's buffer with the edit; re-selecting would discard
+    # it, so read the buffer directly.
+    assert _delay(editbuffer.capture(fm9, reg))["values"][0] == want

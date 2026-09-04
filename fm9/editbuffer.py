@@ -322,6 +322,94 @@ def transplant(fm9, reg, source_snap: dict, families) -> Restore:
     return out
 
 
+def _scene_state(fm9, eids):
+    """Per scene 1-8, {effect_id: (channel, bypassed)} for the given blocks. A
+    scene sweep (audible); returns to the scene it started on."""
+    here = fm9.scene_name()
+    active = here[0] if here else 1
+    out = {}
+    try:
+        for sc in range(1, 9):
+            fm9.set_scene(sc)
+            out[sc] = {b.effect_id: (int(b.channel), bool(b.bypassed))
+                       for b in (fm9.status_dump() or []) if b.effect_id in eids}
+    finally:
+        fm9.set_scene(active)
+    return out
+
+
+def transplant_by_scene(fm9, reg, source_num, target_num, families) -> Restore:
+    """Scene-aware copy: what an effect does on the SOURCE's scene N lands on the
+    TARGET's scene N, on whatever channel each maps that scene to.
+
+    The channel-faithful transplant() is scene-blind: two presets map scenes to
+    channels differently, so a channel-for-channel copy puts an effect on the
+    wrong scene (#48). This reads each preset's scene->channel layout by
+    sweeping the scenes, then for every scene copies the source's per-scene
+    params and bypass onto the target's per-scene channel. Sweeps both presets
+    (audible) and leaves the target loaded on the scene it started on.
+    """
+    fams = {str(f).upper() for f in families}
+    eids = set()
+    for f in fams:
+        try:
+            eids.add(reg.effect_id(f, 1))
+        except Exception:
+            pass
+    out = Restore()
+
+    fm9.select_preset(source_num)
+    src_state = _scene_state(fm9, eids)
+    src_snap = capture(fm9, reg)
+    src_vals = {b["effect_id"]: (b["values"], b["channels"])
+                for b in src_snap["blocks"] if b["effect_id"] in eids}
+
+    fm9.select_preset(target_num)
+    tgt_state = _scene_state(fm9, eids)
+
+    here = fm9.scene_name()
+    active = here[0] if here else 1
+    for sc in range(1, 9):
+        for eid in eids:
+            if eid not in src_state.get(sc, {}) or eid not in tgt_state.get(sc, {}):
+                continue
+            src_ch, src_byp = src_state[sc][eid]
+            tgt_ch, _ = tgt_state[sc][eid]
+            vals, chans = src_vals.get(eid, (None, None))
+            if not vals:
+                continue
+            stride = _stride(vals, chans)
+            src_params = vals[src_ch * stride:(src_ch + 1) * stride]
+            fam = reg.family_of_effect_id(eid)
+            if not fam:
+                continue
+            family, inst = fam
+            fm9.set_scene(sc)
+            fm9.set_channel(eid, tgt_ch)
+            for pid, wire in enumerate(src_params):
+                try:
+                    spec = reg.spec(family, pid, inst)
+                except Exception:
+                    spec = None
+                if spec is None:
+                    continue
+                res = fm9.set_param_wire(spec, wire)
+                if not getattr(res, "ok", False):
+                    import time as _t
+                    _t.sleep(0.1)
+                    res = fm9.set_param_wire(spec, wire)
+                if getattr(res, "ok", False):
+                    out.applied.append(f"scene {sc} {family} {inst} param {pid}")
+                else:
+                    out.normalized.append(f"scene {sc} {family} {inst} param {pid}: "
+                                          "device kept its own value")
+            fm9.set_bypass(eid, src_byp)
+            out.applied.append(f"scene {sc} {family} {inst}: "
+                               f"{'bypassed' if src_byp else 'engaged'}")
+    fm9.set_scene(active)
+    return out
+
+
 def summarise(d: dict, limit: int = 6) -> str:
     """One line saying what a restore would do, for a button that needs to be
     honest about its blast radius before it is pressed."""
