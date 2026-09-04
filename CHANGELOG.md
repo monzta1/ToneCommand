@@ -17,6 +17,17 @@ Notable changes to ToneCommand. Dates are UTC.
   reference preset onto the current build wire for wire. Both copy settings and
   bypass; the signal-chain order is not moved yet (owner, 2026-09-04).
 
+### Added
+- **Reorder a block into the correct signal-chain order.** "Put the delay
+  before the reverb", "drive before the amp": the planner adds blocks and
+  copy/compose lifts them, but nothing moved them, so a faithful copy of an
+  ambient tone could land delay after reverb. Reorder moves one block relative
+  to another on the same row and proves Input->Output still walks before
+  calling it done; a move it cannot cable correctly (cross-row, over a gap, or
+  into a cross-row feed) is refused by name, never guessed. Reuses the splice
+  and settle-aware verify already proven on hardware. Round-trip
+  hardware-confirmed on a real eight-block preset row (owner, 2026-09-04).
+
 ### Changed
 - **Builds match the amp to each scene's role, and spend effort where the
   tone actually lives.** The planner picked one amp family and moved the gain

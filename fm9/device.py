@@ -1035,6 +1035,149 @@ class FM9:
         self._send(p.build_set_grid_routing(src_row, src_col, dest_row, op))
         time.sleep(0.25)
 
+    def plan_reorder(self, moving_eid: int, ref_eid: int,
+                     position: str = "before") -> dict:
+        """What a same-row reorder WOULD do, without doing it (#49).
+
+        Signal-chain order matters: delay belongs before reverb, drive before
+        the amp. This moves one block relative to another on the same row.
+        Like plan_splice it is split out so the consequences can be shown
+        before anyone approves, and it holds to the same modelled geometry:
+        one row, a contiguous run of real blocks, no cross-row feeds. Anything
+        outside that is refused by name rather than guessed at, because a grid
+        move this code cannot cable correctly is a silent-preset waiting to
+        happen.
+        """
+        cells = {(c.row, c.col): c for c in (self.read_grid() or [])}
+        mcell = next((c for c in cells.values() if c.effect_id == moving_eid), None)
+        rcell = next((c for c in cells.values() if c.effect_id == ref_eid), None)
+        if moving_eid == ref_eid:
+            return {"ok": False, "reason": "same_block",
+                    "detail": "a block cannot be reordered relative to itself"}
+        if mcell is None:
+            return {"ok": False, "reason": "moving_not_found",
+                    "detail": f"effect {moving_eid} is not on the grid"}
+        if rcell is None:
+            return {"ok": False, "reason": "ref_not_found",
+                    "detail": f"reference effect {ref_eid} is not on the grid"}
+        if mcell.row != rcell.row:
+            return {"ok": False, "reason": "cross_row",
+                    "detail": f"the two blocks are on different rows "
+                              f"({mcell.row + 1} vs {rcell.row + 1}); cross-row "
+                              "reorder is not modelled by the same-row redraw"}
+        row = mcell.row
+        lo, hi = min(mcell.col, rcell.col), max(mcell.col, rcell.col)
+        # Every column between them must be a real block on this row: a gap or
+        # a pass-through in the run would be destroyed and could not be put
+        # back (shunts are not re-insertable, finding 8).
+        run = []
+        for col in range(lo, hi + 1):
+            c = cells.get((row, col))
+            if c is None or c.is_shunt or c.effect_id is None:
+                return {"ok": False, "reason": "run_not_contiguous",
+                        "detail": f"row {row + 1} col {col + 1} between the two "
+                                  "blocks is empty or a pass-through; reorder "
+                                  "across a gap is not modelled"}
+            run.append(c)
+        # A cross-row feed into the run would be silently broken by the
+        # same-row redraw, exactly as plan_splice guards against. row is
+        # 0-based here, and walk() feeds a same-row cable as bit (row+1), so
+        # that is the block's own-row bit to mask off.
+        own = 1 << (row + 1)
+        foreign = [c.col + 1 for c in run if c.cable_in_mask & ~own]
+        if foreign:
+            return {"ok": False, "reason": "fed_from_another_row",
+                    "detail": f"cells {foreign} on row {row + 1} are fed from "
+                              "another row; the same-row redraw would break "
+                              "routing this code does not model"}
+        cur_order = [c.effect_id for c in run]
+        new_order = [e for e in cur_order if e != moving_eid]
+        idx = new_order.index(ref_eid)
+        insert_at = idx if position == "before" else idx + 1
+        new_order.insert(insert_at, moving_eid)
+        cols = list(range(lo, hi + 1))
+        return {"ok": True, "reason": "", "row": row, "cols": cols,
+                "cur_order": cur_order, "new_order": new_order,
+                "noop": new_order == cur_order,
+                "detail": ""}
+
+    def reorder_block(self, moving_eid: int, ref_eid: int,
+                      position: str = "before", settle: float = 0.35) -> dict:
+        """Move one block before/after another on the same row (#49).
+
+        Rewrites the contiguous run the two blocks belong to into the new
+        order and redraws the disturbed span, then proves Input->Output still
+        walks (scene_alive) rather than trusting a member count. What it will
+        do is decided by plan_reorder, so the consequences shown and the work
+        done are the same decision.
+
+        The run's columns are unchanged in number and position; only which
+        block sits in each changes. Each cleared cell becomes a pass-through
+        first, then takes its new block, mirroring splice_block. The verify
+        read is settle-aware for the same reason (a fresh placement reads back
+        a transient id, KNOWN_QUIRKS), and it never passes blind.
+        """
+        intent = self.plan_reorder(moving_eid, ref_eid, position)
+        if not intent["ok"]:
+            return dict(intent, reordered=[])
+        if intent["noop"]:
+            return dict(intent, reordered=[], detail="already in that order; "
+                        "nothing to move")
+        row, cols, new_order = intent["row"], intent["cols"], intent["new_order"]
+
+        # Clear the run to pass-throughs (frees cells and their cables), then
+        # lay the new order back into the same columns.
+        for col in cols:
+            self.place_block(row + 1, col + 1, 0)
+            time.sleep(settle)
+        for col, eid in zip(cols, new_order):
+            self.place_block(row + 1, col + 1, eid)
+            time.sleep(settle)
+
+        # Clearing destroyed cables; redraw the whole disturbed span same-row,
+        # including the boundary into the run's first column.
+        after = {(c.row, c.col): c for c in (self.read_grid() or [])}
+        span = sorted(c for (r, c) in after
+                      if r == row and c >= max(0, cols[0] - 1))
+        for a, b in zip(span, span[1:]):
+            if b == a + 1:
+                self.connect_cells(row + 1, a + 1, row + 1)
+                time.sleep(settle)
+
+        # Verify: the run holds exactly the new order, and the path still
+        # walks. Poll briefly past the settle window before judging.
+        def read_run():
+            g = {(c.row, c.col): c for c in (self.read_grid() or [])}
+            return [g.get((row, col)) for col in cols], g
+        placed, grid = read_run()
+        want = new_order
+        got = [c.effect_id if c else None for c in placed]
+        if got != want:
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                time.sleep(max(settle, 0.15) * 2)
+                placed, grid = read_run()
+                got = [c.effect_id if c else None for c in placed]
+                if got == want:
+                    break
+        cells_after = list(grid.values())
+        st = {b.effect_id: b for b in self.status_dump() or []}
+        alive, why = scene_alive(cells_after, st, self.reg)
+        ordered = got == want
+        return {
+            "ok": ordered and alive,
+            "row": row + 1,
+            "cols": [c + 1 for c in cols],
+            "new_order": new_order,
+            "alive": alive,
+            "reordered": [(eid, c + 1) for c, eid in zip(cols, new_order)],
+            "detail": (f"reordered, live signal path confirmed: {why}"
+                       if ordered and alive else
+                       f"run did not land in the requested order "
+                       f"(wanted {want}, got {got})" if not ordered
+                       else f"NO LIVE SIGNAL PATH after reorder: {why}"),
+        }
+
     def get_param_wire(self, spec: ParamSpec, channel: int | None = None) -> int | None:
         """Read one param's wire16 value via bulk read. `channel` 0..3 picks the
         channel copy; defaults to the block's current channel."""

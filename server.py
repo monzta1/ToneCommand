@@ -2432,6 +2432,56 @@ def api_copy_effects(body: CopyEffectsBody):
                     "order was not changed"}
 
 
+class ReorderBody(BaseModel):
+    move: str                   # block to move, e.g. "DELAY" or "delay 1"
+    position: str = "before"    # "before" | "after"
+    ref: str                    # the block to move it relative to, e.g. "REVERB"
+    move_instance: int = 1
+    ref_instance: int = 1
+
+
+@app.post("/api/reorder")
+def api_reorder(body: ReorderBody):
+    """Move a block into the correct signal-chain order (#49).
+
+    "Put the delay before the reverb", "drive before the amp": the planner adds
+    blocks and copy/compose lifts them, but neither moves them, so a faithful
+    copy of an ambient tone could land delay after reverb. This reorders one
+    block relative to another on the same row and proves the signal path still
+    walks; a move it cannot cable correctly (cross-row, over a gap, or into a
+    cross-row feed) is refused by name, never guessed. Edit buffer only.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: reordering rewires the grid; not mid-set."},
+            status_code=423)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            if not fm9.current_preset():
+                return JSONResponse(
+                    {"error": "no preset is loaded to reorder"}, status_code=409)
+            _, move_eid = reg.resolve_block(body.move, body.move_instance)
+            _, ref_eid = reg.resolve_block(body.ref, body.ref_instance)
+            pos = body.position if body.position in ("before", "after") else "before"
+            _take("undo")
+            res = fm9.reorder_block(move_eid, ref_eid, pos)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    status = 200 if res.get("ok") else 422
+    return JSONResponse({
+        "ok": res.get("ok", False),
+        "detail": res.get("detail", ""),
+        "reason": res.get("reason"),
+        "new_order": res.get("new_order"),
+        "reordered": res.get("reordered"),
+    }, status_code=status)
+
+
 class ComposeTake(BaseModel):
     source: str                 # a preset by wire number or name
     blocks: list[str]           # families to pull from it, e.g. ["DELAY"]
