@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **Sending shows a progress bar, not a wall of actions.** The send used to
+  stream every one of a hundred-plus writes past the player ("Sending 113 of
+  129: AMP 1 DISTORT_MASTER"). It now shows a filling bar and a percentage,
+  with a "show details" toggle that reveals the per-action log for when
+  something looks wrong (owner, 2026-09-04).
+
 ## 0.9.0 (2026-09-04)
 
 ### Fixed

@@ -1355,6 +1355,17 @@
   opacity: .75;
 }
 .planres button:hover { opacity: 1; }
+.sendprog { display: flex; flex-direction: column; gap: 8px; }
+.sendbar { height: 8px; border-radius: 4px; overflow: hidden;
+  background: var(--panel, #16181d); border: 1px solid var(--cyan-dim); }
+.sendbar > i { display: block; height: 100%; width: 0;
+  background: var(--cyan); transition: width .2s ease; }
+.sendrow { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; }
+.sendlog { max-height: 168px; overflow-y: auto; font-size: var(--fs-hint);
+  color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px;
+  line-height: 1.6; white-space: pre-wrap; }
+.sendlog .sendfail { color: var(--amber); }
 #chat .cnote {
   font-size: 12px; color: var(--cyan-dim); border-left: 2px solid var(--line);
   padding-left: 11px; line-height: 1.6;
@@ -7209,6 +7220,43 @@ function planHeadline(plan) {
   }
 }
 
+// Sending shows a filling bar and a percentage, nothing else. The per-action
+// stream (AMP 1 DISTORT_MASTER and its 128 siblings) is not something a player
+// needs to watch scroll past; it lives behind a "show details" toggle for when
+// something looks wrong. Built once on the first step, then updated in place so
+// the toggle survives every subsequent step.
+function sendProgress(d) {
+  const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
+  if (!$('sendprog')) {
+    const el = $('planresult');
+    el.className = 'planres busy';
+    el.hidden = false;
+    el.innerHTML =
+      `<div id="sendprog" class="sendprog">
+         <div class="sendbar"><i id="sendbarfill"></i></div>
+         <div class="sendrow">
+           <span id="sendpct">Sending to the FM9...</span>
+           <button id="sendlogtoggle" type="button">show details</button>
+         </div>
+         <div id="sendlog" class="sendlog" hidden></div>
+       </div>`;
+    $('sendlogtoggle').onclick = () => {
+      const lg = $('sendlog');
+      lg.hidden = !lg.hidden;
+      $('sendlogtoggle').textContent = lg.hidden ? 'show details' : 'hide details';
+      if (!lg.hidden) lg.scrollTop = lg.scrollHeight;
+    };
+  }
+  $('sendbarfill').style.width = pct + '%';
+  $('sendpct').textContent = `Sending to the FM9... ${pct}%`;
+  const lg = $('sendlog');
+  const line = document.createElement('div');
+  line.textContent = `${d.done}/${d.total}  ${d.ok ? '' : 'FAILED  '}${d.what}`;
+  if (!d.ok) line.className = 'sendfail';
+  lg.appendChild(line);
+  if (!lg.hidden) lg.scrollTop = lg.scrollHeight;
+}
+
 function planResult(html, how) {
   const el = $('planresult');
   if (!el) return;
@@ -7282,8 +7330,7 @@ async function apply() {
       if (ev === 'step') {
         say(d.done);
         workSay(`${d.done}. ${d.ok ? '' : 'FAILED '}${d.what}`);
-        planResult(`<span class="spin">◍</span> Sending ${d.done} of ${d.total}`
-                   + `: ${esc(d.what)}`, 'busy');
+        sendProgress(d);
       } else if (ev === 'error') {
         throw new Error(d);
       } else if (ev === 'result') {
