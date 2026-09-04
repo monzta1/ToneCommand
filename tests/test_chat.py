@@ -386,6 +386,9 @@ def test_whole_builds_and_small_edits_are_routed_internally():
     assert "return 'modify'" in route
     assert "from scratch" in route and "whole rig" in route
     assert "!(lastState.blocks || []).length" in route
+    submit = ui.split("function submitRequest()")[1].split("\n}\n")[0]
+    assert "route === 'build'" in submit
+    assert "Build a complete FM9 rig for this request" in submit
 
 
 def test_the_explaining_shrank_to_one_line():

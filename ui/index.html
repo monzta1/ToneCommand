@@ -7949,7 +7949,8 @@ function submitRequest() {
   const said = $('prompt').value.trim();
   if (!said) return;
   if (acquireIntent(said)) { talk(); return; }
-  if (requestRoute(said) === 'source') {
+  const route = requestRoute(said);
+  if (route === 'source') {
     chatLog.push({role: 'user', content: said});
     $('prompt').value = '';
     growPrompt();
@@ -7966,7 +7967,10 @@ function submitRequest() {
     $('prompt').value = '';
     growPrompt();
     renderChat();
-    engage(said);
+    const instruction = route === 'build'
+      ? `Build a complete FM9 rig for this request: ${said}`
+      : said;
+    engage(instruction);
   }
 }
 
