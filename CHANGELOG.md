@@ -6,14 +6,22 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ### Fixed
 - **From-empty builds no longer abort halfway.** Building into an empty slot
-  laid the starting chain, then the first block-add read back to verify
-  before the device had settled, saw the pre-splice grid, and called a block
-  that had actually landed a failure. The fail-fast then abandoned the rest
-  of the build ("Sent 0 of 1"). The block-add now waits past the write-settle
-  window and reads once more before declaring a block absent, so a single
-  stale read cannot false-fail a splice that took. Still a real read-back,
-  never a blind pass. Verified on hardware: a from-empty build that aborted
-  at action 1 now applies all of it (owner, 2026-09-03).
+  laid the starting chain, then the first block-add read back to verify and
+  false-failed a block that had actually landed, so the fail-fast abandoned
+  the rest ("Sent 0 of 1"). Two causes: the read could race the write and see
+  the pre-splice grid, and some blocks report a transient type id right after
+  placement (a gate reads back as id 18 for a beat before settling to its
+  real 146), which an exact-id check rejected. The block-add now polls briefly
+  for the exact id, then confirms by what is actually provable: a non-shunt
+  block occupies the cell we spliced into and it is not one of the blocks we
+  slid over, so it can only be the one we placed, with the signal-path check
+  still proving nothing broke. Never a blind pass. Verified on hardware across
+  gate, drive and full builds, repeatedly (owner, 2026-09-03).
+- **Long preset names no longer fail the whole build.** A generated name at
+  the FM9's length limit came back one character short (the field holds one
+  fewer than the 32 we budget), and the exact-match name check failed the
+  rename and, with it, the build. The rename now accepts the device's own
+  truncation of the name it was given (owner, 2026-09-03).
 
 ### Changed
 - **The main workflow now speaks like a player, not a control protocol.**

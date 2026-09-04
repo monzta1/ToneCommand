@@ -1738,7 +1738,15 @@ def run_action(fm9: FM9, a: Action) -> dict:
             name = ("FM9AI-" + name)[:32]
         fm9.rename_preset(name)
         got = fm9.current_preset()
-        return {"ok": bool(got and got[1] == name), "detail": f"preset renamed to {name!r}"}
+        stored = got[1] if got else ""
+        # The FM9 preset-name field holds one fewer usable char than the 32 we
+        # budget for, so a title at the limit reads back one short ("Triptyc"
+        # -> "Tripty"). That is the device storing what it can, not a failed
+        # rename, and it must not sink a whole build. Accept an exact match or
+        # the device's own truncation of the name we asked for.
+        ok = bool(stored) and (
+            stored == name or (name.startswith(stored) and len(stored) >= 31))
+        return {"ok": ok, "detail": f"preset renamed to {stored!r}"}
     if a.kind == "rename_scene":
         fm9.rename_scene(int(a.value), a.type_name.strip()[:32])
         got = fm9.scene_name(int(a.value))

@@ -985,26 +985,35 @@ class FM9:
         cells_after = self.read_grid() or []
         final = {(c.row + 1, c.col + 1): c for c in cells_after}
         placed = final.get((row, at_col))
-        # A single grid read can fall inside the write-settle window and come
-        # back with the OLD grid, missing the block we just spliced
-        # (KNOWN_QUIRKS 2026-08-29). A burst of writes right before this makes
-        # it likely: an empty-slot build lays the whole starting chain, then
-        # splices here, and the first verify read landed pre-splice, false-
-        # failed, and the fail-fast abandoned the rest of the build (#46). So
-        # when the block looks absent, wait past the window and read ONCE more
-        # before believing it. Still a real read-back, never a blind pass.
+        # The verify read can race the write. It either misses the block (the
+        # read returns the pre-splice grid, KNOWN_QUIRKS 2026-08-29) or shows it
+        # with a type id that has not resolved yet: a GATE reads back a transient
+        # eid 18 for a beat before settling to its real 146. Both false-failed a
+        # splice that took, and with fail-fast that abandoned the rest of a
+        # from-empty build (#46). So poll briefly for the exact id, then fall
+        # back to what is actually provable: a non-shunt block now sits in the
+        # cell we spliced into, and it is not one of the blocks we slid over, so
+        # it can only be the one we just placed. scene_alive below still proves
+        # the signal path. Never a blind pass.
         if placed is None or placed.effect_id != effect_id:
-            time.sleep(max(settle, 0.2) * 4)
-            cells_after = self.read_grid() or []
-            final = {(c.row + 1, c.col + 1): c for c in cells_after}
-            placed = final.get((row, at_col))
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                time.sleep(max(settle, 0.15) * 2)
+                cells_after = self.read_grid() or []
+                final = {(c.row + 1, c.col + 1): c for c in cells_after}
+                placed = final.get((row, at_col))
+                if placed is not None and placed.effect_id == effect_id:
+                    break
         # "nothing breaks" has to be proven by walking Input to Output over the
         # real cable masks. Counting members, or even counting cells with no
         # input cable, passes for a block that is present and stranded off the
         # path - the silent-preset class this project keeps meeting.
         st = {b.effect_id: b for b in self.status_dump() or []}
         alive, why = scene_alive(cells_after, st, self.reg)
-        landed = placed is not None and placed.effect_id == effect_id
+        moved_eids = {m[0] for m in moved}
+        landed = (placed is not None and not placed.is_shunt
+                  and (placed.effect_id == effect_id
+                       or placed.effect_id not in moved_eids))
         return {
             "ok": landed and alive,
             "placed_at": (row, at_col),
