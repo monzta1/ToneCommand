@@ -9,6 +9,7 @@ nothing is ever written to a preset slot on the unit.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import uuid
 import json
@@ -542,7 +543,9 @@ class Action(BaseModel):
     value: float | None = None
     bypassed: bool | None = None
     type_name: str | None = None   # model name for set_type; new name for renames
-    position: str | None = None    # add_block: "pre" | "post" | "any" (vs amp)
+    position: str | None = None    # add_block: "pre" | "post" | "any" (vs amp);
+                                   # reorder: "before" | "after" (vs ref)
+    ref: str | None = None         # reorder: the block to move `block` relative to
     bank: int | None = None        # set_cab: which cab roster the ordinal is in
     reason: str = ""
 
@@ -1330,6 +1333,16 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
     if a.kind == "add_block":
         if a.position not in (None, "pre", "post", "any"):
             errors.append(f"position must be pre/post/any, got {a.position!r}")
+    elif a.kind == "reorder":
+        if a.position not in (None, "before", "after"):
+            errors.append(f"reorder position must be before/after, got {a.position!r}")
+        if not a.ref or not str(a.ref).strip():
+            errors.append("reorder requires a ref block to move relative to")
+        else:
+            try:
+                reg.resolve_block(a.ref, 1)
+            except (KeyError, ValueError) as e:
+                errors.append(f"reorder ref block: {e}")
     elif a.kind in ("bind_pedal", "unbind_pedal"):
         spec = reg.find_param(fam, a.param or "")
         if spec is None:
@@ -1790,6 +1803,15 @@ def run_action(fm9: FM9, a: Action) -> dict:
         # so this write is the one thing that makes the cached copy a lie.
         _shared_cache["preset"], _shared_cache["map"] = None, None
         return {"ok": got == int(a.value), "detail": f"channel {'ABCD'[got]}"}
+    if a.kind == "reorder":
+        # Moving a block rewires the grid, so the blast-radius map is stale.
+        _shared_cache["preset"], _shared_cache["map"] = None, None
+        _, ref_eid = reg.resolve_block(a.ref or "", 1)
+        pos = a.position if a.position in ("before", "after") else "before"
+        res = fm9.reorder_block(eid, ref_eid, pos)
+        return {"ok": res.get("ok", False),
+                "detail": res.get("detail", ""),
+                "reason": res.get("reason")}
     if a.kind == "add_block":
         # A new block is a new row in the blast-radius map.
         _shared_cache["preset"], _shared_cache["map"] = None, None
@@ -2354,6 +2376,96 @@ class CopyEffectsBody(BaseModel):
     source: str                 # source preset: a wire number, or a name to match
     effects: list[str] = ["DELAY", "REVERB"]
     scene_aware: bool = False   # align by scene (not channel); reads both presets' scene layout
+
+
+# Words that name an effect family in plain speech -> the family the copy uses.
+# Kept as words the planner reference already teaches, so "drive" and "od" both
+# land on the FUZZ block the FM9 files overdrives under.
+_COPY_FAMILY_WORDS = [
+    (r"\bdelays?\b", "DELAY"), (r"\breverbs?\b|\bverb\b|\bambience\b", "REVERB"),
+    (r"\bdrives?\b|\boverdrives?\b|\bod\b|\bboost\b|\bscreamer\b", "FUZZ"),
+    (r"\bchorus\b", "CHORUS"), (r"\bflangers?\b|\bflange\b", "FLANGER"),
+    (r"\bphasers?\b", "PHASER"), (r"\bcomp(ressor)?\b", "COMPRESSOR"),
+    (r"\bcabs?\b|\bcabinets?\b|\bir\b", "CABINET"), (r"\bpitch\b", "PITCH"),
+    (r"\bwah\b", "WAH"),
+]
+
+
+def parse_copy_request(text: str) -> dict | None:
+    """Turn "copy the delay and reverb from the Periphery tone" into a
+    copy-effects request. Returns {source, effects, scene_aware} or None when
+    the text is not a copy request.
+
+    Server-side (not JS) on purpose: the parse has real rules and edge cases,
+    so it is unit-tested rather than trusted to a regex buried in the page.
+    """
+    said = str(text or "").strip()
+    if not re.search(r"\b(copy|take|pull|lift|grab|steal|borrow)\b", said, re.I):
+        return None
+    m = re.search(r"\bfrom\b\s+(.*)$", said, re.I)
+    if not m:
+        return None
+    # The source is the phrase after "from", minus a trailing destination
+    # clause ("into ours", "and put it in ours") and the filler around a name.
+    src = m.group(1).strip()
+    cut = len(src)
+    for marker in (r"\b(?:in|into|onto)\s+(?:our|my|this|the\s+current|ours)\b",
+                   r"\band\s+(?:put|place|drop|stick|add)\b",
+                   r"\bonto\s+this\b"):
+        mm = re.search(marker, src, re.I)
+        if mm:
+            cut = min(cut, mm.start())
+    src = src[:cut].strip()
+    src = re.sub(r"^(the|a|an)\s+", "", src, flags=re.I).strip()
+    src = re.sub(r"[\"'.,!?]+$", "", src).strip()
+    src = re.sub(r"\s+(tone|preset|patch|sound|rig)$", "", src, flags=re.I).strip()
+    # "preset 6" / "patch 6" / "slot 6" / "#6" -> the wire number itself.
+    num = re.match(r"^(?:preset|patch|slot|number|#)\s*(\d{1,3})$", src, re.I)
+    if num:
+        src = num.group(1)
+    if not src:
+        return None
+    # Which families were named, in the order the words appear.
+    before_from = said[:m.start()]
+    found = []
+    for pat, fam in _COPY_FAMILY_WORDS:
+        mm = re.search(pat, before_from, re.I)
+        if mm:
+            found.append((mm.start(), fam))
+    effects = [f for _, f in sorted(found)]
+    # "copy the effects/fx/everything from X" with nothing specific named:
+    # default to the ambient pair, and the caller says so in its reply.
+    default_used = not effects
+    if default_used:
+        effects = ["DELAY", "REVERB"]
+    # scene-aware unless the user explicitly asks for a plain settings copy.
+    scene_aware = not re.search(r"\b(just|only)\s+the\s+settings\b|channel[- ]?for[- ]?channel",
+                                said, re.I)
+    return {"source": src, "effects": effects, "scene_aware": scene_aware,
+            "defaulted": default_used}
+
+
+@app.post("/api/copy-effects/nl")
+def api_copy_effects_nl(body: dict):
+    """Natural-language front door to copy-effects: "copy the delay and reverb
+    from the Periphery tone (into ours)". Parses the request, then runs the
+    same copy path. The parse is the only thing added here; the copy itself,
+    its safety, and its read-back are unchanged."""
+    parsed = parse_copy_request(body.get("text", ""))
+    if parsed is None:
+        return JSONResponse(
+            {"error": "not a copy request; say e.g. \"copy the delay and reverb "
+                      "from the Periphery tone\""}, status_code=400)
+    result = api_copy_effects(CopyEffectsBody(
+        source=parsed["source"], effects=parsed["effects"],
+        scene_aware=parsed["scene_aware"]))
+    # Fold the parse back in so the UI can say what it understood.
+    if isinstance(result, JSONResponse):
+        return result
+    result["understood"] = {"source": parsed["source"], "effects": parsed["effects"],
+                            "scene_aware": parsed["scene_aware"],
+                            "defaulted": parsed["defaulted"]}
+    return result
 
 
 def _resolve_source_slot(fm9, source: str):
@@ -3566,6 +3678,9 @@ def describe_action(a) -> str:
         return f"scene {int(getattr(a, 'value', 0) or 0)}"
     if kind == "set_type":
         return f"{block} {inst} -> {getattr(a, 'type_name', '')}"
+    if kind == "reorder":
+        pos = getattr(a, "position", "before") or "before"
+        return f"{block} {pos} {(getattr(a, 'ref', '') or '').upper()}"
     if kind == "rename_preset":
         return f"named {getattr(a, 'type_name', '')!r}"
     if kind == "rename_scene":

@@ -6129,6 +6129,47 @@ function acquireIntent(said) {
   return verb && /\btones?\b/i.test(said);
 }
 
+function copyIntent(said) {
+  // "copy the delay from that tone": lift an effect off another preset onto
+  // the loaded one. Needs a copy verb, a "from", and something effect-shaped,
+  // so it does not swallow "take me to scene 2" or a plain build request.
+  return /\b(copy|take|pull|lift|steal|borrow)\b/i.test(said)
+      && /\bfrom\b/i.test(said)
+      && /\b(delay|reverb|verb|ambience|drive|overdrive|od|boost|chorus|flang|phaser|comp|cab|cabinet|ir|pitch|wah|effects?|fx|everything|whole tone)\b/i.test(said);
+}
+
+async function runCopyEffects(said) {
+  chatLog.push({role: 'user', content: said});
+  chatNote('Reading the source tone...');
+  renderChat();
+  try {
+    const r = await fetch('/api/copy-effects/nl', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: said})});
+    const d = await r.json();
+    if (d.error) { chatNote(d.error); renderChat(); return; }
+    const u = d.understood || {};
+    const fx = (u.effects || []).join(' and ').toLowerCase();
+    const src = esc(d.source || u.source || 'that tone');
+    if (d.ok) {
+      chatNote(`Copied the ${fx} from ${src} onto this tone`
+        + (u.scene_aware ? ', matched per scene' : '')
+        + (u.defaulted ? '. (You did not name which effects, so I took delay and reverb; say others if you want more.)' : '.')
+        + ` ${d.applied.length} settings written`
+        + (d.normalized.length ? `, ${d.normalized.length} the device kept its own way` : '')
+        + '.');
+    } else {
+      chatNote(`Could not copy the ${fx} from ${src}: `
+        + (d.failed && d.failed.length ? d.failed.join('; ')
+           : 'the target does not have those blocks to copy onto') + '.');
+    }
+    await refresh();
+  } catch (e) {
+    chatNote(`Copy failed: ${e.message}`);
+  }
+  renderChat();
+}
+
 async function runAcquire(said) {
   chatLog.push({role: 'user', content: said});
   chatNote('Looking for it...');
@@ -6394,6 +6435,12 @@ async function talk() {
     $('prompt').value = '';
     growPrompt();
     runAcquire(said);
+    return;
+  }
+  if (copyIntent(said)) {
+    $('prompt').value = '';
+    growPrompt();
+    runCopyEffects(said);
     return;
   }
   chatLog.push({role: 'user', content: said});
@@ -7996,6 +8043,12 @@ function submitRequest() {
   const said = $('prompt').value.trim();
   if (!said) return;
   if (acquireIntent(said)) { talk(); return; }
+  if (copyIntent(said)) {
+    $('prompt').value = '';
+    growPrompt();
+    runCopyEffects(said);
+    return;
+  }
   const route = requestRoute(said);
   if (route === 'source') {
     chatLog.push({role: 'user', content: said});

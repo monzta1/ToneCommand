@@ -85,6 +85,9 @@ class _GridDev:
     def plan_reorder(self, *a, **k):
         return FM9.plan_reorder(self, *a, **k)
 
+    def reorder_block(self, *a, **k):
+        return FM9.reorder_block(self, *a, **k)
+
 
 # effect ids: 37 INPUT, 58 amp, 62 cab, 70 DELAY, 66 REVERB, 42 OUTPUT
 def _wrong_order_rig():
@@ -151,3 +154,38 @@ def test_the_reorder_endpoint_exists_and_is_shaped_right():
     import server
     routes = {r.path for r in server.app.routes if getattr(r, "methods", None)}
     assert "/api/reorder" in routes
+
+
+# --- reorder as a first-class planner action (the NL path) -----------------
+
+def test_reorder_is_a_planner_action_the_model_can_emit():
+    from fm9.planner import ACTION_KINDS
+    assert "reorder" in ACTION_KINDS
+
+
+def test_validate_action_accepts_a_well_formed_reorder():
+    import server
+    a = server.Action(kind="reorder", block="delay", ref="reverb",
+                      position="before")
+    errors, _ = server.validate_action(a)
+    assert errors == [], errors
+
+
+def test_validate_action_rejects_a_reorder_without_a_ref():
+    import server
+    a = server.Action(kind="reorder", block="delay", position="before")
+    errors, _ = server.validate_action(a)
+    assert any("ref" in e for e in errors)
+
+
+def test_run_action_dispatches_reorder_to_the_device():
+    # run_action resolves both block names and calls reorder_block; drive it
+    # against the same fake grid so the NL->action->device hop is covered.
+    import server
+    dev = _wrong_order_rig()               # reverb before delay
+    a = server.Action(kind="reorder", block="delay", ref="reverb",
+                      position="before")
+    res = server.run_action(dev, a)
+    assert res["ok"], res
+    ids = [dev.cells[c] for c in sorted(dev.cells)]
+    assert ids == [37, 58, 62, 70, 66, 42]   # delay now before reverb

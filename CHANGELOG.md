@@ -18,6 +18,22 @@ Notable changes to ToneCommand. Dates are UTC.
   bypass; the signal-chain order is not moved yet (owner, 2026-09-04).
 
 ### Added
+- **Both new features now have a natural-language front door, tested end to
+  end on hardware.** Reorder and scene-aware copy existed only as API
+  endpoints, with no way for a person typing a prompt to reach them. Now:
+  reorder is a first-class planner action, so "put the delay before the
+  reverb" plans a reorder and applies it (verified live: the planner emitted
+  the reorder, the grid read back delay before reverb, path alive); and "copy
+  the delay and reverb from the Periphery tone" routes through a new
+  copy-effects NL parser (server-side and unit-tested) that reads the source
+  and effects out of the sentence and runs the scene-aware copy (verified
+  live: 668 settings written, 0 failed). The parse defaults to delay and
+  reverb when no effect is named, and says so (owner, 2026-09-04).
+- **A test report generated from a real suite run, offline, not a hand-typed
+  page.** tools/gen_test_report.py runs pytest with junitxml and renders an
+  HTML report whose every number comes from that run; if the suite is red, the
+  page is red. Writes to a local folder, source junit.xml beside it. Replaces a
+  report whose figures were typed by hand and had drifted (owner, 2026-09-04).
 - **Reorder a block into the correct signal-chain order.** "Put the delay
   before the reverb", "drive before the amp": the planner adds blocks and
   copy/compose lifts them, but nothing moved them, so a faithful copy of an

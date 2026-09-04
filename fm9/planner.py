@@ -77,10 +77,11 @@ PLAN_SCHEMA = {
                     "kind": {"type": "string",
                              "enum": ["set_param", "set_scene", "set_bypass",
                                       "set_channel", "set_tempo", "set_type",
-                                      "add_block", "bind_pedal", "unbind_pedal",
-                                      "rename_preset", "rename_scene", "store"]},
+                                      "add_block", "reorder", "bind_pedal",
+                                      "unbind_pedal", "rename_preset",
+                                      "rename_scene", "store"]},
                     "block": {"type": ["string", "null"],
-                              "description": "Block name for set_param/set_bypass/set_channel, e.g. amp, gate, input, delay, reverb, cab, drive, peq, geq, comp"},
+                              "description": "Block name for set_param/set_bypass/set_channel/reorder, e.g. amp, gate, input, delay, reverb, cab, drive, peq, geq, comp"},
                     "instance": {"type": "integer",
                                  "description": "Block instance, 1-4 (1 if unsure)"},
                     "param": {"type": ["string", "null"],
@@ -92,12 +93,14 @@ PLAN_SCHEMA = {
                     "type_name": {"type": ["string", "null"],
                                   "description": "For set_type: exact model name from the roster. For rename_preset/rename_scene: the new name (max 32 chars)"},
                     "position": {"type": ["string", "null"],
-                                 "description": "For add_block: pre, post, or any (relative to the amp)"},
+                                 "description": "For add_block: pre, post, or any (relative to the amp). For reorder: before or after (relative to the ref block)"},
+                    "ref": {"type": ["string", "null"],
+                            "description": "For reorder: the block to move `block` relative to, e.g. reverb. Ignored for other kinds"},
                     "reason": {"type": "string",
                                "description": "Short justification tied to the user's request"},
                 },
                 "required": ["kind", "block", "instance", "param", "value",
-                             "bypassed", "type_name", "position", "reason"],
+                             "bypassed", "type_name", "position", "ref", "reason"],
                 "additionalProperties": False,
             },
         },
@@ -175,6 +178,7 @@ Scenes and multi-scene requests:
 - Scenes share the same blocks; each scene stores its own per-block bypass states and channel choices. Block PARAMETERS and TYPES are per-channel, shared across scenes.
 - To build "scene X with effect A, scene Y with effect B": set_scene X, set bypass states for X, then set_scene Y, set bypass states for Y. The device ends on the last selected scene. Note in the summary which scene is which.
 - Adding blocks: use add_block (block name + optional position "pre"/"post" relative to the amp) when a requested effect has no block in the preset. It places the block on a free pass-through point in the signal chain; if the executor reports there is no free spot, relay that honestly. Freshly added blocks may need a set_type and parameter settings next.
+- Reordering blocks: use reorder (block = the block to move, ref = the block to move it relative to, position = "before"/"after") to fix signal-chain order. "Put the delay before the reverb" is reorder(block=delay, ref=reverb, position=before). Signal order matters: delay before reverb, drive before the amp. It moves one block relative to another on the SAME row; the executor refuses a move it cannot cable correctly (cross-row, over a gap, into a cross-row feed) and says why - relay that honestly rather than retrying.
 - Expression pedal: use bind_pedal (block + param + optional value = floor percent 0-100) to put a continuous parameter under Pedal 2, and unbind_pedal (block + param) to take it back off. Pedal 1 is the player's global volume and must NEVER be referenced or rebound. unbind_pedal only removes Pedal 2 bindings; anything driven by another source was set up on the FM9 itself and is refused.
 - rename_preset / rename_scene (new name in type_name; scene number in value). Tool-created presets are prefixed FM9AI- automatically.
 - NAME WHAT YOU BUILD. If the request is for a tone with an identity - a named player, a band, a song, a style, or a whole rig with several scenes - include a rename_preset naming it after that, and rename_scene for each scene you set up, after what the scene is for. A preset built for one player's sound and left carrying the previous preset's name is how somebody ends up with a Petrucci build saved as "Devs Gift Of Tone". Do NOT rename for an adjustment to the tone already loaded ("a bit more presence", "tighten the gate"): that is the same preset, adjusted.

@@ -72,6 +72,54 @@ def test_the_endpoint_exists_and_is_shaped_right():
     import server
     routes = {r.path for r in server.app.routes if getattr(r, "methods", None)}
     assert "/api/copy-effects" in routes
+    assert "/api/copy-effects/nl" in routes    # the natural-language front door
+
+
+# --- natural-language front door: "copy the delay from that tone" ----------
+
+def test_parse_copy_request_reads_source_and_effects():
+    import server
+    p = server.parse_copy_request(
+        "copy the delay and reverb from the Periphery tone into ours")
+    assert p["source"] == "Periphery"
+    assert p["effects"] == ["DELAY", "REVERB"]
+    assert p["scene_aware"] is True
+
+
+def test_parse_copy_request_strips_a_destination_clause():
+    import server
+    p = server.parse_copy_request(
+        "take the reverb and delay from Periphery Misha GoT and put it in ours")
+    assert p["source"] == "Periphery Misha GoT"       # no "and put it in ours"
+    assert p["effects"] == ["REVERB", "DELAY"]         # in the order spoken
+
+
+def test_parse_copy_request_defaults_effects_when_unnamed():
+    import server
+    p = server.parse_copy_request("copy the effects from the Petrucci preset")
+    assert p["source"] == "Petrucci"
+    assert p["effects"] == ["DELAY", "REVERB"]
+    assert p["defaulted"] is True
+
+
+def test_parse_copy_request_maps_a_slot_word_to_a_number():
+    import server
+    p = server.parse_copy_request("pull the chorus from preset 6")
+    assert p["source"] == "6"
+    assert p["effects"] == ["CHORUS"]
+
+
+def test_parse_copy_request_honours_a_plain_settings_copy():
+    import server
+    p = server.parse_copy_request(
+        "copy just the settings of the delay from Periphery")
+    assert p["scene_aware"] is False
+
+
+def test_parse_copy_request_ignores_a_non_copy_sentence():
+    import server
+    assert server.parse_copy_request("make it sound like Periphery") is None
+    assert server.parse_copy_request("build a djent rig") is None
 
 
 # --- compose: build a preset from parts of others ------------------------

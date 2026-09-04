@@ -62,8 +62,8 @@ const RECIPE_KEYS = new Set([
 // each other need something that fails when they drift.
 const ACTION_KINDS = new Set([
   "set_param", "set_scene", "set_bypass", "set_channel", "set_tempo",
-  "set_type", "add_block", "bind_pedal", "unbind_pedal", "rename_preset",
-  "rename_scene",
+  "set_type", "add_block", "reorder", "bind_pedal", "unbind_pedal",
+  "rename_preset", "rename_scene",
 ]);
 
 const TEXT_MAX = 2000;
