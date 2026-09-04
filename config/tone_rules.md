@@ -27,6 +27,15 @@ the tool got it wrong once.
 - When comparing or copying across presets, align by ROLE (clean to clean, lead
   to lead), never by channel number. Two presets map scenes to channels
   differently; a channel-for-channel copy lands an effect on the wrong scene.
+- One amp block has only 4 channels, and a block's params live on the channel,
+  shared by every scene using it. So a build can hold at most 4 distinct amp
+  voices across its scenes. When a request asks for more scenes than that, put
+  the COMPATIBLE roles on a shared channel (clean and funk on one, blues and
+  crunch on another, rock and metal on another, lead and its variant on the
+  last) and differentiate those scenes with effects and bypass, not with amp
+  EQ they cannot independently change. Say in the summary which roles share a
+  channel and why. Never silently give two scenes the same voice with no
+  difference.
 
 ## 3. Amp and cab do different amounts of the work
 - A clean signal is nearly linear, so the CAB / IR carries almost the whole
