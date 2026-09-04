@@ -4,6 +4,17 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **From-empty builds no longer abort halfway.** Building into an empty slot
+  laid the starting chain, then the first block-add read back to verify
+  before the device had settled, saw the pre-splice grid, and called a block
+  that had actually landed a failure. The fail-fast then abandoned the rest
+  of the build ("Sent 0 of 1"). The block-add now waits past the write-settle
+  window and reads once more before declaring a block absent, so a single
+  stale read cannot false-fail a splice that took. Still a real read-back,
+  never a blind pass. Verified on hardware: a from-empty build that aborted
+  at action 1 now applies all of it (owner, 2026-09-03).
+
 ### Changed
 - **The main workflow now speaks like a player, not a control protocol.**
   Waiting no longer mentions a server or reports silence in seconds. Plans

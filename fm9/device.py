@@ -985,6 +985,19 @@ class FM9:
         cells_after = self.read_grid() or []
         final = {(c.row + 1, c.col + 1): c for c in cells_after}
         placed = final.get((row, at_col))
+        # A single grid read can fall inside the write-settle window and come
+        # back with the OLD grid, missing the block we just spliced
+        # (KNOWN_QUIRKS 2026-08-29). A burst of writes right before this makes
+        # it likely: an empty-slot build lays the whole starting chain, then
+        # splices here, and the first verify read landed pre-splice, false-
+        # failed, and the fail-fast abandoned the rest of the build (#46). So
+        # when the block looks absent, wait past the window and read ONCE more
+        # before believing it. Still a real read-back, never a blind pass.
+        if placed is None or placed.effect_id != effect_id:
+            time.sleep(max(settle, 0.2) * 4)
+            cells_after = self.read_grid() or []
+            final = {(c.row + 1, c.col + 1): c for c in cells_after}
+            placed = final.get((row, at_col))
         # "nothing breaks" has to be proven by walking Input to Output over the
         # real cable masks. Counting members, or even counting cells with no
         # input cable, passes for a block that is present and stranded off the
