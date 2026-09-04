@@ -171,11 +171,11 @@ def test_there_is_one_action_in_the_prompt_row():
     assert "TALK IT OVER" not in ui
 
 
-def test_send_and_enter_both_talk():
+def test_button_and_enter_both_use_the_single_request_router():
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "$('engage').onclick = talk;" in ui
+    assert "$('engage').onclick = submitRequest;" in ui
     fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
-    assert "talk();" in fn
+    assert "submitRequest();" in fn
 
 
 def test_building_takes_the_sentence_rather_than_the_input_box():
@@ -365,17 +365,27 @@ def test_the_empty_state_asks_and_suggests_in_the_middle():
     assert "align-items: center" in css and "justify-content: center" in css
 
 
-def test_the_second_text_box_is_a_mode_not_a_second_form():
-    """Two text boxes and two buttons stacked in one panel is a form.
-    Building from a source is a REQUEST TYPE now: the source panel is hidden
-    until the SOURCE mode is chosen, and the composer steps aside for it."""
+def test_links_and_pasted_sources_use_the_same_request_box():
+    """A player should never choose SOURCE before pasting a link. The old
+    source controls remain hidden implementation details and the router sends
+    links, multiline text and long pasted text to the reader itself."""
     ui = (ROOT / "ui" / "index.html").read_text()
     assert 'id="srcpanel" hidden' in ui
-    fold = ui.split('id="srcpanel"')[1].split("</div>\n        <!--")[0]
-    assert 'id="srcinput"' in fold and 'id="analyze"' in fold
     script = ui.split("<script>")[1]
-    assert "$('srcpanel').hidden = mode !== 'source';" in script
-    assert ".composer').hidden = mode === 'source';" in script
+    route = script.split("function requestRoute(text)")[1].split("\n}\n")[0]
+    submit = script.split("function submitRequest()")[1].split("\n}\n")[0]
+    assert "https?" in route and "said.includes('\\n')" in route
+    assert "analyzeSource(said)" in submit
+    assert "mode-source" not in ui and "REQUEST TYPE" not in ui
+
+
+def test_whole_builds_and_small_edits_are_routed_internally():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    route = ui.split("function requestRoute(text)")[1].split("\n}\n")[0]
+    assert "return 'build'" in route
+    assert "return 'modify'" in route
+    assert "from scratch" in route and "whole rig" in route
+    assert "!(lastState.blocks || []).length" in route
 
 
 def test_the_explaining_shrank_to_one_line():

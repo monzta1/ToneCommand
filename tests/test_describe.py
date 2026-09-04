@@ -176,11 +176,7 @@ def test_the_browser_keeps_them_visually_apart():
 def test_the_copy_calls_it_an_interpretation_not_a_copy():
     assert "This is my interpretation of what" in SCRIPT
     assert "gets you in the ballpark: review and tweak" in SCRIPT
-    # Whitespace-insensitive: the copy is wrapped for readability and its
-    # indentation moved when the panel was folded into a <details>. Pinning
-    # the line breaks pins the layout, which is not the claim being made.
-    assert "An interpretation of the source, to review and tweak" in \
-        " ".join(UI.split())
+    assert "These were vague, so this is my choice" in SCRIPT
 
 
 def test_the_framing_comes_before_the_summary():
@@ -218,7 +214,7 @@ def test_it_says_what_it_found_before_the_slow_part():
     wider still: reading, then what was found, then the questions, and only
     then the wait.
     """
-    fn = SCRIPT.split("async function analyzeSource()")[1].split("\n}\n")[0]
+    fn = SCRIPT.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
     assert "srcProgress('found', note)" in fn
     assert "settings stated in the source" in fn
     assert "/api/describe/build" not in fn
@@ -498,7 +494,7 @@ def test_the_browser_shows_that_before_the_transmit_button():
 def test_the_questions_come_between_reading_and_building():
     ui = (ROOT / "ui" / "index.html").read_text()
     script = ui.split("<script>")[1]
-    fn = script.split("async function analyzeSource()")[1].split("\n}\n")[0]
+    fn = script.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
     assert "askAboutBuild(spec, note)" in fn
     assert "/api/describe/build" not in fn, "building must wait for the answers"
     ask = script.split("function askAboutBuild(spec, note)")[1].split("\n}\n")[0]
@@ -625,5 +621,5 @@ def test_the_ui_build_goes_through_the_stream(client):
     build = SCRIPT.split("async function runBuild(spec, note)")[1].split("\n}\n")[0]
     assert "/api/describe/build/stream" in build
     assert "srcWork" in build, "the sticky working strip must light"
-    read = SCRIPT.split("async function analyzeSource()")[1].split("\n}\n")[0]
+    read = SCRIPT.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
     assert "/api/describe/read/stream" in read

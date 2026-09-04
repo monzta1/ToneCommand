@@ -2071,13 +2071,10 @@
   <!-- LAYER 4: the stage workspace. One focused task at a time. -->
   <main id="workspace">
     <aside id="stagenav">
-      <!-- Request: how the request arrives. Empty Slot appears only when the
-           loaded slot is actually empty. -->
+      <!-- There is one request surface. ToneCommand decides how to handle it. -->
       <div class="navpane" id="nav-request">
-        <div class="navtitle">REQUEST TYPE</div>
-        <button class="navitem on" id="mode-describe">DESCRIBE</button>
-        <button class="navitem" id="mode-source">SOURCE</button>
-        <button class="navitem" id="mode-empty" hidden>EMPTY SLOT</button>
+        <div class="navtitle">REQUEST</div>
+        <div class="navbody hint">Tell ToneCommand what you want.</div>
       </div>
       <div class="navpane" id="nav-plan" hidden>
         <div class="navtitle">PLAN</div>
@@ -2117,21 +2114,18 @@
           <div class="promptrow">
             <span class="prompt-prefix">&gt;</span>
             <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
-                      placeholder="Describe the result you want to hear..."></textarea>
+                      placeholder="Describe the sound, or paste a link..."></textarea>
             <button id="engage">GENERATE PLAN</button>
           </div>
           <div class="hint composerhint">Enter to generate a plan. Nothing reaches the FM9 until you send.</div>
         </div>
-        <!-- Source mode: one input, one action. -->
-        <div class="srcfold" id="srcpanel" hidden>
-          <div class="promptrow srcrow">
-            <span class="prompt-prefix">&#9834;</span>
-            <input id="srcinput" autocomplete="off" spellcheck="false"
-                   placeholder="paste a YouTube link, a page, or the transcript itself">
-            <button id="analyze">ANALYZE SOURCE</button>
-          </div>
-          <div class="hint" id="srchint"
-               title="Reads the source and proposes a build for your rig, marking anything it had to guess. YouTube links use the description and captions, or transcribe the audio (a few minutes on a long video).">An interpretation of the source, to review and tweak.</div>
+        <!-- Source reading is reached through the same prompt. These controls
+             retain the established implementation without exposing a second
+             form or asking the player to choose a mode. -->
+        <div id="srcpanel" hidden>
+          <input id="srcinput" autocomplete="off" spellcheck="false">
+          <button id="analyze">ANALYZE</button>
+          <div id="srchint"></div>
         </div>
         <!-- Between reading and building: the two questions whose answers
              change the work, asked before the plan is generated. -->
@@ -4638,10 +4632,6 @@ function renderParams(s) {
   // <EMPTY> sends people looking for a cable fault they do not have.
   const emptySlot = lastState.connected !== false && !(s.blocks || []).length;
   $('emptypanel').style.display = emptySlot ? '' : 'none';
-  if ($('mode-empty')) {
-    $('mode-empty').hidden = !emptySlot;
-    if (!emptySlot && requestMode === 'empty') setRequestMode('describe');
-  }
   if (emptySlot) {
     $('emptywhy').textContent =
       `This preset slot is empty. An FM9 slot in this state has no grid cells `
@@ -5156,10 +5146,10 @@ function srcSplitHtml(from) {
   </div>`;
 }
 
-async function analyzeSource() {
-  const raw = $('srcinput').value.trim();
+async function analyzeSource(sourceText) {
+  const raw = String(sourceText || $('srcinput').value).trim();
   if (!raw) return;
-  const btn = $('analyze');
+  const btn = $('engage');
   btn.disabled = true;
   const was = btn.textContent;
   btn.textContent = 'READING...';
@@ -5459,14 +5449,11 @@ async function runBuild(spec, note) {
     srcStage = '';
     renderWorking();
     btn.disabled = false;
-    btn.textContent = 'ANALYZE';
+    btn.textContent = was;
   }
 }
 
-$('analyze').onclick = analyzeSource;
-$('srcinput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') analyzeSource();
-});
+$('analyze').onclick = () => analyzeSource();
 
 // Press the value to put it back to neutral. Goes through the same write path
 // as a drag, so it is verified by read-back and covered by undo like anything
@@ -5724,6 +5711,7 @@ let chatReady = false;         // the model thinks it has enough to go on
 let chatRequest = '';          // the agreed instruction, in its words
 let chatName = '';             // what it decided to call the preset
 let chatScenes = [];           // and what each scene it sets up is called
+let chatNeedsAnswer = false;    // the planner asked for one missing detail
 let chatBusy = false;          // a turn is in flight
 let chatWorking = '';          // what it is doing, said where you are looking
 let chatStream = '';           // the reply so far, mid-flight
@@ -5765,7 +5753,7 @@ function saveChat() {
     if (!chatLog.length) { localStorage.removeItem(CHAT_KEY); return; }
     localStorage.setItem(CHAT_KEY, JSON.stringify(
       {log: chatLog, ready: chatReady, request: chatRequest,
-       name: chatName, scenes: chatScenes}));
+       name: chatName, scenes: chatScenes, needsAnswer: chatNeedsAnswer}));
   } catch (e) { /* private window, or storage full: not worth a message */ }
 }
 
@@ -5783,8 +5771,10 @@ function loadChat() {
     chatRequest = typeof d.request === 'string' ? d.request : '';
     chatName = typeof d.name === 'string' ? d.name : '';
     chatScenes = Array.isArray(d.scenes) ? d.scenes : [];
+    chatNeedsAnswer = !!d.needsAnswer;
   } catch (e) {
     chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
+    chatNeedsAnswer = false;
   }
 }
 
@@ -6086,6 +6076,7 @@ function renderChat() {
     if (chatLog.length > 1 && !window.confirm(
           'Clear this conversation? It cannot be brought back.')) return;
     chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
+    chatNeedsAnswer = false;
     try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing to undo */ }
     renderChat();
     $('prompt').focus();
@@ -6581,6 +6572,7 @@ async function engage(prompt, name, scenes) {
       // conversation, where there is a box to answer it in.
       chatLog.push({role: 'assistant', content: plan.clarification});
       chatReady = false;
+      chatNeedsAnswer = true;
       chatWorking = '';
       renderChat();
       clearAffected();
@@ -6588,6 +6580,7 @@ async function engage(prompt, name, scenes) {
       return;
     }
     showPlan(plan);
+    chatNeedsAnswer = false;
     // Say what happened, and take them to it. A plan that renders in a panel
     // below the fold, while the reader is looking at the conversation, is
     // indistinguishable from nothing happening.
@@ -7478,14 +7471,14 @@ async function apply() {
 // something agreed to build, and not before. Two buttons in this row meant
 // choosing, before typing a word, whether your own request was clear enough,
 // which is not a thing anybody knows about their own request.
-$('engage').onclick = talk;
+$('engage').onclick = submitRequest;
 $('prompt').addEventListener('input', growPrompt);
 $('prompt').addEventListener('keydown', e => {
   // Enter sends, Shift+Enter makes a newline. The box grows, which implies
   // Enter would break a line, so the hint under it says which is which.
   if (e.key !== 'Enter' || e.shiftKey) return;
   e.preventDefault();
-  talk();
+  submitRequest();
 });
 
 // --- installing a preset file --------------------------------------------
@@ -7965,23 +7958,43 @@ function setDirty(on) {
   $('dirty').hidden = !bufferDirty;
 }
 
-// --- request modes --------------------------------------------------------
+// --- one request surface --------------------------------------------------
 
-let requestMode = 'describe';
-function setRequestMode(mode) {
-  requestMode = mode;
-  $('mode-describe').classList.toggle('on', mode === 'describe');
-  $('mode-source').classList.toggle('on', mode === 'source');
-  $('mode-empty').classList.toggle('on', mode === 'empty');
-  document.querySelector('#pane-request .composer').hidden = mode === 'source';
-  $('srcpanel').hidden = mode !== 'source';
-  // The empty-slot panel keeps its own display logic (it exists only when
-  // the slot is empty); the mode button just brings it into focus.
-  if (mode === 'empty') $('emptypanel').scrollIntoView({block: 'nearest'});
+function requestRoute(text) {
+  const said = String(text || '').trim();
+  if (/https?:\/\/\S+/i.test(said) || said.includes('\n') || said.length > 600)
+    return 'source';
+  if (!(lastState.blocks || []).length
+      || /\b(from scratch|whole rig|build|create|make me|give me|tone like|sound like)\b/i.test(said))
+    return 'build';
+  return 'modify';
 }
-$('mode-describe').onclick = () => setRequestMode('describe');
-$('mode-source').onclick = () => setRequestMode('source');
-$('mode-empty').onclick = () => setRequestMode('empty');
+
+function submitRequest() {
+  if (chatBusy) return;
+  const said = $('prompt').value.trim();
+  if (!said) return;
+  if (acquireIntent(said)) { talk(); return; }
+  if (requestRoute(said) === 'source') {
+    chatLog.push({role: 'user', content: said});
+    $('prompt').value = '';
+    growPrompt();
+    renderChat();
+    analyzeSource(said);
+    return;
+  }
+  // A direct request becomes a plan immediately. If the planner needs one
+  // missing detail, its question returns here and the next answer continues
+  // through the existing conversation path.
+  if (chatNeedsAnswer) talk();
+  else {
+    chatLog.push({role: 'user', content: said});
+    $('prompt').value = '';
+    growPrompt();
+    renderChat();
+    engage(said);
+  }
+}
 
 // --- the contextual inspector ---------------------------------------------
 
@@ -8152,7 +8165,7 @@ document.addEventListener('keydown', e => {
   // has NO keyboard shortcut.
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && stage === 'request') {
     e.preventDefault();
-    talk();
+    submitRequest();
     return;
   }
   if (e.key !== 'Escape') return;
@@ -8170,7 +8183,6 @@ window.addEventListener('beforeunload', e => {
 });
 
 setStage('request', true);
-setRequestMode('describe');
 
 loadAiSettings();
 (async () => {

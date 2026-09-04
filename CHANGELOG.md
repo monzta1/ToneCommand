@@ -5,6 +5,13 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **One request box for every kind of tone request.** Describe a sound, ask
+  for a whole rig, request a small adjustment, or paste a link in the same
+  place. ToneCommand now recognizes what was entered and chooses the right
+  path itself. The DESCRIBE, SOURCE, and EMPTY SLOT choices are gone, along
+  with the second source form. A direct request starts its plan immediately;
+  if one important detail is missing, the answer continues in the same
+  conversation (owner, 2026-09-03).
 - **One prompt, one window: a build never times out for being large.**
   A whole-rig ask and a one-block tweak arrive through the same prompt, and
   the player never chose between them, yet the interactive path used a short
