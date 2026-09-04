@@ -2421,6 +2421,94 @@ def api_copy_effects(body: CopyEffectsBody):
                     "order was not changed"}
 
 
+class ComposeTake(BaseModel):
+    source: str                 # a preset by wire number or name
+    blocks: list[str]           # families to pull from it, e.g. ["DELAY"]
+
+
+class ComposeBody(BaseModel):
+    target: int                 # wire slot to build the composed preset into
+    base: str | None = None     # clone this whole preset first (the tone to start from)
+    take: list[ComposeTake] = []  # then pull these blocks from these presets
+    name: str | None = None
+    store: bool = True
+
+
+@app.post("/api/compose")
+def api_compose(body: ComposeBody):
+    """Compose a preset from parts of others.
+
+    "Copy BT Marco Sfogli into slot 20, but take the delay from <A> and the
+    reverb from <B>": clone a whole base tone into a new slot, then transplant
+    named blocks from any number of source presets on top. The general form of
+    copy-effects. Every source is read first (read-only), then the target is
+    built and stored once. Order is not moved, only each block's settings.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: composing loads other presets and stores a new "
+                      "one, which is not something to do mid-set."}, status_code=423)
+    from fm9.device import get_store_slots
+    if body.store and body.target not in get_store_slots():
+        return JSONResponse(
+            {"error": f"slot {proto.slot_label(body.target)} is not in the "
+                      "storable whitelist; widen TONECOMMAND_STORE_SLOTS to "
+                      "allow it, or set store=false to leave it in the buffer"},
+            status_code=403)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            # 1. Read every source we need, read-only, caching by slot.
+            snaps: dict = {}
+
+            def cap(src):
+                n = _resolve_source_slot(fm9, src)
+                if n is None:
+                    raise ValueError(f"no preset matching {src!r}")
+                if n not in snaps:
+                    fm9.select_preset(n)
+                    snaps[n] = editbuffer.capture(fm9, reg)
+                return n
+
+            base_num = cap(body.base) if body.base else None
+            take_nums = [(t, cap(t.source)) for t in body.take]
+
+            # 2. Establish the target buffer: clone the base into it if given.
+            if base_num is not None:
+                fm9.select_preset(base_num)          # buffer becomes the base tone
+                fm9.store_preset(body.target)        # and lands on the target slot
+            fm9.select_preset(body.target)           # now edit the target
+
+            # 3. Transplant each requested block from its source.
+            took = []
+            for t, n in take_nums:
+                r = editbuffer.transplant(fm9, reg, snaps[n], t.blocks)
+                took.append({"source": snaps[n].get("preset_name"),
+                             "blocks": t.blocks, "applied": len(r.applied),
+                             "failed": r.failed})
+
+            # 4. Name and store the result.
+            if body.name:
+                run_action(fm9, Action(kind="rename_preset",
+                                       type_name=body.name.strip()[:26]))
+            if body.store:
+                fm9.store_preset(body.target)
+            final = fm9.current_preset()
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    _preset_cache["slots"] = None            # a slot's name/contents changed
+    return {"ok": all(not x["failed"] for x in took),
+            "target": {"number": body.target,
+                       "editor": proto.editor_number(body.target),
+                       "name": final[1] if final else None},
+            "base": snaps[base_num].get("preset_name") if base_num is not None else None,
+            "took": took}
+
+
 _shared_cache: dict = {"preset": None, "map": None}
 
 #: The last state read from real hardware, kept so a design can be planned

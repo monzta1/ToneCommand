@@ -72,3 +72,49 @@ def test_the_endpoint_exists_and_is_shaped_right():
     import server
     routes = {r.path for r in server.app.routes if getattr(r, "methods", None)}
     assert "/api/copy-effects" in routes
+
+
+# --- compose: build a preset from parts of others ------------------------
+
+def _client(monkeypatch):
+    import os
+    os.environ["TONECOMMAND_STORE_SLOTS"] = "0-511"
+    import server
+    from fm9.sim import SimFM9
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(server, "_fm9", SimFM9(server.reg))
+    monkeypatch.setattr(server, "_gig_mode", {"on": False})
+    monkeypatch.setattr(server, "_preset_cache", {"slots": None})
+    return server, TestClient(server.app)
+
+
+def test_compose_clones_a_base_and_pulls_a_block_from_another(monkeypatch):
+    server, c = _client(monkeypatch)
+    fm9 = server._fm9
+    reg = server.reg
+    # give preset 6 a distinctive delay so the transplant has to do real work
+    fm9.select_preset(6)
+    snap6 = editbuffer.capture(fm9, reg)
+    d6 = _delay(snap6)
+    d6["values"][0] = (d6["values"][0] + 20000) % 65534
+    editbuffer.transplant(fm9, reg, snap6, {"DELAY"})   # write it onto 6's buffer
+    fm9.store_preset(6)
+    want = d6["values"][0]
+
+    # compose: clone 5 into 20, take the DELAY from 6
+    r = c.post("/api/compose", json={"target": 20, "base": "5",
+                                     "take": [{"source": "6", "blocks": ["DELAY"]}]})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+
+    # slot 20's delay must be 6's, not 5's
+    fm9.select_preset(20)
+    got = _delay(editbuffer.capture(fm9, reg))["values"][0]
+    assert got == want
+
+
+def test_compose_refuses_a_target_outside_the_whitelist(monkeypatch):
+    import os
+    server, c = _client(monkeypatch)          # this sets the whitelist to 0-511
+    monkeypatch.setenv("TONECOMMAND_STORE_SLOTS", "100-110")  # so narrow it after
+    r = c.post("/api/compose", json={"target": 20, "base": "5"})
+    assert r.status_code == 403

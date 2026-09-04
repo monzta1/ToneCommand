@@ -5,13 +5,16 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
-- **Copy an effect from another preset ("make the delay like that tone's").**
-  A new copy-effects action reads a reference preset's delay, reverb (or any
-  named block) with all its settings and writes them onto the current build's
-  matching blocks, wire for wire. It is a better path to an artist tone than
-  guessing effect parameters from scratch, and it came straight out of the
-  Marco Sfogli experiment, where the pro preset's clean delay was a full
-  stereo setup no from-scratch guess would reproduce. Copies settings and
+- **Compose a preset from parts of other presets.** Clone a whole tone into a
+  new slot, then pull the delay from one preset, the reverb from another, the
+  amp from a third: "copy BT Marco Sfogli into slot 21, but take the delay
+  from <A> and the reverb from <B>". Every source is read first, then the new
+  preset is assembled and stored once, respecting the store whitelist. This is
+  a better path to an artist tone than guessing parameters from scratch, and
+  it came straight out of the Marco Sfogli experiment, where the pro preset's
+  clean delay was a full stereo setup no guess would reproduce. Underneath is
+  copy-effects, which lifts named blocks (delay, reverb, any family) from one
+  reference preset onto the current build wire for wire. Both copy settings and
   bypass; the signal-chain order is not moved yet (owner, 2026-09-04).
 
 ### Changed
