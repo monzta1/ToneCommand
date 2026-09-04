@@ -338,17 +338,12 @@ def _scene_state(fm9, eids):
     return out
 
 
-def transplant_by_scene(fm9, reg, source_num, target_num, families) -> Restore:
-    """Scene-aware copy: what an effect does on the SOURCE's scene N lands on the
-    TARGET's scene N, on whatever channel each maps that scene to.
-
-    The channel-faithful transplant() is scene-blind: two presets map scenes to
-    channels differently, so a channel-for-channel copy puts an effect on the
-    wrong scene (#48). This reads each preset's scene->channel layout by
-    sweeping the scenes, then for every scene copies the source's per-scene
-    params and bypass onto the target's per-scene channel. Sweeps both presets
-    (audible) and leaves the target loaded on the scene it started on.
-    """
+def read_scene_state(fm9, reg, families):
+    """Read the CURRENTLY LOADED preset's per-scene channel/bypass and its
+    all-channel param values for the named families. The caller loads the
+    source preset first: editbuffer never switches presets itself, that stays
+    in the orchestration layer as everywhere here. Returns (scene_state, vals)
+    to hand to transplant_by_scene."""
     fams = {str(f).upper() for f in families}
     eids = set()
     for f in fams:
@@ -356,16 +351,30 @@ def transplant_by_scene(fm9, reg, source_num, target_num, families) -> Restore:
             eids.add(reg.effect_id(f, 1))
         except Exception:
             pass
+    scene_state = _scene_state(fm9, eids)
+    snap = capture(fm9, reg)
+    vals = {b["effect_id"]: (b["values"], b["channels"])
+            for b in snap["blocks"] if b["effect_id"] in eids}
+    return scene_state, vals
+
+
+def transplant_by_scene(fm9, reg, src_scene_state, src_vals) -> Restore:
+    """Scene-aware copy onto the CURRENTLY LOADED target: what an effect did on
+    the SOURCE's scene N lands on the TARGET's scene N, on whatever channel each
+    maps that scene to.
+
+    The channel-faithful transplant() is scene-blind: two presets map scenes to
+    channels differently, so a channel-for-channel copy puts an effect on the
+    wrong scene (#48). The caller reads the source with read_scene_state, loads
+    the target, and calls this; it sweeps the TARGET's scenes and, for each,
+    writes the source's per-scene params and bypass onto the target's per-scene
+    channel. Sweeps the loaded target (audible), leaves it on the scene it
+    started on, and never switches presets.
+    """
     out = Restore()
-
-    fm9.select_preset(source_num)
-    src_state = _scene_state(fm9, eids)
-    src_snap = capture(fm9, reg)
-    src_vals = {b["effect_id"]: (b["values"], b["channels"])
-                for b in src_snap["blocks"] if b["effect_id"] in eids}
-
-    fm9.select_preset(target_num)
+    eids = set(src_vals)
     tgt_state = _scene_state(fm9, eids)
+    src_state = src_scene_state
 
     here = fm9.scene_name()
     active = here[0] if here else 1

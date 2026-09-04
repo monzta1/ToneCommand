@@ -140,7 +140,12 @@ def test_transplant_by_scene_runs_and_copies(monkeypatch):
     fm9.store_preset(6)
     want = d6["values"][0]
 
-    res = editbuffer.transplant_by_scene(fm9, reg, 6, 5, {"DELAY"})
+    # the caller loads source, reads it, loads target, then applies (editbuffer
+    # never switches presets itself)
+    fm9.select_preset(6)
+    src_state, src_vals = editbuffer.read_scene_state(fm9, reg, {"DELAY"})
+    fm9.select_preset(5)
+    res = editbuffer.transplant_by_scene(fm9, reg, src_state, src_vals)
     assert res.applied, "scene-aware copy applied nothing"
     # it ends on the target's buffer with the edit; re-selecting would discard
     # it, so read the buffer directly.
