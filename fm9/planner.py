@@ -193,6 +193,26 @@ THE FIRST-CLASS BUILD STANDARD. This applies to any request with an identity - a
 - Depth never licenses invention. Every parameter you set must exist in the reference; where you are interpreting rather than reporting the artist's rig, the reason says so."""
 
 
+def _load_tone_rules() -> str:
+    """The committed tone-building rulebook (config/tone_rules.md), the single
+    source of truth for how a good FM9 tone is built. Read into the planner's
+    context on every build so the rules cannot be skipped. Missing file is not
+    fatal; the SYSTEM prompt above still stands on its own."""
+    try:
+        from pathlib import Path
+        p = Path(__file__).resolve().parent.parent / "config" / "tone_rules.md"
+        return p.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+_TONE_RULES = _load_tone_rules()
+if _TONE_RULES:
+    SYSTEM = (SYSTEM + "\n\nTHE TONE-BUILDING RULES. Read these and operate by "
+              "them on every build. A build that breaks one of these is wrong, "
+              "not the rule:\n\n" + _TONE_RULES)
+
+
 BACKENDS = ("openai", "cli", "grok", "api")
 
 FAILURE_CLASSES = (
