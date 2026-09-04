@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 0.9.0 (2026-09-04)
+
 ### Fixed
 - **From-empty builds no longer abort halfway.** Building into an empty slot
   laid the starting chain, then the first block-add read back to verify and
