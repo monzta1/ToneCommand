@@ -5949,6 +5949,21 @@ function conversationText() {
   return head + '\n\n' + lines.join('\n\n') + '\n';
 }
 
+// A build that did not come together, said the way a player would say it.
+// The raw reason (transport, timeouts, backend names) still goes to the
+// diagnostic log; the conversation never carries the machinery.
+function plainPlanError(msg) {
+  const m = String(msg || '').toLowerCase();
+  if (/no complete plan|no reply within|transport|timed out|timeout|unreachable|took too long/.test(m))
+    return 'That one took too long to come together. Give it another go, '
+         + 'or ask for a little less in one go.';
+  if (/no key|api key|not set up|unauthor|401|403/.test(m))
+    return 'The AI helper is not connected yet. Open Settings to set it up.';
+  if (/rate|\b429\b|quota|overload|busy/.test(m))
+    return 'The AI helper is busy right now. Give it a moment and try again.';
+  return 'That did not come together. Give it another go.';
+}
+
 function renderChat() {
   const box = $('chat');
   // Measured BEFORE the rewrite, because after it scrollTop is meaningless.
@@ -6592,7 +6607,7 @@ async function engage(prompt, name, scenes) {
     // the background and the next build starts clean.
     chatNote(stopped ? 'Stopped. The build was cancelled on the backend too; '
                        + 'nothing was built and nothing was sent.'
-                     : `I could not build that: ${e.message}`);
+                     : plainPlanError(e.message));
   } finally {
     chatWorking = '';
     if (document.body.contains(b)) { b.disabled = false; b.textContent = was; }

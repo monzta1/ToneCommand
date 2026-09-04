@@ -1103,20 +1103,38 @@ def _plan_counting(prompt: str, context: str, on_count=None, cancel=None):
 
     A count that fails must not take the plan down with it: progress is a
     courtesy and the plan is the point.
+
+    Every plan runs under the build-sized window, not the old short one. A
+    whole-rig ask and a one-block tweak arrive through the same prompt, and
+    the user never chose between them; timing one out for being large is an
+    internal detail leaking as a failure. So the generous window is the floor
+    for all of them (a higher explicit PLANNER_TIMEOUT still wins). Set and
+    restored here, under the settings lock every caller already holds, so a
+    concurrent plan cannot inherit or lose it. The streaming heartbeat, not a
+    short deadline, is what tells a long build from a hang.
     """
-    if on_count is None:
-        return planner.plan(prompt, context, PARAM_REFERENCE)
-    result = None
-    for kind, payload in planner.plan_stream(prompt, context, PARAM_REFERENCE,
-                                             cancel=cancel):
-        if kind == "count":
-            try:
-                on_count(payload)
-            except Exception:
-                pass
+    old = _os.environ.get("PLANNER_TIMEOUT")
+    if planner.timeout_s() < describe.timeout_s():
+        _os.environ["PLANNER_TIMEOUT"] = str(describe.timeout_s())
+    try:
+        if on_count is None:
+            return planner.plan(prompt, context, PARAM_REFERENCE)
+        result = None
+        for kind, payload in planner.plan_stream(prompt, context,
+                                                 PARAM_REFERENCE, cancel=cancel):
+            if kind == "count":
+                try:
+                    on_count(payload)
+                except Exception:
+                    pass
+            else:
+                result = payload
+        return result
+    finally:
+        if old is None:
+            _os.environ.pop("PLANNER_TIMEOUT", None)
         else:
-            result = payload
-    return result
+            _os.environ["PLANNER_TIMEOUT"] = old
 
 
 def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):

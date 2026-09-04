@@ -4,6 +4,20 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **One prompt, one window: a build never times out for being large.**
+  A whole-rig ask and a one-block tweak arrive through the same prompt, and
+  the player never chose between them, yet the interactive path used a short
+  planner window while the build path used a long one. A big multi-scene
+  request through the prompt could fail with an internal-sounding timeout
+  while the same request through the build flow succeeded. Every plan now
+  runs under the build-sized window; the streaming heartbeat, not a short
+  deadline, tells a long build from a hang. And when a build genuinely does
+  not come together, the conversation shows a plain next step ("that took
+  too long, give it another go, or ask for a little less at once") instead
+  of the raw transport or timeout text. No planner internals reach the
+  player (owner, 2026-09-03).
+
 ### Added
 - **COPY a whole conversation.** A COPY button in the chat controls puts
   the entire exchange on the clipboard as plain text, each turn labelled

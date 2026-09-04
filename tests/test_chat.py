@@ -427,7 +427,13 @@ def test_a_plan_with_no_actions_still_says_something():
 def test_a_failed_build_is_not_silence():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
-    assert "I could not build that:" in fn
+    # The failure lands in the CONVERSATION, not just the log, and in plain
+    # language: the player is handed a next step, not a diagnosis.
+    assert "plainPlanError(e.message)" in fn
+    assert "function plainPlanError" in ui
+    tr = ui.split("function plainPlanError")[1].split("\n}\n")[0]
+    assert "took too long to come together" in tr
+    assert "Give it another go" in tr
 
 
 def test_transmitting_reports_into_the_conversation_too():
