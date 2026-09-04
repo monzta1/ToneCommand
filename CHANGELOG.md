@@ -33,6 +33,20 @@ Notable changes to ToneCommand. Dates are UTC.
   with a "show details" toggle that reveals the per-action log for when
   something looks wrong (owner, 2026-09-04).
 
+### Fixed
+- **Scene-aware copy now lands each effect on the right scene, not the wrong
+  one.** A channel-for-channel copy is scene-blind: two presets map scenes to
+  channels differently, so copying an artist tone put its lead delay on the
+  clean scene. The scene-aware path copies what the source did on scene N onto
+  the target's scene N. The first cut had a subtle bug hardware caught: FM9
+  parameters live per channel, not per scene, so when several target scenes
+  shared a channel a per-scene write loop had each later scene overwrite the
+  earlier one, and a two-scene copy came back 10/10 instead of 10/20. The fix
+  is the only decomposition the device's data model allows: copy the channel
+  parameters once each, then copy the per-scene channel and bypass assignments.
+  Hardware-confirmed, with a CI regression guard that models per-scene channels
+  (the sim cannot). GitHub #48 (owner, 2026-09-04).
+
 ## 0.9.0 (2026-09-04)
 
 ### Fixed

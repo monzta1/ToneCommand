@@ -150,3 +150,89 @@ def test_transplant_by_scene_runs_and_copies(monkeypatch):
     # it ends on the target's buffer with the edit; re-selecting would discard
     # it, so read the buffer directly.
     assert _delay(editbuffer.capture(fm9, reg))["values"][0] == want
+
+
+# --- scene-aware copy: the per-channel/per-scene decomposition (#48) --------
+# The SimFM9 keeps every scene on channel 0, so it cannot catch the bug that
+# hardware did: FM9 params are per CHANNEL, not per scene, so when several
+# target scenes share a channel a naive per-scene write loop has each later
+# scene clobber the earlier one (a two-scene copy came back 10/10). This fake
+# models per-scene channel assignment and shared per-channel params, so the
+# clobber is reproducible in CI. Guards the decomposition, not the wire.
+
+class _Blk:
+    def __init__(self, eid, channel, bypassed, chans):
+        self.effect_id = eid
+        self.channel = channel
+        self.bypassed = bypassed
+        self.channels_supported = chans
+
+
+class _SceneAwareDev:
+    """One block (DELAY, eid 70), 4 channels. Params live per channel and are
+    shared by every scene sitting on that channel; scenes store their own
+    channel + bypass. Exactly the model that made the clobber possible."""
+    EID, CHANS = 70, 4
+
+    def __init__(self, scene_chan):
+        # scene_chan: {scene: channel} for scenes 1..8
+        self.scene_chan = dict(scene_chan)
+        self.scene_byp = {s: False for s in range(1, 9)}
+        self.params = {ch: {} for ch in range(self.CHANS)}   # channel -> {pid: wire}
+        self._cur = 1
+        self._channels = {self.EID: self.CHANS}
+
+    def scene_name(self):
+        return (self._cur, f"SCENE {self._cur}")
+
+    def set_scene(self, sc):
+        self._cur = sc
+        return sc
+
+    def status_dump(self):
+        ch = self.scene_chan[self._cur]
+        return [_Blk(self.EID, ch, self.scene_byp[self._cur], self.CHANS)]
+
+    def set_channel(self, eid, ch):
+        self.scene_chan[self._cur] = ch
+        return ch
+
+    def set_bypass(self, eid, byp):
+        self.scene_byp[self._cur] = byp
+        return byp
+
+    def set_param_wire(self, spec, wire):
+        ch = self.scene_chan[self._cur]
+        self.params[ch][spec.param_id] = wire
+        class _R:
+            ok = True
+        return _R()
+
+    def mix_on_scene(self, sc, pid=0):
+        return self.params[self.scene_chan[sc]].get(pid)
+
+
+def test_scene_aware_copy_does_not_clobber_shared_channels():
+    reg = Registry()
+    EID = 70
+    # SOURCE map: scene1->A(0) mix 6553, scene2->B(1) mix 13107, scene3->A(0).
+    # scene3 SHARES channel A with scene1, which is exactly what breaks a naive
+    # per-scene loop on the target side.
+    src_state = {1: {EID: (0, False)}, 2: {EID: (1, False)}, 3: {EID: (0, False)}}
+    for s in range(4, 9):
+        src_state[s] = {EID: (0, False)}
+    # channel-major values, stride 1 (mix only): A=6553, B=13107, C=0, D=0
+    src_vals = {EID: ([6553, 13107, 0, 0], 4)}
+
+    # TARGET map: channels deliberately swapped and spread so several scenes
+    # share channels differently from the source.
+    tgt = _SceneAwareDev({1: 1, 2: 0, 3: 2, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0})
+
+    res = editbuffer.transplant_by_scene(tgt, reg, src_state, src_vals)
+    assert res.applied
+
+    # Each target scene must sound like the SOURCE's same scene, and the
+    # shared-channel scenes must not have overwritten each other.
+    assert tgt.mix_on_scene(1) == 6553, "scene 1 wrong"
+    assert tgt.mix_on_scene(2) == 13107, "scene 2 CLOBBERED (the #48 bug)"
+    assert tgt.mix_on_scene(3) == 6553, "scene 3 wrong"

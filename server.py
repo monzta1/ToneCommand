@@ -2353,6 +2353,7 @@ def api_preset(body: PresetBody):
 class CopyEffectsBody(BaseModel):
     source: str                 # source preset: a wire number, or a name to match
     effects: list[str] = ["DELAY", "REVERB"]
+    scene_aware: bool = False   # align by scene (not channel); reads both presets' scene layout
 
 
 def _resolve_source_slot(fm9, source: str):
@@ -2405,10 +2406,19 @@ def api_copy_effects(body: CopyEffectsBody):
             # Read the source, then come back to the buffer we are copying into.
             # Selecting a preset discards the edit buffer, so the caller must
             # have stored the build first; that is the same rule as everywhere.
-            fm9.select_preset(src_num)
-            source_snap = editbuffer.capture(fm9, reg)
-            fm9.select_preset(target_num)
-            res = editbuffer.transplant(fm9, reg, source_snap, body.effects)
+            if body.scene_aware:
+                fm9.select_preset(src_num)
+                src_state, src_vals = editbuffer.read_scene_state(
+                    fm9, reg, body.effects)
+                source_name = (fm9.current_preset() or (None, None))[1]
+                fm9.select_preset(target_num)
+                res = editbuffer.transplant_by_scene(fm9, reg, src_state, src_vals)
+                source_snap = {"preset_name": source_name}
+            else:
+                fm9.select_preset(src_num)
+                source_snap = editbuffer.capture(fm9, reg)
+                fm9.select_preset(target_num)
+                res = editbuffer.transplant(fm9, reg, source_snap, body.effects)
         except FM9NotFound:
             drop_fm9()
             return JSONResponse({"error": "the FM9 is not answering"},

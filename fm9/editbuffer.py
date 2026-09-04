@@ -365,55 +365,90 @@ def transplant_by_scene(fm9, reg, src_scene_state, src_vals) -> Restore:
 
     The channel-faithful transplant() is scene-blind: two presets map scenes to
     channels differently, so a channel-for-channel copy puts an effect on the
-    wrong scene (#48). The caller reads the source with read_scene_state, loads
-    the target, and calls this; it sweeps the TARGET's scenes and, for each,
-    writes the source's per-scene params and bypass onto the target's per-scene
-    channel. Sweeps the loaded target (audible), leaves it on the scene it
-    started on, and never switches presets.
+    wrong scene (#48).
+
+    THE THING THAT MAKES THIS SUBTLE, learned the hard way on hardware: FM9
+    parameters live per CHANNEL, not per scene. A scene only chooses which
+    channel a block runs on (and its bypass). So you cannot write "scene 2's
+    params" independently: if scenes 2, 3 and 6 all sit on channel A, they are
+    the SAME parameters, and a per-scene write loop just has each later scene
+    clobber the earlier one (#48: a two-scene copy came back 10/10 because five
+    later scenes on the shared channel overwrote scene 2's value).
+
+    The correct decomposition, and the only one the device's data model allows:
+      1. copy the source's channel parameters, once per channel (A..D); then
+      2. copy the source's per-scene channel + bypass ASSIGNMENTS.
+    After that, target scene N sits on source-scene-N's channel, and that
+    channel already holds source-scene-N's parameters. No write is ever
+    overwritten, because each channel is written exactly once.
+
+    The caller reads the source with read_scene_state, loads the target, and
+    calls this. It sweeps the loaded target's scenes (audible) to set the
+    assignments, leaves it on the scene it started on, and never switches
+    presets.
     """
     out = Restore()
     eids = set(src_vals)
     tgt_state = _scene_state(fm9, eids)
     src_state = src_scene_state
+    # Which blocks does the target actually have? A source block the target
+    # lacks is reported, not invented (matching transplant()).
+    present = {eid for sc in tgt_state.values() for eid in sc}
 
-    here = fm9.scene_name()
-    active = here[0] if here else 1
-    for sc in range(1, 9):
-        for eid in eids:
-            if eid not in src_state.get(sc, {}) or eid not in tgt_state.get(sc, {}):
-                continue
-            src_ch, src_byp = src_state[sc][eid]
-            tgt_ch, _ = tgt_state[sc][eid]
-            vals, chans = src_vals.get(eid, (None, None))
-            if not vals:
-                continue
-            stride = _stride(vals, chans)
-            src_params = vals[src_ch * stride:(src_ch + 1) * stride]
-            fam = reg.family_of_effect_id(eid)
-            if not fam:
-                continue
-            family, inst = fam
-            fm9.set_scene(sc)
-            fm9.set_channel(eid, tgt_ch)
-            for pid, wire in enumerate(src_params):
+    # --- 1. copy channel parameters, once per channel -----------------------
+    for eid in eids:
+        fam = reg.family_of_effect_id(eid)
+        if not fam:
+            continue
+        family, inst = fam
+        if eid not in present:
+            out.failed.append(f"{family} {inst}: not present in the target "
+                              "preset, so there is nothing to copy it onto")
+            continue
+        vals, chans = src_vals.get(eid, (None, None))
+        if not vals:
+            continue
+        stride = _stride(vals, chans)
+        for ch in range(chans):
+            fm9.set_channel(eid, ch)
+            for pid in range(stride):
                 try:
                     spec = reg.spec(family, pid, inst)
                 except Exception:
                     spec = None
                 if spec is None:
                     continue
+                wire = vals[ch * stride + pid]
                 res = fm9.set_param_wire(spec, wire)
                 if not getattr(res, "ok", False):
                     import time as _t
                     _t.sleep(0.1)
                     res = fm9.set_param_wire(spec, wire)
                 if getattr(res, "ok", False):
-                    out.applied.append(f"scene {sc} {family} {inst} param {pid}")
+                    out.applied.append(f"{family} {inst} ch {'ABCD'[ch]} param {pid}")
                 else:
-                    out.normalized.append(f"scene {sc} {family} {inst} param {pid}: "
-                                          "device kept its own value")
+                    out.normalized.append(f"{family} {inst} ch {'ABCD'[ch]} "
+                                          f"param {pid}: device kept its own value")
+
+    # --- 2. copy per-scene channel + bypass assignments ---------------------
+    here = fm9.scene_name()
+    active = here[0] if here else 1
+    for sc in range(1, 9):
+        if sc not in src_state:
+            continue
+        fm9.set_scene(sc)
+        for eid in eids:
+            if eid not in src_state.get(sc, {}) or eid not in present:
+                continue
+            fam = reg.family_of_effect_id(eid)
+            if not fam:
+                continue
+            family, inst = fam
+            src_ch, src_byp = src_state[sc][eid]
+            fm9.set_channel(eid, src_ch)
             fm9.set_bypass(eid, src_byp)
-            out.applied.append(f"scene {sc} {family} {inst}: "
+            out.applied.append(f"scene {sc} {family} {inst}: channel "
+                               f"{'ABCD'[src_ch]}, "
                                f"{'bypassed' if src_byp else 'engaged'}")
     fm9.set_scene(active)
     return out
