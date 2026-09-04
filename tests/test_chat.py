@@ -1065,7 +1065,9 @@ def test_the_button_counts_where_the_finger_was():
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
     assert "SENDING · ${n} / ${total}" in fn, \
         "the SEND stage header counts each change"
-    assert "Sending ${d.done} of ${d.total}" in fn
+    # the per-step send feedback now goes through the progress bar, which shows
+    # the count and percentage rather than a raw "Sending X of Y" line.
+    assert "sendProgress(d)" in fn
 
 
 def test_the_outcome_stays_until_it_is_dismissed():

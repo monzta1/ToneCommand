@@ -77,8 +77,9 @@ def test_the_endpoint_exists_and_is_shaped_right():
 # --- compose: build a preset from parts of others ------------------------
 
 def _client(monkeypatch):
-    import os
-    os.environ["TONECOMMAND_STORE_SLOTS"] = "0-511"
+    # monkeypatch.setenv, not os.environ, so the whitelist does not leak into
+    # other tests that depend on a restricted TONECOMMAND_STORE_SLOTS.
+    monkeypatch.setenv("TONECOMMAND_STORE_SLOTS", "0-511")
     import server
     from fm9.sim import SimFM9
     from fastapi.testclient import TestClient
