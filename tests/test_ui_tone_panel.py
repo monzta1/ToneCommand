@@ -148,8 +148,9 @@ def test_both_control_surfaces_say_what_they_do():
     like a readout is a control nobody finds."""
     assert "click a block to open it" in UI
     assert "its letter to change channel" in UI
-    # and the one thing a player needs to know before touching either
-    assert "Edit buffer only" in UI
+    # and the one thing a player needs to know before touching either:
+    # in plain reassurance, not jargon.
+    assert "Nothing is saved until you send" in UI
 
 
 # --- the signal chain is the actual grid ---

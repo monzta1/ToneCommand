@@ -390,8 +390,8 @@ def test_the_machine_says_what_it_can_read_before_anything_is_pasted():
     assert "/api/describe/ready" in routes
     ok, why = describe.whisper_ready()
     assert isinstance(ok, bool) and isinstance(why, str)
-    assert "$('srchint').innerHTML +=" in SCRIPT
-    assert "Pasting text or a page link works either way" in SCRIPT
+    assert "$('srchint').textContent" in SCRIPT
+    assert "Paste the transcript instead." in SCRIPT
 
 
 def test_the_readme_documents_the_system_dependency():

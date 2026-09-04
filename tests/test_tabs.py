@@ -93,7 +93,7 @@ def test_no_keyboard_shortcut_reaches_the_final_send():
     transmit to hardware."""
     keys = SCRIPT.split("// Cmd/Ctrl+Enter generates a plan")[1] \
                  .split("addEventListener('beforeunload'")[0]
-    assert "talk()" in keys
+    assert "submitRequest()" in keys
     assert "apply()" not in keys
 
 

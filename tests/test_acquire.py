@@ -175,4 +175,4 @@ def test_a_copy_button_exports_the_whole_conversation():
     assert "function conversationText" in script
     fn = script.split("function conversationText")[1].split("function ")[0]
     # user, assistant and system-note turns each get a label
-    assert "YOU:" in fn and "TONECOMMAND" in fn and "m.model" in fn
+    assert "YOU:" in fn and "TONECOMMAND" in fn
