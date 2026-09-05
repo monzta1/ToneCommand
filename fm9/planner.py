@@ -77,9 +77,9 @@ PLAN_SCHEMA = {
                     "kind": {"type": "string",
                              "enum": ["set_param", "set_scene", "set_bypass",
                                       "set_channel", "set_tempo", "set_type",
-                                      "add_block", "reorder", "bind_pedal",
-                                      "unbind_pedal", "rename_preset",
-                                      "rename_scene", "store"]},
+                                      "set_cab", "add_block", "reorder",
+                                      "bind_pedal", "unbind_pedal",
+                                      "rename_preset", "rename_scene", "store"]},
                     "block": {"type": ["string", "null"],
                               "description": "Block name for set_param/set_bypass/set_channel/reorder, e.g. amp, gate, input, delay, reverb, cab, drive, peq, geq, comp"},
                     "instance": {"type": "integer",
@@ -87,7 +87,7 @@ PLAN_SCHEMA = {
                     "param": {"type": ["string", "null"],
                               "description": "Symbolic param name from the reference list, e.g. DISTORT_DRIVE"},
                     "value": {"type": ["number", "null"],
-                              "description": "Target display value for set_param (in the param's display units), scene number 1-8 for set_scene, channel 0-3 for set_channel, BPM for set_tempo"},
+                              "description": "Target display value for set_param (in the param's display units), scene number 1-8 for set_scene, channel 0-3 for set_channel, BPM for set_tempo, cab ordinal for set_cab"},
                     "bypassed": {"type": ["boolean", "null"],
                                  "description": "For set_bypass: true = bypass the block, false = engage it"},
                     "type_name": {"type": ["string", "null"],
@@ -96,11 +96,14 @@ PLAN_SCHEMA = {
                                  "description": "For add_block: pre, post, or any (relative to the amp). For reorder: before or after (relative to the ref block)"},
                     "ref": {"type": ["string", "null"],
                             "description": "For reorder: the block to move `block` relative to, e.g. reverb. Ignored for other kinds"},
+                    "bank": {"type": ["integer", "null"],
+                             "description": "For set_cab: which cab bank the ordinal is in (from the reference cab roster, e.g. 3 for the factory cabs). Null for other kinds"},
                     "reason": {"type": "string",
                                "description": "Short justification tied to the user's request"},
                 },
                 "required": ["kind", "block", "instance", "param", "value",
-                             "bypassed", "type_name", "position", "ref", "reason"],
+                             "bypassed", "type_name", "position", "ref", "bank",
+                             "reason"],
                 "additionalProperties": False,
             },
         },
@@ -173,6 +176,10 @@ Rules:
 Amp/drive/reverb model selection (set_type):
 - Use set_type with the EXACT model name from the roster. The amp roster lists each entry as `type_name = the real-world amp it models`; Fractal's names are deliberately oblique, so match the artist/era/sound against the real amp on the right, then send the name on the LEFT verbatim as type_name (e.g. Van Halen Balance era = a Peavey 5150, whose roster entry is "PVH 6160 Block Lead"). A few entries have no real-world amp listed; do not invent one for them. After a type change, also set sensible gain/EQ values for that sound.
 - A type change replaces the block's model on its CURRENT channel and affects every scene that uses that channel. It cannot be undone by scene changes, only by re-selecting the preset (which discards all edits).
+
+Cabinet selection (set_cab):
+- The speaker is half the sound, so ALWAYS set a cab on a from-scratch build - do not leave it at default. Use set_cab with block=cab, bank and value (the cab ordinal), both taken from the reference cab roster. Match the cab to the amp and era the same way you match the amp (e.g. a Recto/modern-metal amp wants a 4x12 V30, a Fender clean wants a 2x12 Double Verb, a vintage Marshall wants a 4x12 1960). Pick from the factory cab roster (bank 3); DynaCabs are reference-only, so name them if you like but SELECT with set_cab from the factory roster.
+- The cab lives on the cab block's channel like any other type, so it is shared by every scene on that channel.
 
 Scenes and multi-scene requests:
 - Scenes share the same blocks; each scene stores its own per-block bypass states and channel choices. Block PARAMETERS and TYPES are per-channel, shared across scenes.

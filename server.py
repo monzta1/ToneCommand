@@ -283,6 +283,28 @@ def drop_fm9():
         _fm9 = None
 
 
+def curated_cab_roster() -> list[tuple[int, int, str]]:
+    """A deduped, selectable slice of the factory cabs (legacy bank 3) for the
+    planner (issue #45): one representative per base cab with the mic/variant
+    suffix stripped, so it can pick a real cabinet by ordinal without wading
+    through 2000+ mic permutations. Ordinals are the real wire ordinals, so a
+    set_cab from this list verifies by read-back like any other."""
+    import re
+    b3 = reg.cab_rosters.get("3", {})
+    _suffix = re.compile(r"\s*\((RW|RIB|OH)\)\s*$")
+    _mic = re.compile(
+        r"\s+(SM57|R121|MD421|906|421|121|57|160|AT4047|M160|4047|"
+        r"OFF-?AXIS|ON-?AXIS|CONE|BLEND|MIX|DYN|RIBBON)\b.*$", re.I)
+    out: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+    for ordn, name in b3.items():
+        base = _mic.sub("", _suffix.sub("", str(name))).strip()
+        if base and base not in seen:
+            seen.add(base)
+            out.append((3, int(ordn), base))
+    return out
+
+
 def param_reference() -> str:
     """Static text listing controllable params, for the planner (cacheable)."""
     lines = []
@@ -320,11 +342,20 @@ def param_reference() -> str:
                 lines.append(f"{name} = {model}")
     lines.append("\nReverb types selectable via set_type (block=reverb):")
     lines.append(", ".join(str(v) for v in reg.reverb_roster.values()))
+    cabs = curated_cab_roster()
+    if cabs:
+        lines.append("\nCabinets selectable via set_cab (block=cab). Emit "
+                     "set_cab with `bank` and `value` (the ordinal). The "
+                     "speaker is half the sound: pick the cab that matches the "
+                     "amp and era. One per line as `bank <b> cab <ordinal> = "
+                     "name`:")
+        for b, o, nm in cabs:
+            lines.append(f"bank {b} cab {o} = {nm}")
     if reg.dynacabs:
         lines.append("\nDynaCab cabinets and the real cabs they capture "
-                     "(cab selection is NOT a plannable action yet; use "
-                     "only to describe or recommend, never to propose a "
-                     "set):")
+                     "(reference only: DynaCab is multi-dimensional, so name or "
+                     "recommend these, but SELECT a cab with set_cab from the "
+                     "factory roster above):")
         for name, rec in reg.dynacabs.items():
             model = rec.get("model")
             lines.append(f"{name} = {model}" if model else name)
