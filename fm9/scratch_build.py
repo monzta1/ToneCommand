@@ -52,13 +52,24 @@ def _refused(detail: str, steps: list[str]) -> dict:
 
 
 def build(dev, reg, slot: int | None = None,
-          search: tuple[int, int] = (0, 511)) -> dict:
-    """Place INPUT -> amp -> cab -> OUTPUT into an empty slot and cable it.
+          search: tuple[int, int] = (0, 511),
+          chain: list[tuple[int, str]] | None = None,
+          bypass: set[int] = frozenset()) -> dict:
+    """Place a chain into an empty slot and cable it.
+
+    Defaults to INPUT -> amp -> cab -> OUTPUT. A richer starter template passes
+    its own `chain` and the `bypass` set of effect ids to leave bypassed (laid
+    but silent until the tone calls for them); see fm9/starter_template.py.
+
+    Placing left to right on an EMPTY grid never slides a neighbour, so no
+    splices happen here however long the chain is - which is the whole point of
+    the template: the splice-timing path (#46) is sidestepped entirely.
 
     Returns a report; raises nothing for a refusal. `steps` is a running
     account suitable for showing someone, because this switches the loaded
     preset out from under them and they are owed the detail.
     """
+    chain = list(chain) if chain is not None else CHAIN
     steps: list[str] = []
     held = dev.current_preset()
     try:
@@ -90,21 +101,28 @@ def build(dev, reg, slot: int | None = None,
             f"reports {landed!r} loaded. Not editing a preset that was never "
             f"checked as empty.", steps)
 
-    for col, (eid, label) in enumerate(CHAIN, start=1):
+    for col, (eid, label) in enumerate(chain, start=1):
         dev.place_block(ROW, col, eid)
         time.sleep(SETTLE)
         steps.append(f"placed {label} (eid {eid}) at row {ROW} col {col}")
-    for col in range(1, len(CHAIN)):
+    for col in range(1, len(chain)):
         dev.connect_cells(ROW, col, ROW)
         time.sleep(SETTLE)
         steps.append(f"cabled ({ROW},{col}) -> ({ROW},{col + 1})")
+    # Optional starter blocks are laid but bypassed, so an unused template
+    # block is silent until the tone un-bypasses it.
+    for eid, label in chain:
+        if eid in bypass:
+            dev.set_bypass(eid, True)
+            time.sleep(SETTLE)
+            steps.append(f"bypassed {label} (eid {eid}); optional starter block")
 
     time.sleep(SETTLE)
     cells = sorted(dev.read_grid() or [], key=lambda c: (c.col, c.row))
     placed = {c.effect_id for c in cells}
-    missing = [label for eid, label in CHAIN if eid not in placed]
+    missing = [label for eid, label in chain if eid not in placed]
     blocks = {b.effect_id: b for b in dev.status_dump() or []}
-    bypassed = [label for eid, label in CHAIN
+    bypassed = [label for eid, label in chain
                 if eid in blocks and blocks[eid].bypassed]
     # Membership is not a path. A block sitting on the cursor cell at row 1
     # col 1 is "present" and un-starved while being nowhere near the signal,
