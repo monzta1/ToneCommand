@@ -210,5 +210,5 @@ def test_an_occupied_slot_gets_no_chain(client):
 def test_the_plan_warns_about_the_provisioning_up_front():
     import inspect
     src = inspect.getsource(server._plan_for)
-    assert "ToneCommand will build" in src and "then voice" in src
+    assert "ToneCommand will lay a " in src and "then voice" in src
     assert "validation_warnings" in src.split("read_grid() == []")[1][:400]
