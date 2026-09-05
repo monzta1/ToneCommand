@@ -1237,6 +1237,74 @@ class FM9:
         return SetResult(ok, "verified by read-back" if ok else f"read-back mismatch: {after}",
                          before, after)
 
+    def set_params_batch(self, items: list) -> list:
+        """Write several params on ONE block in a burst, then verify them all
+        with a single settle + bulk read (issue #47 lever 2). Items are
+        (spec, display_value) and MUST share an effect_id.
+
+        The point is fewer round trips: instead of N x (write + its own
+        settle-and-read loop), it is N writes then ONE read that checks them
+        all. The never-write-blind guarantee is preserved exactly: every param
+        is verified against that read, and any that does not match is retried on
+        the full single-param path (set_param_display, with its own settle
+        loop). A silently dropped write therefore still fails and still gets
+        another chance, never a false 'verified'.
+        """
+        items = [(s, v) for s, v in items
+                 if s.dmin is not None and s.dmax is not None]
+        if not items:
+            return []
+        eid = items[0][0].effect_id
+        # Resolve the block's live channel and channel count once (as
+        # get_param_wire does), so the batch decodes the same cells a
+        # per-param read would.
+        if eid not in self._channels:
+            self.status_dump()
+        chans = max(1, self._channels.get(eid, 1))
+        live = self.get_channel(eid)
+        if live is not None:
+            self._current_channel[eid] = live
+        channel = self._current_channel.get(eid, 0)
+
+        def decode(values, spec):
+            if not values:
+                return None
+            stride = len(values) // chans if chans > 1 else len(values)
+            idx = min(channel, chans - 1) * stride + spec.param_id
+            if idx >= len(values):
+                idx = spec.param_id
+            wire = values[idx] if idx < len(values) else None
+            if wire is None:
+                return None
+            return round(p.normalized_to_display(
+                wire / 65534, spec.dmin, spec.dmax, spec.scale), 2)
+
+        before_raw = self.bulk_read(eid) or []
+        befores = {id(spec): decode(before_raw, spec) for spec, _ in items}
+        # Burst the writes. _param_echo confirms each was RECEIVED; the batch
+        # read below is what confirms each LANDED.
+        for spec, disp in items:
+            normalized = p.display_to_normalized(disp, spec.dmin, spec.dmax, spec.scale)
+            frame = p.build_set_param_continuous(eid, spec.param_id, normalized)
+            self._param_echo(frame, eid, spec.param_id, timeout=0.3)
+        time.sleep(0.4)
+        after_raw = self.bulk_read(eid) or []
+        results = []
+        for spec, disp in items:
+            target = min(spec.dmax, max(spec.dmin, disp))
+            quantum = (spec.dmax - spec.dmin) / 65534 * 2 + 1e-6
+            tol = max(quantum, 0.02)
+            after = decode(after_raw, spec)
+            before = befores.get(id(spec))
+            if isinstance(after, (int, float)) and abs(after - target) <= tol:
+                results.append(SetResult(True, "verified by read-back (batched)",
+                                         before, after))
+            else:
+                # Did not land in the batch read: retry it on the full path,
+                # which settles and re-reads on its own. No false pass.
+                results.append(self.set_param_display(spec, disp))
+        return results
+
     def set_param_wire(self, spec: ParamSpec, wire: int) -> SetResult:
         """Set a parameter to an EXACT wire value, verified by integer equality.
 
