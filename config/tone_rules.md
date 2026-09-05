@@ -74,6 +74,16 @@ the tool got it wrong once.
   unless you cut its level to compensate. Learned 2026-09-04 from a Richie
   Sambora build whose two lead scenes (a boost + master 6 + four parallel wets
   engaged) came out "extra super loud" while the cleans sat far below.
+- THE PER-SCENE LOUDNESS KNOB IS THE OUTPUT BLOCK'S SCENE LEVEL, NOT THE EFFECT
+  LEVELS. The OUTPUT block carries a dedicated level per scene: OUTPUT_SCENE1
+  through OUTPUT_SCENE8 (-20 to +20 dB each). To make one scene quieter or
+  louder, set ITS OUTPUT_SCENEn - it moves that scene alone and nothing else.
+  DO NOT try to fix a loud scene by cutting delay/reverb/chorus levels: those
+  are per-channel, shared across scenes, so they BLEED into other scenes AND
+  they only lower the wet tails, not the core loud signal. Balance the whole
+  build with the eight OUTPUT_SCENEn trims (2026-09-04: cutting effect levels to
+  quiet a loud scene did nothing to the loudness and thinned other scenes; the
+  fix was OUTPUT_SCENE7/8).
 - Say the level reasoning in the reasons.
 
 ## 5. Effects follow the artist's actual style, not a rigid rule
