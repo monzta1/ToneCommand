@@ -2095,6 +2095,7 @@
     shape-rendering: geometricPrecision; }
   .shbtn.ico:hover:not(:disabled) { color: var(--cyan);
     background: rgba(47,230,255,0.09); }
+  .shbtn.ico.on { color: var(--cyan); background: rgba(47,230,255,0.16); }
   .shbtn.ico:active:not(:disabled) { transform: translateY(1px); }
   .shbtn.ico:disabled { opacity: 0.4; cursor: default; }
   .shbtn.ico .abtxt { font-size: 16px; font-weight: 700; letter-spacing: 0.03em; }
@@ -2105,11 +2106,14 @@
     background: rgba(0,0,0,0.55); }
   body.manual-mode #context { position: relative; z-index: 92; }
   body.manual-mode #inspector {
-    position: fixed; left: 14px; right: 14px; bottom: 14px; top: 40%;
-    z-index: 90; margin: 0; overflow-y: auto; padding: 14px 18px;
+    position: fixed; left: 12px; right: 12px; bottom: 10px; top: 38%;
+    width: auto; max-width: none;   /* override #inspector.wide's 860px cap */
+    z-index: 90; margin: 0; overflow-y: auto; padding: 14px 20px;
     background: var(--panel); border: 1px solid var(--cyan-dim);
     border-radius: 12px; box-shadow: 0 24px 70px rgba(0,0,0,0.66);
   }
+  /* full-width two-up layout for the control panels when manual mode is open */
+  body.manual-mode #inspector .picks { grid-template-columns: 1fr 1fr 1fr; }
   body.manual-mode #inspector .insphead { position: sticky; top: -14px;
     background: var(--panel); padding-top: 6px; z-index: 3; }
   .shbtn.ico .badge { position: absolute; top: 4px; right: 4px; margin: 0;
@@ -8388,13 +8392,17 @@ $('inspclose').onclick = () => {
   $('inspexpand').classList.remove('on');
   $('stagerail').hidden = false;
   document.body.classList.remove('manual-mode');
+  $('shmanual')?.classList.remove('on');
 };
 
 // Manual mode: one tap to the full manual controls. Reveals the signal chain
 // (so every block is one tap away), opens the amp controls full screen, and
 // dims the rest. The inspector's X (or Escape) closes it.
 function openManual() {
+  // Toggle: a second tap on the Manual button closes it.
+  if (document.body.classList.contains('manual-mode')) { $('inspclose').click(); return; }
   document.body.classList.add('manual-mode');
+  $('shmanual')?.classList.add('on');
   setChainHidden(false);
   selectBlock('DISTORT');
   const el = $('inspector');
