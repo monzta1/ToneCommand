@@ -104,3 +104,16 @@ def test_the_default_build_is_unchanged_by_the_generalisation():
         placed = sorted(c.effect_id for c in (d.read_grid() or []))
         assert placed == sorted(eid for eid, _ in scratch_build.CHAIN)
         assert rep["ok"]
+
+
+def test_into_current_clears_the_loaded_buffer_and_lays_the_template():
+    """A full unit has no free slot, so NEW clears the loaded preset's edit
+    buffer to a blank canvas and lays the template there instead."""
+    with dev() as d:
+        d.select_preset(0)                       # a loaded, non-empty preset
+        assert len(d.read_grid() or []) > 0
+        rep = st.lay(d, Registry(), into_current=True)
+        assert rep["ok"] and rep["alive"], rep["detail"]
+        placed = sorted(c.effect_id for c in (d.read_grid() or []))
+        assert placed == sorted(e for e, _ in st.TEMPLATE_CHAIN)
+        assert "edit buffer" in rep["detail"]

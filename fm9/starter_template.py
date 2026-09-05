@@ -47,11 +47,15 @@ TEMPLATE_EIDS: frozenset[int] = frozenset(eid for eid, _ in TEMPLATE_CHAIN)
 
 
 def lay(dev, reg, slot: int | None = None,
-        search: tuple[int, int] = (0, 511)) -> dict:
-    """Lay the starter template into an empty slot. Same report shape and same
-    safety as scratch_build.build (empty-slot only, edit buffer only)."""
+        search: tuple[int, int] = (0, 511),
+        into_current: bool = False) -> dict:
+    """Lay the starter template. Onto an empty slot by default; with
+    into_current=True, clear the CURRENTLY loaded preset's edit buffer to a
+    blank canvas and lay it there instead (for a full unit with no free slot).
+    Edit buffer only either way."""
     return scratch_build.build(dev, reg, slot=slot, search=search,
-                               chain=TEMPLATE_CHAIN, bypass=OPTIONAL_EIDS)
+                               chain=TEMPLATE_CHAIN, bypass=OPTIONAL_EIDS,
+                               into_current=into_current)
 
 
 def has_block(eid: int) -> bool:

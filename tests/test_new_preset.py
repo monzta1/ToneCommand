@@ -53,3 +53,19 @@ def test_new_preset_is_blocked_in_gig_mode(client, monkeypatch):
 def test_the_ui_has_a_new_preset_button_on_the_main_surface():
     assert 'id="newpreset"' in UI
     assert "/api/new-preset" in UI
+
+
+def test_new_preset_falls_back_to_the_buffer_on_a_full_unit(client, monkeypatch):
+    """No free slot must not fail: NEW clears the loaded buffer (into_current)."""
+    calls = []
+
+    def fake_lay(fm9, reg, slot=None, into_current=False, **k):
+        calls.append(into_current)
+        if not into_current:
+            return {"ok": False, "detail": "no empty presets to build on"}
+        return {"ok": True, "slot": 42, "slot_label": "loaded buffer", "alive": True}
+
+    monkeypatch.setattr(server.starter_template, "lay", fake_lay)
+    d = client.post("/api/new-preset", json={}).json()
+    assert calls == [False, True], "must retry into_current after no free slot"
+    assert d["ok"] and d["slot_label"] == "loaded buffer"

@@ -3254,7 +3254,14 @@ def api_new_preset(body: ScratchBody):
             status_code=423)
     with _lock:
         try:
-            res = starter_template.lay(get_fm9(), reg, slot=body.slot)
+            fm9 = get_fm9()
+            res = starter_template.lay(fm9, reg, slot=body.slot)
+            # A full unit has no free slot to land on. Rather than fail, make the
+            # blank canvas out of the loaded preset's edit buffer (nothing stored,
+            # re-select restores it), so "start new" always works.
+            if not res.get("ok") and body.slot is None and \
+                    "no empty" in (res.get("detail") or "").lower():
+                res = starter_template.lay(fm9, reg, into_current=True)
         except FM9NotFound:
             drop_fm9()
             return JSONResponse({"error": "the FM9 is not answering"},
@@ -3262,8 +3269,6 @@ def api_new_preset(body: ScratchBody):
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
     if not res["ok"]:
-        # No empty slot is the common case on a full unit: say so plainly so the
-        # UI can point at Storage rather than failing silently.
         return JSONResponse(res, status_code=409)
     return res
 

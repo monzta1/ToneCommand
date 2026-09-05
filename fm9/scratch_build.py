@@ -54,7 +54,8 @@ def _refused(detail: str, steps: list[str]) -> dict:
 def build(dev, reg, slot: int | None = None,
           search: tuple[int, int] = (0, 511),
           chain: list[tuple[int, str]] | None = None,
-          bypass: set[int] = frozenset()) -> dict:
+          bypass: set[int] = frozenset(),
+          into_current: bool = False) -> dict:
     """Place a chain into an empty slot and cable it.
 
     Defaults to INPUT -> amp -> cab -> OUTPUT. A richer starter template passes
@@ -72,34 +73,52 @@ def build(dev, reg, slot: int | None = None,
     chain = list(chain) if chain is not None else CHAIN
     steps: list[str] = []
     held = dev.current_preset()
-    try:
-        target = (dev.require_empty_slot(slot) if slot is not None
-                  else dev.first_empty_slot(*search))
-    # RuntimeError, not its subclasses: NoEmptySlot and FM9NotFound are both
-    # RuntimeError, but _request raises the bare parent on a device NACK, and
-    # naming only the children let that escape as a traceback where a refusal
-    # belongs.
-    except (RuntimeError, ValueError) as exc:
-        return _refused(f"refusing to build: {exc}", steps)
 
-    steps.append(f"target: slot {target.label}, reported {target.name!r} by "
-                 f"the device"
-                 + (f" (ghost {target.ghost!r})" if target.ghost else ""))
-    if held:
-        steps.append(f"leaving preset {p.slot_label(held[0])} ({held[1]!r}); "
-                     f"its edit buffer is discarded by the switch")
+    if into_current:
+        # No free slot to land on (the unit is full): make a blank canvas out of
+        # the CURRENTLY loaded preset's edit buffer instead. Edit buffer only,
+        # so the stored preset is untouched and re-selecting it brings it back.
+        if held is None:
+            return _refused("refusing to build: no preset is loaded to clear",
+                            steps)
+        target_number, target_label = held[0], p.slot_label(held[0])
+        steps.append(f"clearing the loaded preset {target_label} ({held[1]!r}) "
+                     f"to a blank canvas in the edit buffer; nothing stored, so "
+                     f"re-selecting it restores it")
+        for c in sorted(dev.read_grid() or [], key=lambda c: (c.col, c.row),
+                        reverse=True):
+            dev.place_block(c.row + 1, c.col + 1, 0)   # clear frees cell + cables
+            time.sleep(SETTLE)
+    else:
+        try:
+            target = (dev.require_empty_slot(slot) if slot is not None
+                      else dev.first_empty_slot(*search))
+        # RuntimeError, not its subclasses: NoEmptySlot and FM9NotFound are both
+        # RuntimeError, but _request raises the bare parent on a device NACK, and
+        # naming only the children let that escape as a traceback where a refusal
+        # belongs.
+        except (RuntimeError, ValueError) as exc:
+            return _refused(f"refusing to build: {exc}", steps)
 
-    # The select decides which preset every insert below edits. A dropped bank
-    # or program change would leave the owner's loaded preset in the buffer,
-    # and the verification afterwards would still pass because it reads back
-    # what it just wrote. Confirm the unit agrees first.
-    landed = dev.select_preset(target.number)
-    time.sleep(SETTLE)
-    if landed is None or landed[0] != target.number:
-        return _refused(
-            f"refusing to build: asked for slot {target.label} but the unit "
-            f"reports {landed!r} loaded. Not editing a preset that was never "
-            f"checked as empty.", steps)
+        target_number, target_label = target.number, target.label
+        steps.append(f"target: slot {target.label}, reported {target.name!r} by "
+                     f"the device"
+                     + (f" (ghost {target.ghost!r})" if target.ghost else ""))
+        if held:
+            steps.append(f"leaving preset {p.slot_label(held[0])} ({held[1]!r}); "
+                         f"its edit buffer is discarded by the switch")
+
+        # The select decides which preset every insert below edits. A dropped
+        # bank or program change would leave the owner's loaded preset in the
+        # buffer, and the verification afterwards would still pass because it
+        # reads back what it just wrote. Confirm the unit agrees first.
+        landed = dev.select_preset(target.number)
+        time.sleep(SETTLE)
+        if landed is None or landed[0] != target.number:
+            return _refused(
+                f"refusing to build: asked for slot {target.label} but the unit "
+                f"reports {landed!r} loaded. Not editing a preset that was never "
+                f"checked as empty.", steps)
 
     for col, (eid, label) in enumerate(chain, start=1):
         dev.place_block(ROW, col, eid)
@@ -136,10 +155,14 @@ def build(dev, reg, slot: int | None = None,
         problems.append(f"no live signal path: {why}")
 
     ok = not problems
+    flash_note = ("the loaded preset's edit buffer (nothing stored; re-select "
+                  "it to restore)" if into_current
+                  else f"slot {target_label}, edit buffer only, nothing stored, "
+                       f"so the slot still reads <EMPTY> in flash")
     return {
         "ok": ok,
-        "slot": target.number,
-        "slot_label": target.label,
+        "slot": target_number,
+        "slot_label": target_label,
         "steps": steps,
         "cells": [{"row": c.row + 1, "col": c.col + 1,
                    "effect_id": c.effect_id, "shunt": c.is_shunt,
@@ -151,10 +174,8 @@ def build(dev, reg, slot: int | None = None,
         # verified" when some of it was modelled rather than proven.
         "undecoded": sorted(getattr(getattr(dev, "sim_core", None),
                                     "undecoded", []) or []),
-        "detail": (f"live signal path confirmed: {why}. Built into slot "
-                   f"{target.label}, edit buffer only, "
-                   f"nothing stored, so the slot still reads <EMPTY> in "
-                   f"flash. The blocks are at factory defaults: play it, your "
-                   f"ears outrank every read path here."
+        "detail": (f"live signal path confirmed: {why}. Built into {flash_note}. "
+                   f"The blocks are at factory defaults: play it, your ears "
+                   f"outrank every read path here."
                    if ok else "; ".join(problems)),
     }
