@@ -3927,6 +3927,29 @@ def api_apply_stream(body: ApplyBody):
     return _stream_response(work, final=("result", "error"))
 
 
+#: Batched parameter verification (issue #47 lever 2): write a run of same-block
+#: set_params in a burst and verify them with one read. Off by default until the
+#: live hardware timing/safety pass; the FM9's silent-drop behaviour on rapid
+#: writes is exactly what that pass checks. On -> group; off -> per-param, the
+#: proven path.
+_BATCH_WRITES = _os.environ.get("TONECOMMAND_BATCH_WRITES") == "1"
+
+
+def _set_param_spec(a: Action):
+    """Resolve a set_param action to its ParamSpec exactly as run_action does,
+    or None. Shared by the batched-write path so it targets the same param."""
+    try:
+        fam, _eid = reg.resolve_block(a.block or "", a.instance)
+    except Exception:
+        return None
+    for (f, pid), pdata in reg.params.items():
+        if f == fam and pdata.get("name") == a.param:
+            return reg.spec(f, pid, a.instance)
+    if a.param:
+        return reg.find_param(fam, a.param)
+    return None
+
+
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
     health_findings: list = []
@@ -4038,7 +4061,45 @@ def _apply_for(body: ApplyBody, on_step=None):
                 except Exception as exc:
                     log.warning("apply: starting-chain check failed: %s", exc)
 
-            for a in body.actions:
+            acts = body.actions
+            i = 0
+            while i < len(acts):
+                a = acts[i]
+                # Batched run of consecutive same-block set_params (#47 lever 2):
+                # write them in a burst and verify with one read. Only a run of
+                # two or more; validation, spec resolution, results and progress
+                # steps are the same as the single path, so with the flag off the
+                # branch never fires and behaviour is byte-for-byte unchanged.
+                if _BATCH_WRITES and a.kind == "set_param":
+                    run = []
+                    j = i
+                    while (j < len(acts) and acts[j].kind == "set_param"
+                           and acts[j].block == a.block
+                           and (acts[j].instance or 1) == (a.instance or 1)):
+                        errs_j, warns_j = validate_action(acts[j])
+                        spec_j = None if errs_j else _set_param_spec(acts[j])
+                        if errs_j or spec_j is None or acts[j].value is None:
+                            break     # handle this one on the single path
+                        run.append((acts[j], spec_j, warns_j))
+                        j += 1
+                    if len(run) >= 2:
+                        batch = fm9.set_params_batch(
+                            [(spec, float(aj.value)) for aj, spec, _ in run])
+                        for (aj, _spec, warns_j), br in zip(run, batch):
+                            detail = br.detail
+                            if warns_j:
+                                detail = (detail + " | " + "; ".join(warns_j)).strip(" |")
+                            if not br.ok:
+                                log.warning("apply: %s failed: %s",
+                                            describe_action(aj), detail)
+                            results.append({"action": aj.model_dump(), "ok": br.ok,
+                                            "detail": detail,
+                                            "before": br.display_before,
+                                            "after": br.display_after})
+                            step(bool(br.ok), aj)
+                        i = j
+                        continue
+
                 errs, warns = validate_action(a)
                 if errs:
                     log.warning("apply: %s refused by validation: %s",
@@ -4046,6 +4107,7 @@ def _apply_for(body: ApplyBody, on_step=None):
                     results.append({"action": a.model_dump(), "ok": False,
                                     "detail": "validation: " + "; ".join(errs)})
                     step(False, a)
+                    i += 1
                     continue
                 try:
                     res = run_action(fm9, a)
@@ -4070,13 +4132,14 @@ def _apply_for(body: ApplyBody, on_step=None):
                     # Only say so when there is something to skip: a one-action
                     # plan used to be told its remaining actions were skipped,
                     # which is a false sentence sitting under a true refusal.
-                    remaining = body.actions[body.actions.index(a) + 1:]
+                    remaining = acts[i + 1:]
                     if remaining:
                         results.append({"action": None, "ok": False,
                                         "detail": f"remaining actions skipped "
                                                   f"({len(remaining)}): "
                                                   f"add_block failed"})
                     break
+                i += 1
 
             # After a build that changed scene structure, surface clone/dead
             # scenes automatically (issue #51). The plan-time tone review cannot
