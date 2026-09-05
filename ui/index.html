@@ -240,6 +240,17 @@
   .pillbtn .caret { margin-left: 9px; }
   .pillbtn:hover { border-color: var(--cyan-dim); }
   .pillbtn.open { border-color: var(--cyan); color: var(--cyan); }
+  /* Small, self-explaining: "+ New tone" says it makes a fresh tone to build
+     on, unlike the big preset pill it used to copy (which made it look like a
+     second preset selector). */
+  #newpreset.newbtn {
+    cursor: pointer; font-family: inherit; font-size: var(--fs-hint);
+    letter-spacing: 0.06em; color: var(--muted);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 5px; padding: 4px 11px; white-space: nowrap; width: auto;
+    align-self: center;
+  }
+  #newpreset.newbtn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
   .pillbtn.busy { border-color: var(--amber); }
   .pillbtn.busy b { color: var(--amber); }
 
@@ -2226,8 +2237,8 @@
             <span class="numnote">numbers as on the FM9</span>
             <button id="prescan">RESCAN</button></div>
         </div>
-        <button class="pill pillbtn" id="newpreset"
-                title="Start fresh: a blank rig on a free slot, ready to build">NEW</button>
+        <button class="newbtn" id="newpreset"
+                title="Start a new tone from scratch: a blank rig you can build on. Nothing is stored until you choose to save.">+ New tone</button>
       </span>
       <!-- Sending and storing are different acts; this badge is what keeps
            them different at a glance. -->
