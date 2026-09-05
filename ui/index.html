@@ -2058,8 +2058,8 @@
 
   /* Layer 5: command shelf */
   #shelf {
-    flex: 0 0 52px; display: flex; align-items: center; gap: 12px;
-    border-top: 1px solid var(--line); padding: 0;
+    flex: 0 0 66px; display: flex; align-items: center; gap: 12px;
+    border-top: 1px solid var(--line); padding: 0 16px;
   }
   #shelf #undo {
     height: 40px; padding: 0 14px; font: inherit;
@@ -2082,23 +2082,63 @@
   .shbtn.on { color: var(--cyan); border-color: var(--cyan-dim); }
   /* Icon buttons: a glyph, not a word, with the name in the tooltip. Square
      and quiet until hovered. */
+  /* Dock-style tiles: big, colourful, glossy rounded squares like the macOS
+     Dock, each with its own gradient and a white glyph. The ::before is the
+     top gloss highlight; the box-shadow gives depth and an inset top edge. */
   .shbtn.ico {
-    width: 46px; height: 40px; padding: 0; letter-spacing: 0;
+    width: 48px; height: 48px; padding: 0; letter-spacing: 0; border: none;
+    border-radius: 13px; position: relative;
     display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background: linear-gradient(180deg, #8a94a6, #5b6472);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.12) inset,
+      0 -6px 12px rgba(0,0,0,0.28) inset;
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
   }
-  .shbtn.ico svg { width: 23px; height: 23px; display: block; }
+  .shbtn.ico::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 52%;
+    border-radius: 13px 13px 40% 40% / 13px 13px 22px 22px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.38), rgba(255,255,255,0));
+    pointer-events: none;
+  }
+  .shbtn.ico svg { width: 26px; height: 26px; display: block; position: relative;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
   .shbtn.ico:hover:not(:disabled) {
-    color: var(--cyan); border-color: var(--cyan-dim);
-    background: rgba(47,230,255,0.06);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.18) inset;
+    filter: saturate(1.15) brightness(1.06);
   }
-  .shbtn.ico:disabled { opacity: 0.35; cursor: default; }
-  /* undo is an icon in the shelf now, not the old cyan pill */
-  #shelf #undo.ico { background: transparent; border-color: transparent;
-    color: var(--muted); font-weight: 400; height: 40px; padding: 0; }
-  #shelf #undo.ico:not(:disabled) { color: var(--cyan); }
-  #shelf #undo.ico:disabled { border-color: transparent; }
-  .shbtn.ico .badge { position: absolute; top: 2px; right: 2px; margin: 0;
-    min-width: 14px; font-size: 9px; padding: 0 3px; }
+  .shbtn.ico:active:not(:disabled) { transform: translateY(-1px); }
+  .shbtn.ico:disabled { opacity: 0.4; cursor: default; filter: grayscale(0.4); }
+  /* per-icon colours, in dock spirit */
+  #shelf #undo.ico { background: linear-gradient(180deg, #5aa9ff, #1f6fe0); }
+  #shcompare { background: linear-gradient(180deg, #4fd6e0, #12a0b8); }
+  #shmanual  { background: linear-gradient(180deg, #b892ff, #6c4dff); }
+  #shdiag { background: linear-gradient(180deg, #43e08a, #14a862); }
+  #shlib  { background: linear-gradient(180deg, #ffc24a, #f2860a); }
+  #shstore{ background: linear-gradient(180deg, #59cbfa, #0a84d8); }
+  #shact  { background: linear-gradient(180deg, #ff7a72, #e23a3a); }
+  #shset  { background: linear-gradient(180deg, #aab3c2, #6b7480); }
+  .shbtn.ico .abtxt { position: relative; font-size: 16px; font-weight: 700;
+    letter-spacing: 0.02em; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+  /* Manual mode: the block controls take over most of the screen for hands-on
+     tweaking, with the signal chain kept reachable at the top to switch blocks.
+     The inspector's X or Escape closes it. */
+  body.manual-mode::before { content: ''; position: fixed; inset: 0; z-index: 82;
+    background: rgba(0,0,0,0.55); }
+  body.manual-mode #context { position: relative; z-index: 92; }
+  body.manual-mode #inspector {
+    position: fixed; left: 14px; right: 14px; bottom: 14px; top: 40%;
+    z-index: 90; margin: 0; overflow-y: auto; padding: 14px 18px;
+    background: var(--panel); border: 1px solid var(--cyan-dim);
+    border-radius: 12px; box-shadow: 0 24px 70px rgba(0,0,0,0.66);
+  }
+  body.manual-mode #inspector .insphead { position: sticky; top: -14px;
+    background: var(--panel); padding-top: 6px; z-index: 3; }
+  .shbtn.ico .badge { position: absolute; top: -4px; right: -4px; margin: 0;
+    min-width: 16px; height: 16px; border-radius: 8px; font-size: 10px;
+    padding: 0 4px; line-height: 16px; background: #ff3b30; color: #fff;
+    border: 1.5px solid var(--bg, #0d1214); box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    z-index: 2; }
   .shbtn .badge {
     display: inline-block; margin-left: 6px; min-width: 18px;
     text-align: center; border-radius: 2px; padding: 0 4px;
@@ -2462,7 +2502,7 @@
     <button id="undo" class="shbtn ico" title="Undo" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 3 13 9 13"/><path d="M4 13a9 9 0 1 0 2.2-9.4L3 7"/></svg></button>
     <span id="undowhat" hidden>nothing to undo yet</span>
     <span class="pillwrap">
-      <button class="shbtn" id="shcompare" title="Compare A/B" aria-label="Compare A/B">A / B</button>
+      <button class="shbtn ico" id="shcompare" title="Compare A/B" aria-label="Compare A/B"><span class="abtxt">A/B</span></button>
       <div class="pop comparepop" id="comparepop" hidden>
         <div class="abrow">
           <span class="lbl">A</span>
@@ -2478,6 +2518,7 @@
       </div>
     </span>
     <span class="spacer"></span>
+    <button class="shbtn ico" id="shmanual" title="Manual controls (full screen)" aria-label="Manual controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="8" cy="17" r="2.4" fill="currentColor" stroke="none"/></svg></button>
     <button class="shbtn ico" id="shdiag" title="Diagnostics" aria-label="Diagnostics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="badge" id="diagbadge" hidden></span></button>
     <button class="shbtn ico" id="shlib" title="Library" aria-label="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg></button>
     <button class="shbtn ico" id="shstore" title="Save / Storage" aria-label="Save / Storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
@@ -8369,7 +8410,25 @@ $('inspclose').onclick = () => {
   $('inspector').classList.remove('wide');
   $('inspexpand').classList.remove('on');
   $('stagerail').hidden = false;
+  document.body.classList.remove('manual-mode');
 };
+
+// Manual mode: one tap to the full manual controls. Reveals the signal chain
+// (so every block is one tap away), opens the amp controls full screen, and
+// dims the rest. The inspector's X (or Escape) closes it.
+function openManual() {
+  document.body.classList.add('manual-mode');
+  setChainHidden(false);
+  selectBlock('DISTORT');
+  const el = $('inspector');
+  if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'});
+}
+$('shmanual')?.addEventListener('click', openManual);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.classList.contains('manual-mode')) {
+    $('inspclose').click();
+  }
+});
 $('inspexpand').onclick = () => {
   const wide = $('inspector').classList.toggle('wide');
   $('inspexpand').classList.toggle('on', wide);
