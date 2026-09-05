@@ -2479,6 +2479,85 @@ def api_copy_effects_nl(body: dict):
     return result
 
 
+def parse_level_adjust(text: str) -> dict | None:
+    """"turn everything down 5 dB", "scene 3 up 2", "all but scene 1 quieter by
+    4" -> a relative per-scene level change. Returns {delta, scenes} or None.
+
+    Relative loudness must never ask the player for the current value: it is a
+    read-then-write the tool does itself. The planner cannot read the levels, so
+    a request like this is handled deterministically here instead of going to it.
+    """
+    said = str(text or "").strip().lower()
+    down = any(w in said for w in ("down", "quieter", "lower", "cut", "drop",
+                                   "reduce", "softer", "less loud"))
+    up = any(w in said for w in ("up", "louder", "raise", "boost", "increase"))
+    if down == up:                          # neither or both: not a clear ask
+        return None
+    if not re.search(r"\b(loud|quiet|volume|level|db|decibel|soft|scene|scenes|"
+                     r"everything|all)\w*\b", said):
+        return None
+    # The amount is the number tied to the change, not an incidental "scene 1".
+    # Prefer a number on "db", then one after the direction/"by", in that order.
+    amt = (re.search(r"(\d+(?:\.\d+)?)\s*(?:db|decibels?)\b", said)
+           or re.search(r"(?:up|down|louder|quieter|raise|lower|boost|cut|drop|"
+                        r"reduce|increase|by)\s+(\d+(?:\.\d+)?)", said))
+    if not amt:
+        return None
+    delta = float(amt.group(1)) * (-1 if down else 1)
+    scenes = set(range(1, 9))
+    excepts = set(int(g) for tup in re.findall(
+        r"(?:except|but|besides|other than|apart from)\s+(?:scene\s+)?(\d)", said)
+        for g in [tup] if g)
+    if excepts:
+        scenes -= excepts
+    else:
+        only = set(int(x) for x in re.findall(r"\bscene\s+(\d)\b", said))
+        whole = any(w in said for w in ("everything", "all ", "every scene",
+                                        "all scenes", "the whole", "entire"))
+        if only and not whole:
+            scenes = only
+    return {"delta": delta, "scenes": sorted(scenes)}
+
+
+@app.post("/api/level-adjust")
+def api_level_adjust(body: dict):
+    """Relative per-scene loudness, done deterministically: read each affected
+    scene's OUTPUT level, apply the delta, write it back. No planner (it cannot
+    read the current values), no asking the player for a number they should not
+    have to know."""
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: level changes are writes; not mid-set."},
+            status_code=423)
+    parsed = parse_level_adjust(body.get("text", ""))
+    if parsed is None:
+        return JSONResponse(
+            {"error": "not a level change; say e.g. \"turn everything down 5 dB\" "
+                      "or \"scene 3 up 2\""}, status_code=400)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            if not fm9.current_preset():
+                return JSONResponse({"error": "no preset loaded"}, status_code=409)
+            changes = []
+            for n in parsed["scenes"]:
+                spec = reg.spec("OUTPUT", 17 + n, 1)     # OUTPUT_SCENEn: pid 18..25
+                cur = fm9.get_param_display(spec)
+                if cur is None:
+                    continue
+                new = max(-20.0, min(20.0, float(cur) + parsed["delta"]))
+                res = fm9.set_param_display(spec, new)
+                changes.append({"scene": n, "from": round(float(cur), 1),
+                                "to": round(new, 1), "ok": getattr(res, "ok", False)})
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"}, status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    return {"ok": all(c["ok"] for c in changes), "delta": parsed["delta"],
+            "scenes": parsed["scenes"], "changes": changes}
+
+
 def _resolve_source_slot(fm9, source: str):
     """A source preset given as a wire number or a name to match -> wire number."""
     s = str(source).strip()

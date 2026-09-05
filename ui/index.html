@@ -2099,6 +2099,30 @@
   .shbtn.ico:active:not(:disabled) { transform: translateY(1px); }
   .shbtn.ico:disabled { opacity: 0.4; cursor: default; }
   .shbtn.ico .abtxt { font-size: 16px; font-weight: 700; letter-spacing: 0.03em; }
+  /* Tooltip above the icon, its own styled label instead of the slow native
+     title. The name is moved to data-tip at load so no double tooltip shows. */
+  .shbtn.ico[data-tip]::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 9px);
+    left: 50%; transform: translateX(-50%) translateY(3px);
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--cyan-dim); padding: 5px 10px; border-radius: 7px;
+    font-size: 11px; letter-spacing: 0.03em; white-space: nowrap;
+    pointer-events: none; opacity: 0; z-index: 95;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.55);
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  .shbtn.ico[data-tip]::before {
+    content: ''; position: absolute; bottom: calc(100% + 4px); left: 50%;
+    transform: translateX(-50%); border: 5px solid transparent;
+    border-top-color: var(--cyan-dim); pointer-events: none; opacity: 0;
+    transition: opacity .12s ease; z-index: 95;
+  }
+  .shbtn.ico[data-tip]:hover::after, .shbtn.ico[data-tip]:focus-visible::after {
+    opacity: 1; transform: translateX(-50%) translateY(0); }
+  .shbtn.ico[data-tip]:hover::before,
+  .shbtn.ico[data-tip]:focus-visible::before { opacity: 1; }
+  /* Controls always open wide now, so the expand/collapse toggle is clutter. */
+  #inspexpand { display: none; }
   /* Manual mode: the block controls take over most of the screen for hands-on
      tweaking, with the signal chain kept reachable at the top to switch blocks.
      The inspector's X or Escape closes it. */
@@ -6415,6 +6439,43 @@ function copyIntent(said) {
       && /\b(delay|reverb|verb|ambience|drive|overdrive|od|boost|chorus|flang|phaser|comp|cab|cabinet|ir|pitch|wah|effects?|fx|everything|whole tone)\b/i.test(said);
 }
 
+function levelIntent(said) {
+  // "turn everything down 5 dB", "scene 3 up 2": a relative per-scene loudness
+  // change. Needs a clear direction, a number, and a loudness/scene cue, so it
+  // does not swallow "add more gain" or "make it warmer". The server does the
+  // authoritative parse and read-then-write; this only decides the routing.
+  const s = said.toLowerCase();
+  const down = /\b(down|quieter|lower|cut|drop|reduce|softer)\b/.test(s);
+  const up = /\b(up|louder|raise|boost|increase)\b/.test(s);
+  if (down === up) return false;
+  if (!/\b(loud|quiet|volume|level|db|decibel|soft|scene|scenes|everything|all)\w*\b/.test(s))
+    return false;
+  return /\b\d+(?:\.\d+)?\s*(?:db|decibels?)\b/.test(s)
+      || /(?:up|down|louder|quieter|raise|lower|boost|cut|drop|reduce|increase|by)\s+\d/.test(s);
+}
+
+async function runLevelAdjust(said) {
+  chatLog.push({role: 'user', content: said});
+  chatNote('Reading the current levels...');
+  renderChat();
+  try {
+    const r = await fetch('/api/level-adjust', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: said})});
+    const d = await r.json();
+    if (d.error) { chatNote(d.error); renderChat(); return; }
+    const dir = d.delta < 0 ? 'down' : 'up';
+    const mag = Math.abs(d.delta);
+    const list = (d.changes || []).map(c => `scene ${c.scene} ${c.from}→${c.to} dB`).join(', ');
+    chatNote(`Turned ${dir} ${mag} dB: ${list || 'nothing to change'}. `
+      + 'Play it; re-select the preset to revert.');
+    await refresh();
+  } catch (e) {
+    chatNote(`Level change failed: ${e.message}`);
+  }
+  renderChat();
+}
+
 async function runCopyEffects(said) {
   chatLog.push({role: 'user', content: said});
   chatNote('Reading the source tone...');
@@ -6718,6 +6779,12 @@ async function talk() {
     $('prompt').value = '';
     growPrompt();
     runCopyEffects(said);
+    return;
+  }
+  if (levelIntent(said)) {
+    $('prompt').value = '';
+    growPrompt();
+    runLevelAdjust(said);
     return;
   }
   chatLog.push({role: 'user', content: said});
@@ -8338,6 +8405,12 @@ function submitRequest() {
     runCopyEffects(said);
     return;
   }
+  if (levelIntent(said)) {
+    $('prompt').value = '';
+    growPrompt();
+    runLevelAdjust(said);
+    return;
+  }
   const route = requestRoute(said);
   if (route === 'source') {
     chatLog.push({role: 'user', content: said});
@@ -8409,6 +8482,12 @@ function openManual() {
   if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'});
 }
 $('shmanual')?.addEventListener('click', openManual);
+// Footer icons get their own tooltip above the glyph (see the [data-tip] CSS);
+// move the native title onto data-tip so the browser tooltip does not also fire.
+document.querySelectorAll('#shelf .shbtn.ico[title]').forEach(b => {
+  b.setAttribute('data-tip', b.getAttribute('title'));
+  b.removeAttribute('title');
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.body.classList.contains('manual-mode')) {
     $('inspclose').click();
