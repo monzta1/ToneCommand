@@ -3171,6 +3171,39 @@ def api_build_scratch(body: ScratchBody):
     return res
 
 
+@app.post("/api/new-preset")
+def api_new_preset(body: ScratchBody):
+    """One-tap blank canvas (issue #44): land on a free slot with the starter
+    template already placed, ready to voice, so "start something new" never
+    needs the Danger Zone, a dropdown hunt, or retyping a name.
+
+    Edit-buffer only, like every build: it selects a slot the device itself
+    reports as <EMPTY> (or the one passed in) and lays the template into the
+    buffer. No slot's flash is touched until the player chooses STORE, so there
+    is nothing here to overwrite and nothing to confirm beyond leaving the
+    current unsaved buffer, which selecting any preset already does.
+    """
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"error": "GIG MODE: a new preset selects a different slot and "
+                      "discards the edit buffer. Not while you are playing."},
+            status_code=423)
+    with _lock:
+        try:
+            res = starter_template.lay(get_fm9(), reg, slot=body.slot)
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "the FM9 is not answering"},
+                                status_code=409)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+    if not res["ok"]:
+        # No empty slot is the common case on a full unit: say so plainly so the
+        # UI can point at Storage rather than failing silently.
+        return JSONResponse(res, status_code=409)
+    return res
+
+
 @app.post("/api/health")
 def api_health():
     """Scan the loaded preset: dead scenes, cloned scenes, level outliers.

@@ -2235,6 +2235,8 @@
             <span class="numnote">numbers as on the FM9</span>
             <button id="prescan">RESCAN</button></div>
         </div>
+        <button class="pill pillbtn" id="newpreset"
+                title="Start fresh: a blank rig on a free slot, ready to build">NEW</button>
       </span>
       <!-- Sending and storing are different acts; this badge is what keeps
            them different at a glance. -->
@@ -3087,6 +3089,35 @@ $('preset').addEventListener('click', e => {
 $('ppop').addEventListener('click', e => e.stopPropagation());
 document.addEventListener('click', () => { if (!$('ppop').hidden) closePop(); });
 $('psearch').addEventListener('input', () => { popCursor = -1; renderPresets(false); });
+// One-tap New preset (issue #44): a blank rig on a free slot, ready to build,
+// without the Danger Zone. It discards the current unsaved buffer (selecting any
+// preset does), so confirm that once, then land on the clean canvas.
+$('newpreset').addEventListener('click', async e => {
+  e.stopPropagation();
+  if ($('dirty') && !$('dirty').hidden &&
+      !confirm('Start a new preset? This leaves your current unsaved changes behind.'))
+    return;
+  const btn = $('newpreset');
+  btn.disabled = true; const was = btn.textContent; btn.textContent = 'NEW...';
+  try {
+    const r = await fetch('/api/new-preset', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!r.ok || d.error || d.ok === false) {
+      chatNote((d.error || d.detail || 'Could not start a new preset')
+        + (r.status === 409 ? ' Free a slot in Storage, then try again.' : ''));
+    } else {
+      await refresh();
+      chatNote(`Blank canvas ready on slot ${d.slot_label || d.slot}. `
+        + 'Type what you want it to sound like and I will build it.');
+    }
+  } catch (err) {
+    chatNote('Could not start a new preset: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = was;
+  }
+  renderChat();
+});
 $('prescan').addEventListener('click', () => loadPresets(true));
 $('plist').addEventListener('click', e => {
   const b = e.target.closest('.prow');
