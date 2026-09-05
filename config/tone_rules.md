@@ -70,7 +70,17 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
 - No scene may be so quiet the player can barely hear it. This is the single
   worst failure: a build that is inaudible is unusable.
 - A lightly driven clean amp makes little output, so its LEVEL needs to be UP
-  (near 0 or positive), not cut. Do not cut the level of an already-weak scene.
+  FAR more than looks right on paper. Near 0 is NOT enough: a clean that shipped
+  at DISTORT_LEVEL 0 was "much too quiet" on hardware and only sat right at +15
+  to +18 (2026-09-05, an 80s tribute audited scene by scene with the owner).
+  Do not cut the level of an already-weak scene.
+- CLEAN-VS-DISTORTED LEVEL SPREAD IS LARGE. A distorted amp makes far more raw
+  output than a clean one at the SAME LEVEL, so to sit at equal PERCEIVED
+  loudness the clean amp's DISTORT_LEVEL runs about +15 to +18 while the
+  distorted rhythm/lead amps run about -10 to -12: roughly a 25-30 dB spread in
+  the LEVEL param that lands them even by ear (2026-09-05, verified scene by
+  scene). Do not balance the LEVEL numbers toward each other; balance the SOUND,
+  which means cleans set very high and distorted scenes set low.
 - Balance for equal perceived loudness: rhythm scenes within about 1 dB of each
   other, leads 2-3 dB above, cleans matched so they sit in the same mix.
 - LOUDNESS IS THE WHOLE GAIN STAGE, NOT JUST THE AMP LEVEL KNOB. A scene's
@@ -102,6 +112,22 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
   build with the eight OUTPUT_SCENEn trims (2026-09-04: cutting effect levels to
   quiet a loud scene did nothing to the loudness and thinned other scenes; the
   fix was OUTPUT_SCENE7/8).
+  CAVEAT (2026-09-05): OUTPUT_SCENEn is a fine TRIM, not the primary loudness
+  driver, and it is masked when the amp itself is the bottleneck. On a clean
+  whose amp DISTORT_LEVEL sat at 0 dB, a +6 dB OUTPUT_SCENEn bump did NOTHING
+  audible; raising the amp DISTORT_LEVEL to +15/+18 is what made it loud. Set a
+  scene's loudness at the amp DISTORT_LEVEL FIRST (see the clean-vs-distorted
+  spread above), then use OUTPUT_SCENEn only to trim the final balance.
+- AMP CHANNELS ARE A HARD LIMIT OF FOUR (A-D). A preset cannot give every scene
+  its own amp voice: pick at most four amp voicings (e.g. clean, crunch, tight
+  rhythm, lead) and share each channel across the scenes that use that voice
+  (cleans together, leads together). Two scenes on the same amp channel share
+  ALL its amp params, so they cannot differ in amp level or voicing - only in
+  bypass/channel of the OTHER blocks. Do not attempt to "split" a scene onto its
+  own amp channel unless a channel is genuinely free; a clean's per-scene
+  character (a "wide" clean vs a plain one) comes from its effects, not a second
+  amp (2026-09-05: all four channels were in use; moving one clean onto another
+  scene's channel overwrote that scene's amp).
 - A CLEAN SCENE IS NEVER CUT QUIET. A clean amp is nearly linear and already
   makes little output, so its LEVEL goes UP - near 0 or positive dB. A clean at
   -8 dB level is a bug, not a balance: it is the "cleans are too quiet"
