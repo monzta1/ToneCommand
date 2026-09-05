@@ -84,12 +84,30 @@ the tool got it wrong once.
   build with the eight OUTPUT_SCENEn trims (2026-09-04: cutting effect levels to
   quiet a loud scene did nothing to the loudness and thinned other scenes; the
   fix was OUTPUT_SCENE7/8).
+- A CLEAN SCENE IS NEVER CUT QUIET. A clean amp is nearly linear and already
+  makes little output, so its LEVEL goes UP - near 0 or positive dB. A clean at
+  -8 dB level is a bug, not a balance: it is the "cleans are too quiet"
+  complaint every time. Cleans should sit as loud as the rhythm scenes, not
+  below them (2026-09-04: an 80s build shipped its cleans at amp level -8 and
+  they were inaudibly quiet next to the leads).
 - Say the level reasoning in the reasons.
 
 ## 5. Effects follow the artist's actual style, not a rigid rule
 - Do not apply "delay only on leads". Ambient and clean-forward players (Sfogli,
   Gilmour, post-rock) live on delay and reverb in the CLEANS; those scenes
   should be drenched, not dry.
+- 80s / arena / "big" clean tones are LUSH by definition: chorus AND delay AND
+  reverb together, not reverb alone. A dry clean with only a reverb is not an
+  80s clean - it is the "cleans have no effects, not big" complaint. If the
+  style is 80s (Whitesnake, Sykes, Def Leppard, hair/arena rock), every clean
+  gets a wide chorus, a timed delay, and a roomy reverb (2026-09-04).
+- LEADS MUST BE AUDIBLY MORE SATURATED THAN THE RHYTHM, not a hair more. If the
+  rhythm is gain ~6.8, a singing lead is not 7.8 with LESS boost - that reads as
+  clean/crunch, not a lead. Give the lead clearly more gain AND at least as much
+  boost as the rhythm, so it distorts and sustains. A lead that "sounds clean"
+  means the gain staging failed: push the amp gain up and keep the boost on
+  (2026-09-04: 80s lead scenes at gain 7.8 with the boost turned DOWN sounded
+  clean, not like a lead).
 - Set every effect you enable, never merely switch it on: delay gets a time
   (from the tempo: dotted eighth = 45000/bpm ms, quarter = 60000/bpm ms),
   feedback, mix and tone; reverb gets a type, a decay and a mix; modulation gets
