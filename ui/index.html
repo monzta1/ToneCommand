@@ -2647,6 +2647,16 @@
             <button id="aisave">SAVE</button>
             <button id="aiclearkey" class="danger">CLEAR KEY</button>
           </div>
+          <!-- The model is a real choice (terra vs sol vs luna), not plumbing,
+               so it lives in the open panel, not under ADVANCED. Shown only when
+               the chosen service offers more than one model. -->
+          <div id="aimodelrow" hidden>
+            <label class="flabel" id="aimodellabel" for="aimodel">MODEL</label>
+            <input id="aimodel" autocomplete="off" spellcheck="false"
+                   list="aimodels" placeholder="model (optional)">
+            <datalist id="aimodels"></datalist>
+            <div id="aimodelpicks" hidden></div>
+          </div>
           <details id="aiadvanced" hidden>
             <summary>ADVANCED</summary>
             <label class="flabel" for="aibackend">BACKEND</label>
@@ -2654,11 +2664,6 @@
             <label class="flabel" id="aiurllabel" for="aibaseurl">SERVICE ADDRESS</label>
             <input id="aibaseurl" autocomplete="off" spellcheck="false"
                    placeholder="http://127.0.0.1:8317/v1">
-            <label class="flabel" id="aimodellabel" for="aimodel">MODEL</label>
-            <input id="aimodel" autocomplete="off" spellcheck="false"
-                   list="aimodels" placeholder="model (optional)">
-            <datalist id="aimodels"></datalist>
-            <div id="aimodelpicks" hidden></div>
           </details>
         </div>
         <div class="hint" id="ainote"></div>
@@ -7413,7 +7418,10 @@ function aiFields() {
   show('aiurllabel', !!(b && b.needsBaseUrl));
   show('aimodel', !!(b && b.needsModel));
   show('aimodellabel', !!(b && b.needsModel));
-  if (!(b && b.needsModel)) $('aimodelpicks').hidden = true;
+  if (!(b && b.needsModel)) {
+    $('aimodelpicks').hidden = true;
+    if ($('aimodelrow')) $('aimodelrow').hidden = true;
+  }
   show('aikey', !!(b && b.needsKey));
   show('aikeylabel', !!(b && b.needsKey));
   // Claude API and a bare endpoint are selectable now, because the box that
@@ -7556,7 +7564,11 @@ async function loadAiModels(backend) {
     // same ids as buttons, which show all of them, all of the time.
     const picks = $('aimodelpicks');
     picks.innerHTML = '';
-    picks.hidden = !(d.models || []).length;
+    const hasModels = !!(d.models || []).length;
+    picks.hidden = !hasModels;
+    // Show the whole MODEL row (label + chips) only when there is a real choice
+    // to make, so a single-model service does not show an empty picker.
+    if ($('aimodelrow')) $('aimodelrow').hidden = !hasModels;
     for (const m of (d.models || [])) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -7567,6 +7579,9 @@ async function loadAiModels(backend) {
         for (const other of picks.children) {
           other.setAttribute('aria-pressed', String(other === b));
         }
+        // A model chip takes effect on the click, like a service card, so
+        // switching terra to sol is one tap and not a hunt for SAVE.
+        saveAiSettings({}, true);
       };
       picks.appendChild(b);
     }

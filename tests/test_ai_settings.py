@@ -1382,7 +1382,22 @@ def test_typing_a_model_by_hand_still_lights_the_right_one():
 
 def test_a_backend_with_no_model_list_shows_no_model_chips():
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "if (!(b && b.needsModel)) $('aimodelpicks').hidden = true;" in ui
+    assert "if (!(b && b.needsModel)) {" in ui
+    assert "$('aimodelpicks').hidden = true;" in ui
+    # and the whole model row hides with it, not just the chips
+    assert "$('aimodelrow').hidden = true;" in ui
+
+
+def test_the_model_row_is_in_the_open_panel_not_under_advanced():
+    """Issue: the model (terra vs sol) is a real choice, so its picker must be
+    visible in the settings panel, not buried in the ADVANCED fold."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    before_adv = ui.split('<details id="aiadvanced"')[0]
+    assert 'id="aimodelrow"' in before_adv, "the model row must precede ADVANCED"
+    assert 'id="aimodelpicks"' in before_adv, "the model chips must be visible"
+    # a model chip takes effect on click, like a service card
+    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
+    assert "saveAiSettings({}, true)" in fn
 
 
 def test_the_local_card_finds_the_server_that_is_actually_running(store,
