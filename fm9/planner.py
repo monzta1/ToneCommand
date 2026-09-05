@@ -98,12 +98,14 @@ PLAN_SCHEMA = {
                             "description": "For reorder: the block to move `block` relative to, e.g. reverb. Ignored for other kinds"},
                     "bank": {"type": ["integer", "null"],
                              "description": "For set_cab: which cab bank the ordinal is in (from the reference cab roster, e.g. 3 for the factory cabs). Null for other kinds"},
+                    "pedal": {"type": ["integer", "null"],
+                              "description": "For bind_pedal/unbind_pedal: which expression pedal, 1 or 2. Null defaults to Pedal 2. Bind the parameter the player named to the pedal they named"},
                     "reason": {"type": "string",
                                "description": "Short justification tied to the user's request"},
                 },
                 "required": ["kind", "block", "instance", "param", "value",
                              "bypassed", "type_name", "position", "ref", "bank",
-                             "reason"],
+                             "pedal", "reason"],
                 "additionalProperties": False,
             },
         },
@@ -186,7 +188,7 @@ Scenes and multi-scene requests:
 - To build "scene X with effect A, scene Y with effect B": set_scene X, set bypass states for X, then set_scene Y, set bypass states for Y. The device ends on the last selected scene. Note in the summary which scene is which.
 - Adding blocks: use add_block (block name + optional position "pre"/"post" relative to the amp) when a requested effect has no block in the preset. It places the block on a free pass-through point in the signal chain; if the executor reports there is no free spot, relay that honestly. Freshly added blocks may need a set_type and parameter settings next.
 - Reordering blocks: use reorder (block = the block to move, ref = the block to move it relative to, position = "before"/"after") to fix signal-chain order. "Put the delay before the reverb" is reorder(block=delay, ref=reverb, position=before). Signal order matters: delay before reverb, drive before the amp. It moves one block relative to another on the SAME row; the executor refuses a move it cannot cable correctly (cross-row, over a gap, into a cross-row feed) and says why - relay that honestly rather than retrying.
-- Expression pedal: use bind_pedal (block + param + optional value = floor percent 0-100) to put a continuous parameter under Pedal 2, and unbind_pedal (block + param) to take it back off. Pedal 1 is the player's global volume and must NEVER be referenced or rebound. unbind_pedal only removes Pedal 2 bindings; anything driven by another source was set up on the FM9 itself and is refused.
+- Expression pedals: use bind_pedal (block + param + `pedal` 1 or 2 + optional value = floor percent 0-100) to put a continuous parameter under an expression pedal, and unbind_pedal (block + param) to take it back off. Set `pedal` to the pedal the player named ("volume on pedal 1", "wah on pedal 2"); if they do not say, default to Pedal 2. A common preference is Pedal 1 for global volume (bind the OUTPUT block's OUTPUT_LEVEL) and Pedal 2 for effects, but only do that when asked. unbind_pedal removes a Pedal 1 or Pedal 2 binding; anything driven by another source was set up on the FM9 itself and is refused.
 - rename_preset / rename_scene (new name in type_name; scene number in value). Tool-created presets are prefixed FM9AI- automatically.
 - NAME WHAT YOU BUILD. If the request is for a tone with an identity - a named player, a band, a song, a style, or a whole rig with several scenes - include a rename_preset naming it after that, and rename_scene for each scene you set up, after what the scene is for. A preset built for one player's sound and left carrying the previous preset's name is how somebody ends up with a Petrucci build saved as "Devs Gift Of Tone". Do NOT rename for an adjustment to the tone already loaded ("a bit more presence", "tighten the gate"): that is the same preset, adjusted.
 - store (slot number in value) persists the edit buffer to a preset slot. Only the slots listed as storable in the reference are allowed; every other slot is refused by the hardware layer, and if the reference says storing is disabled, never propose store. Only propose store when the user explicitly asks to save, and the UI will ask the user to confirm the overwrite separately.
@@ -206,7 +208,7 @@ THE FIRST-CLASS BUILD STANDARD. This applies to any request with an identity - a
 - WEIGHT YOUR EFFORT BY ROLE, because the cab and the amp do different amounts of the work. A clean signal is nearly linear, so the CABINET carries almost the whole clean tone: get the cab and the clean voicing right and the exact amp is forgiving. Distortion is nonlinear and the AMP makes it, not the cab: on a lead the amp's gain structure, mids, master and sustain carry the feel and no cabinet can fake it, so dial the amp for singing sustain. A rhythm sits between the two. Spend your precision where each role actually lives.
 - Set the effects you enable, never merely enable them. Where the style has a signature tempo, set_tempo and compute delay times from it (dotted eighth = 45000/bpm ms, quarter = 60000/bpm ms); set feedback and mix per scene. Reverb gets a type, a decay and a mix. Modulation gets a rate and depth. Clean jangle gets a compressor with real attack and level values. The input gate is tight for chugging styles and nearly open for dynamic clean work.
 - Balance the build so it gigs: rhythm scenes within about 1 dB of each other on amp level, leads 2-3 dB above, cleans matched sensibly. Put the balancing in the reasons.
-- Bind Pedal 2 to the one continuous parameter this sound most wants under a foot (delay mix for swells, wah for the funk scene) when it genuinely serves the style; skip it when nothing does.
+- Bind an expression pedal to the one continuous parameter this sound most wants under a foot (delay mix for swells, wah for the funk scene) when it genuinely serves the style; skip it when nothing does. Use the pedal the player named, else Pedal 2.
 - Depth never licenses invention. Every parameter you set must exist in the reference; where you are interpreting rather than reporting the artist's rig, the reason says so."""
 
 

@@ -71,17 +71,19 @@ def test_a_bound_parameter_is_reported_by_name(client):
     assert mods["WAH_CONTROL"]["source"] == 11
 
 
-def test_pedal_two_is_the_only_source_we_claim_to_know():
-    """The display-name query would be the obvious way to name the rest, and
-    it is a trap: for modifier source enums it returns "NONE" whatever the
-    actual source (docs/PROTOCOL.md finding 5). Ordinal 11 is grounded only
-    because _bind_pedal writes it and reads it back."""
-    assert server.MOD_SOURCES == {11: "Pedal 2"}
-    # one constant, so the name table and the write cannot drift apart
-    assert server.PEDAL_2_SOURCE in server.MOD_SOURCES
-    assert "PEDAL_2_SOURCE" in re.search(
-        r"fm9\.bind_modifier\((.*?)\)",
-        Path("server.py").read_text(), re.S).group(1)
+def test_the_two_expression_pedals_are_the_grounded_sources():
+    """Both onboard pedals are grounded now: each is bound and read back on
+    hardware (Pedal 1 decoded 2026-09-05). Every OTHER ordinal stays a bare
+    number, because the display-name query returns NONE whatever the source
+    (docs/PROTOCOL.md finding 5)."""
+    assert server.MOD_SOURCES == {10: "Pedal 1", 11: "Pedal 2"}
+    assert server.PEDAL_1_SOURCE == 10 and server.PEDAL_2_SOURCE == 11
+    src = Path("server.py").read_text()
+    # the bind resolves the source from the requested pedal, so the name table
+    # and the write cannot drift apart, and no pedal is hardcoded into the bind
+    assert "source = _pedal_source(a.pedal)" in src
+    args = re.search(r"fm9\.bind_modifier\((.*?)\)", src, re.S).group(1)
+    assert "source" in args and "PEDAL_2_SOURCE" not in args
 
 
 def test_an_unknown_source_is_a_number_not_a_guess(client):
@@ -264,6 +266,30 @@ def test_the_memory_resets_with_the_preset():
     server._synthetic_slots.update({"preset": 12, "slots": {3, 4}})
     assert server._synthetic_for(99) == set()
     assert server._synthetic_slots["preset"] == 99
+
+
+def test_bind_pedal_targets_the_pedal_the_player_named(client):
+    """Pedal 1 and Pedal 2 are both bindable now (issue #11). pedal=1 writes
+    source 10 and reads it back; pedal defaults to 2."""
+    fm9 = server._fm9
+    with fm9:
+        r1 = server._bind_pedal(fm9, server.Action(
+            kind="bind_pedal", block="output", param="OUTPUT_LEVEL", pedal=1))
+        assert r1["ok"] and "Pedal 1" in r1["detail"]
+        r2 = server._bind_pedal(fm9, server.Action(
+            kind="bind_pedal", block="delay", param="DELAY_MIX", pedal=2))
+        assert r2["ok"] and "Pedal 2" in r2["detail"]
+        mods = server.read_modifiers(fm9)
+    assert mods["OUTPUT_LEVEL"]["source"] == server.PEDAL_1_SOURCE
+    assert mods["DELAY_MIX"]["source"] == server.PEDAL_2_SOURCE
+
+
+def test_pedal_defaults_to_two_when_unspecified(client):
+    fm9 = server._fm9
+    with fm9:
+        r = server._bind_pedal(fm9, server.Action(
+            kind="bind_pedal", block="reverb", param="REVERB_MIX"))
+        assert r["ok"] and "Pedal 2" in r["detail"]
 
 
 def test_many_parameters_can_share_pedal_two(client):

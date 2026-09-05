@@ -94,7 +94,9 @@ INTEREST = {
 # regardless of the actual source (docs/PROTOCOL.md finding 5). Naming an
 # unknown ordinal would be inventing a fact about someone's rig, so it stays a
 # number until a roster is harvested off the FM9's own screen.
-MOD_SOURCES = {11: "Pedal 2"}   # PEDAL_2_SOURCE; kept in step by test
+# Ordinals 10 and 11 are grounded: both bound and read back on hardware
+# (2026-09-05, Pedal 1 volume decode). Every other source stays a bare number.
+MOD_SOURCES = {10: "Pedal 1", 11: "Pedal 2"}   # kept in step by test
 
 
 def read_modifiers(fm9: FM9) -> dict:
@@ -578,6 +580,7 @@ class Action(BaseModel):
                                    # reorder: "before" | "after" (vs ref)
     ref: str | None = None         # reorder: the block to move `block` relative to
     bank: int | None = None        # set_cab: which cab roster the ordinal is in
+    pedal: int | None = None       # bind_pedal/unbind_pedal: 1 or 2 (default 2)
     reason: str = ""
 
 
@@ -1703,9 +1706,15 @@ def _resolve_param(fam: str, name: str, instance: int):
     return reg.find_param(fam, name) if name else None
 
 
-#: Pedal 2. Pedal 1 is the player's global volume and is never referenced by
-#: anything here, in either direction.
+#: The two onboard expression pedals, as modifier source ordinals (both decoded
+#: on hardware 2026-09-05). A bind targets one or the other; default Pedal 2.
+PEDAL_1_SOURCE = 10
 PEDAL_2_SOURCE = 11
+
+
+def _pedal_source(pedal: int | None) -> int:
+    """Source ordinal for a pedal number (1 or 2). Defaults to Pedal 2."""
+    return PEDAL_1_SOURCE if pedal == 1 else PEDAL_2_SOURCE
 
 #: Slots this tool wrote WITHOUT a donor curve, per preset.
 #:
@@ -1727,7 +1736,8 @@ def _synthetic_for(preset: int | None) -> set:
 
 
 def _bind_pedal(fm9: FM9, a: Action) -> dict:
-    """Put a continuous parameter under Pedal 2.
+    """Put a continuous parameter under an expression pedal (a.pedal 1 or 2,
+    default 2).
 
     Two things this deliberately does NOT claim.
 
@@ -1774,7 +1784,9 @@ def _bind_pedal(fm9: FM9, a: Action) -> dict:
     found = fm9.find_donor_slot(skip={slot} | synthetic)
     donor_slot, donor = found if found else (None, None)
     floor = (a.value or 0.0) / 100.0
-    cloned = fm9.bind_modifier(slot, eid, spec.param_id, PEDAL_2_SOURCE,
+    source = _pedal_source(a.pedal)
+    pedal_name = MOD_SOURCES[source]
+    cloned = fm9.bind_modifier(slot, eid, spec.param_id, source,
                                donor=donor,
                                min_norm=floor if a.value else None)
 
@@ -1782,7 +1794,7 @@ def _bind_pedal(fm9: FM9, a: Action) -> dict:
     written = (len(vals) > fp.MOD_PID_TARGET_PARAM
                and vals[fp.MOD_PID_TARGET_EFFECT] == eid
                and vals[fp.MOD_PID_TARGET_PARAM] == spec.param_id
-               and vals[fp.MOD_PID_SOURCE] == PEDAL_2_SOURCE)
+               and vals[fp.MOD_PID_SOURCE] == source)
     if not written:
         return {"ok": False, "detail": "the slot did not take the binding"}
     if cloned:
@@ -1793,7 +1805,7 @@ def _bind_pedal(fm9: FM9, a: Action) -> dict:
                "default: finding 12 says from-scratch bindings come out "
                "reversed or dead about as often as not")
     return {"ok": True,
-            "detail": f"Pedal 2 -> {spec.name} on modifier slot {slot}"
+            "detail": f"{pedal_name} -> {spec.name} on modifier slot {slot}"
                       f"{f', floor {a.value:.0f}%' if a.value else ''} "
                       f"({how}). The slot is written; the SWEEP is unverified "
                       f"and cannot be read. Rock the pedal and listen. "
@@ -1821,12 +1833,13 @@ def _unbind_pedal(fm9: FM9, a: Action) -> dict:
                 vals[fp.MOD_PID_TARGET_PARAM] != spec.param_id:
             continue
         src = vals[fp.MOD_PID_SOURCE]
-        if src != PEDAL_2_SOURCE:
+        if src not in MOD_SOURCES:
             return {"ok": False,
-                    "detail": f"{spec.name} is driven by source #{src}, not "
-                              f"Pedal 2. That binding was made somewhere this "
-                              f"tool cannot read, so it is not this tool's to "
-                              f"remove: clear it on the FM9."}
+                    "detail": f"{spec.name} is driven by source #{src}, not an "
+                              f"expression pedal this tool manages. That binding "
+                              f"was made somewhere this tool cannot read, so it "
+                              f"is not this tool's to remove: clear it on the FM9."}
+        pedal_name = MOD_SOURCES[src]
         fm9.clear_modifier(m)
         preset = fm9.current_preset()
         _synthetic_for(preset[0] if preset else None).discard(m)
@@ -1834,8 +1847,8 @@ def _unbind_pedal(fm9: FM9, a: Action) -> dict:
         gone = (len(vals) > fp.MOD_PID_TARGET_EFFECT
                 and vals[fp.MOD_PID_TARGET_EFFECT] == 0)
         return {"ok": gone,
-                "detail": f"Pedal 2 removed from {spec.name} (slot {m})" if gone
-                          else "the slot did not clear"}
+                "detail": f"{pedal_name} removed from {spec.name} (slot {m})"
+                          if gone else "the slot did not clear"}
     return {"ok": False, "detail": f"{spec.name} has no modifier on it"}
 
 
@@ -3253,6 +3266,44 @@ def api_new_preset(body: ScratchBody):
         # UI can point at Storage rather than failing silently.
         return JSONResponse(res, status_code=409)
     return res
+
+
+@app.post("/api/_moddebug")
+def api_moddebug(body: dict):
+    """Local-only decode harness for the modifier map (issue #11). Reads a
+    modifier slot's raw pids, or pokes one pid with a normalized 0..1 value and
+    reads it back, so the curve can be mapped one param at a time on hardware
+    with the owner sweeping the pedal. Gated behind TONECOMMAND_DEBUG=1 so it
+    never ships; not part of the product surface."""
+    if _os.environ.get("TONECOMMAND_DEBUG") != "1":
+        return JSONResponse({"error": "debug endpoint off"}, status_code=404)
+    slot = int(body.get("slot", 1))
+    eid = proto.mod_slot_eid(slot)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            op = body.get("op")
+            if op == "poke":
+                pid = int(body["pid"])
+                val = float(body["value"])            # normalized 0..1
+                fm9._drain()
+                fm9._send(proto.build_set_param_continuous(eid, pid, val))
+                time.sleep(0.15)
+            elif op == "poke_d":
+                pid = int(body["pid"])
+                val = int(body["value"])              # discrete ordinal
+                fm9._drain()
+                fm9._send(proto.build_set_param_discrete(eid, pid, val))
+                time.sleep(0.15)
+            vals = fm9.read_modifier(slot) or []
+            return {"slot": slot, "eid": eid,
+                    "pids": {i: vals[i] for i in range(len(vals))},
+                    "norm": {i: round(vals[i] / 65534, 3) for i in range(len(vals))}}
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "FM9 not answering"}, status_code=409)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/health")
