@@ -1732,6 +1732,37 @@ def _ask_backends(prompt: str, device_state: str, param_reference: str,
     raise RuntimeError(f"every planner backend failed: {detail}")
 
 
+def repair_action(refused: dict, reason: str, param_reference: str,
+                  device_state: str = "", ask=None) -> dict | None:
+    """Bounded repair (issue #39): hand ONE refused action back to the model,
+    with the validator's exact reason and the reference of valid names, and get
+    back a single corrected action of the SAME intent. Returns the corrected
+    action dict, or None if the model offers no fix or the call fails.
+
+    It never loosens validation: the caller re-validates the result and keeps
+    the honest refusal if the fix still fails. One attempt, no retries. `ask`
+    is the backend call (defaults to plan), injectable for tests.
+    """
+    ask = ask or plan
+    slim = {k: v for k, v in refused.items()
+            if k in ("kind", "block", "instance", "param", "value", "bypassed",
+                     "type_name", "position", "ref", "bank")}
+    prompt = (
+        "One action in a plan was refused by validation. Return a SINGLE "
+        "corrected action with the same intent, changing only what the reason "
+        "requires and using only names that exist in the reference (the usual "
+        "cause is a parameter name that does not exist for that block). If it "
+        "cannot be corrected, return no actions.\n\n"
+        f"Refused action: {json.dumps(slim)}\n"
+        f"Validator reason: {reason}")
+    try:
+        result = ask(prompt, device_state, param_reference)
+    except Exception:
+        return None
+    acts = (result or {}).get("actions") or []
+    return acts[0] if acts else None
+
+
 def plan(prompt: str, device_state: str, param_reference: str) -> dict:
     """Ask each candidate backend in turn until one produces a plan.
 

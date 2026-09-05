@@ -1171,6 +1171,51 @@ def _plan_counting(prompt: str, context: str, on_count=None, cancel=None):
             _os.environ["PLANNER_TIMEOUT"] = old
 
 
+#: Most refusals a repair pass sees on a big build (issue #39). One per ~100
+#: actions is the observed rate, so this cap only trips on a pathological plan
+#: and keeps the extra model calls bounded.
+_MAX_REPAIRS = 8
+
+
+def _repair_refused_actions(result: dict, context: str) -> None:
+    """Bounded repair pass (issue #39). Each action the validator refuses is fed
+    back to the model ONCE, with the validator's reason, and a corrected action
+    replaces it only if the fix passes the same validation. Never loosens
+    validation; keeps the honest refusal when the fix still fails. The
+    substitution is noted on the action (repaired_from) so the confirm gate
+    shows it rather than hiding it. Only value/name-shaped kinds are repaired,
+    never structural intent (add_block placement etc.)."""
+    repaired = 0
+    for a in result.get("actions", []):
+        if repaired >= _MAX_REPAIRS:
+            break
+        if a.get("kind") not in ("set_param", "set_type", "set_cab"):
+            continue
+        try:
+            errs, _ = validate_action(Action(**a))
+        except Exception:
+            continue
+        if not errs:
+            continue
+        fixed = planner.repair_action(a, "; ".join(errs), PARAM_REFERENCE, context)
+        if not fixed:
+            continue
+        try:
+            errs2, warns2 = validate_action(Action(**fixed))
+        except Exception:
+            continue
+        if errs2:
+            continue                       # still refused: no loosening
+        before = {k: a.get(k) for k in
+                  ("kind", "block", "param", "value", "type_name", "bank")}
+        for k in ("kind", "block", "instance", "param", "value", "bypassed",
+                  "type_name", "position", "ref", "bank"):
+            if k in fixed:
+                a[k] = fixed[k]
+        a["repaired_from"] = before
+        repaired += 1
+
+
 def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     """Everything /api/plan does, so the streaming twin cannot drift from it.
 
@@ -1255,6 +1300,12 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         result["no_state"] = snap is None
         result["values"] = snap.get("values", {}) if snap else {}
         _name_the_build(result, body.name, body.scenes)
+        # Bounded repair (issue #39) BEFORE the final validation loop, so a
+        # corrected action is validated and effect-id resolved like any other.
+        try:
+            _repair_refused_actions(result, context)
+        except Exception as e:
+            log.warning("plan: repair pass failed: %s", e)
         for a in result.get("actions", []):
             errs, warns = validate_action(Action(**a))
             a["validation_errors"] = errs

@@ -5946,7 +5946,15 @@ function renderPlanCards(plan, filter) {
       : (a.scene ? `Scene ${a.scene}` : 'Current');
     // Safety facts stay open. Ordinary rationale is available without making
     // every safe row two lines tall in a large plan.
-    const critical = [vmsg,
+    // A repaired action (issue #39) shows what the model first proposed and
+    // that it was corrected, so the confirm gate reveals the substitution.
+    const rf = a.repaired_from;
+    const repairNote = rf
+      ? `<div class="vmsg vwrn">Auto-corrected: the original `
+        + `${esc(String(rf.param || rf.type_name || rf.kind || 'value'))} `
+        + `was not valid for this block, so it was fixed and re-checked.</div>`
+      : '';
+    const critical = [vmsg, repairNote,
       spread ? `<div class="spread">${esc(spread)}</div>` : '',
       spliceNote(a)].join('');
     const rationale = a.reason
