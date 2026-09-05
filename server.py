@@ -3928,11 +3928,13 @@ def api_apply_stream(body: ApplyBody):
 
 
 #: Batched parameter verification (issue #47 lever 2): write a run of same-block
-#: set_params in a burst and verify them with one read. Off by default until the
-#: live hardware timing/safety pass; the FM9's silent-drop behaviour on rapid
-#: writes is exactly what that pass checks. On -> group; off -> per-param, the
-#: proven path.
-_BATCH_WRITES = _os.environ.get("TONECOMMAND_BATCH_WRITES") == "1"
+#: set_params in a burst and verify them with one read. ON by default after the
+#: live hardware pass (2026-09-05: 7/7 amp params landed and verified on real
+#: hardware, 0.88s batched vs 2.47s per-param, ~2.8x faster); any straggler that
+#: does not land in the batch read still retries on the full single-param path,
+#: so correctness holds. Set TONECOMMAND_BATCH_WRITES=0 to force the per-param
+#: path.
+_BATCH_WRITES = _os.environ.get("TONECOMMAND_BATCH_WRITES", "1") != "0"
 
 
 def _set_param_spec(a: Action):
