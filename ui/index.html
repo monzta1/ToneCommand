@@ -1258,19 +1258,9 @@
 #aiwho .chg { opacity: 0.7; text-decoration: underline; margin-left: 6px; }
 #aiwho.needs { color: var(--amber, #e0a83c); opacity: 1; }
 #pane-request { position: relative; }
-/* The models, always all of them. See loadAiModels for why the datalist
-   alone was not enough. */
-#aimodelpicks { display: flex; flex-wrap: wrap; gap: 6px;
-                flex: 1 1 100%; margin: 2px 0 0; }
-#aimodelpicks button {
-  font: inherit; font-size: 11px; padding: 4px 10px; cursor: pointer;
-  background: var(--panel, #16181d); color: var(--fg, #d8dde5);
-  border: 1px solid var(--line, #333a45); border-radius: 999px; opacity: .75;
-}
-#aimodelpicks button:hover { opacity: 1; border-color: var(--accent, #6ea8fe); }
-#aimodelpicks button[aria-pressed="true"] {
-  opacity: 1; border-color: var(--accent, #6ea8fe); color: var(--accent, #6ea8fe);
-}
+/* MODEL is a single dropdown of every model the service offers. */
+#aimodelrow { margin-top: 2px; }
+#aimodelrow select#aimodel { width: 100%; }
 /* The conversation. Empty and absent until somebody uses it, so the panel
    looks exactly as it did for anyone who just wants to type and go. */
 #chat {
@@ -2652,10 +2642,7 @@
                the chosen service offers more than one model. -->
           <div id="aimodelrow" hidden>
             <label class="flabel" id="aimodellabel" for="aimodel">MODEL</label>
-            <input id="aimodel" autocomplete="off" spellcheck="false"
-                   list="aimodels" placeholder="model (optional)">
-            <datalist id="aimodels"></datalist>
-            <div id="aimodelpicks" hidden></div>
+            <select id="aimodel"></select>
           </div>
           <details id="aiadvanced" hidden>
             <summary>ADVANCED</summary>
@@ -7418,10 +7405,7 @@ function aiFields() {
   show('aiurllabel', !!(b && b.needsBaseUrl));
   show('aimodel', !!(b && b.needsModel));
   show('aimodellabel', !!(b && b.needsModel));
-  if (!(b && b.needsModel)) {
-    $('aimodelpicks').hidden = true;
-    if ($('aimodelrow')) $('aimodelrow').hidden = true;
-  }
+  if (!(b && b.needsModel) && $('aimodelrow')) $('aimodelrow').hidden = true;
   show('aikey', !!(b && b.needsKey));
   show('aikeylabel', !!(b && b.needsKey));
   // Claude API and a bare endpoint are selectable now, because the box that
@@ -7430,7 +7414,9 @@ function aiFields() {
   $('ainote').textContent = b ? (b.needs ? `${b.note} Still needed: ${b.needs}.`
                                          : b.note) : '';
   if (b) {
-    $('aimodel').value = b.model || '';
+    // A <select> cannot hold a value whose option is not built yet, so stash
+    // the desired model for loadAiModels to select once it lists them.
+    $('aimodel').dataset.want = b.model || '';
     loadAiModels(b.backend);
     $('aimodel').placeholder = b.modelFallback
       ? `model (optional, .env says ${b.modelFallback})`
@@ -7535,7 +7521,6 @@ async function loadAiModels(backend) {
   // yet". Guarding on the backend alone did not catch it, because both
   // requests carried the same backend.
   const seq = ++aiModelsSeq;
-  $('aimodels').innerHTML = '';
   $('aisrc').textContent = '';
   try {
     // Ask against what is TYPED, not what is saved. Picking ChatGPT and
@@ -7551,49 +7536,36 @@ async function loadAiModels(backend) {
     if (seq !== aiModelsSeq || $('aibackend').value !== backend) return;
     // property, not an interpolated value="" attribute: an id containing a
     // double quote would break out of it
-    const dl = $('aimodels');
-    dl.innerHTML = '';
-    for (const m of (d.models || [])) {
-      const opt = document.createElement('option');
-      opt.value = m;
-      dl.appendChild(opt);
-    }
-    // A datalist FILTERS itself by whatever is already in the box, so once a
-    // model is filled in the only suggestion left matching is the one already
-    // chosen. Eight models loaded and the list looked empty. These are the
-    // same ids as buttons, which show all of them, all of the time.
-    const picks = $('aimodelpicks');
-    picks.innerHTML = '';
-    const hasModels = !!(d.models || []).length;
-    picks.hidden = !hasModels;
-    // Show the whole MODEL row (label + chips) only when there is a real choice
-    // to make, so a single-model service does not show an empty picker.
-    if ($('aimodelrow')) $('aimodelrow').hidden = !hasModels;
-    for (const m of (d.models || [])) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = m;
-      b.setAttribute('aria-pressed', String(m === $('aimodel').value.trim()));
-      b.onclick = () => {
-        $('aimodel').value = m;
-        for (const other of picks.children) {
-          other.setAttribute('aria-pressed', String(other === b));
-        }
-        // A model chip takes effect on the click, like a service card, so
-        // switching terra to sol is one tap and not a hunt for SAVE.
-        saveAiSettings({}, true);
-      };
-      picks.appendChild(b);
-    }
-    // Fill the box, do not merely offer a list behind a dropdown arrow most
-    // people never open. Blank is not a safe default here: with no model the
-    // planner sends "local", which a hosted service answers with a 404 for a
-    // model nobody typed. Only when it is empty, so a deliberate choice and
-    // a saved one both survive.
+    // A real dropdown of every model, so choosing one is one click and there
+    // is one obvious control, not a text box AND chips saying different things.
     const models = d.models || [];
+    const hasModels = !!models.length;
+    // Show the MODEL row only when the service offers a choice.
+    if ($('aimodelrow')) $('aimodelrow').hidden = !hasModels;
+    const sel = $('aimodel');
+    // The desired model: what is selected, or what a caller stashed in data-want
+    // before the options existed (a <select> drops a value with no option yet).
+    const prev = (sel.value || sel.dataset.want || '').trim();
+    sel.dataset.want = '';
+    sel.innerHTML = '';
+    // The saved model may not be in the fetched list (a pinned or custom id):
+    // keep it as an option so a save does not silently drop it.
+    const opts = models.slice();
+    if (prev && !opts.includes(prev)) opts.unshift(prev);
+    for (const m of opts) {
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = m;
+      sel.appendChild(o);
+    }
+    // Never leave it blank: with no model the planner sends "local", which a
+    // hosted service answers with a 404. Keep the saved choice if there is one,
+    // else default to the first the service offers.
     let filled = false;
-    if (models.length && !$('aimodel').value.trim()) {
-      $('aimodel').value = models[0];
+    if (prev && opts.includes(prev)) {
+      sel.value = prev;
+    } else if (models.length) {
+      sel.value = models[0];
       filled = true;
     }
     const typed = $('aibaseurl').value.trim();
@@ -8033,12 +8005,9 @@ $('aiclearkey').onclick = () => saveAiSettings({clearKey: true});
 // Without this a hand-typed api.openai.com/v1 leaves ChatGPT unlit, which
 // reads as "that is not the right one" and invites a second guess.
 $('aibaseurl').oninput = () => renderAiPresets();
-$('aimodel').oninput = () => {
-  const v = $('aimodel').value.trim();
-  for (const b of $('aimodelpicks').children) {
-    b.setAttribute('aria-pressed', String(b.textContent === v));
-  }
-};
+// Picking a model from the dropdown takes effect on the change, like a service
+// card, so switching terra to sol is one choice and not a hunt for SAVE.
+$('aimodel').onchange = () => saveAiSettings({}, true);
 
 $('aibackend').onchange = () => {
   // only when nothing already provides one: filling the box over a .env

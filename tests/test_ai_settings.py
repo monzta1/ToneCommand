@@ -555,7 +555,7 @@ def test_advanced_provider_fields_are_not_player_facing():
 def test_remote_model_ids_are_not_interpolated_into_an_attribute():
     ui = _ui()
     assert 'value="${m}"' not in ui, "an id with a quote breaks out of this"
-    assert "opt.value = m" in ui
+    assert "o.value = m" in ui, "option value is set as a property, not interpolated"
 
 
 def test_plan_card_strings_are_escaped():
@@ -951,8 +951,10 @@ def test_the_endpoint_passes_the_typed_address_through(client, monkeypatch):
 def test_the_browser_fills_the_box_but_never_overwrites_a_choice():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
-    assert "!$('aimodel').value.trim()" in fn, "must only fill an empty box"
-    assert "$('aimodel').value = models[0]" in fn
+    # keep the saved choice; only default to the first when there is none
+    assert "sel.value = prev" in fn, "the saved model is kept"
+    assert "sel.value = models[0]" in fn, "default only when there is no choice"
+    assert "opts.includes(prev)" in fn
     # and the listing must be asked against what is typed
     assert "base_url=${encodeURIComponent(typedUrl)}" in fn
 
@@ -1361,43 +1363,48 @@ def test_dated_snapshots_still_sort_last():
     assert got == ["gpt-5.6", "gpt-5.5", "gpt-5.6-2026-04-11"]
 
 
-def test_the_models_are_buttons_because_a_datalist_hides_them():
-    """A datalist FILTERS itself by what is already in the box, so once a
-    model is filled in the only suggestion still matching is the one already
-    chosen. Eight models loaded and the list looked empty."""
+def test_the_model_is_one_dropdown_of_every_model_no_chips_no_datalist():
+    """One control: a dropdown listing every model the service offers, so
+    choosing terra vs sol is one click. Not a text box with a datalist arrow AND
+    chips saying different things at once."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert '<div id="aimodelpicks" hidden></div>' in ui
+    assert '<select id="aimodel"></select>' in ui
+    assert 'id="aimodelpicks"' not in ui, "no chiclets"
+    assert 'list="aimodels"' not in ui and 'id="aimodels"' not in ui, "no datalist"
     fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
-    assert "picks.innerHTML = ''" in fn
-    assert "$('aimodel').value = m;" in fn, "clicking one must choose it"
-    assert "aria-pressed" in fn, "the current one has to be visibly current"
+    assert "createElement('option')" in fn, "the dropdown is filled with options"
+    assert "sel.value = models[0]" in fn and "sel.value = prev" in fn
 
 
-def test_typing_a_model_by_hand_still_lights_the_right_one():
+def test_picking_a_model_takes_effect_on_change():
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "$('aimodel').oninput" in ui
-    fn = ui.split("$('aimodel').oninput = () => {")[1].split("\n};\n")[0]
-    assert "b.textContent === v" in fn
+    assert "$('aimodel').onchange = () => saveAiSettings({}, true);" in ui
 
 
-def test_a_backend_with_no_model_list_shows_no_model_chips():
+def test_the_saved_model_survives_even_if_the_fetched_list_lacks_it():
+    """A pinned or custom model id must not be dropped when the fetched list does
+    not contain it, and it must reach the <select> through data-want because a
+    <select> cannot hold a value whose option is not built yet."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "if (!(b && b.needsModel)) {" in ui
-    assert "$('aimodelpicks').hidden = true;" in ui
-    # and the whole model row hides with it, not just the chips
-    assert "$('aimodelrow').hidden = true;" in ui
+    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
+    assert "opts.unshift(prev)" in fn
+    assert "sel.dataset.want" in fn
+    assert "$('aimodel').dataset.want = b.model" in ui
+
+
+def test_a_backend_with_no_model_list_hides_the_model_row():
+    ui = (ROOT / "ui" / "index.html").read_text()
+    assert ("if (!(b && b.needsModel) && $('aimodelrow')) "
+            "$('aimodelrow').hidden = true;") in ui
 
 
 def test_the_model_row_is_in_the_open_panel_not_under_advanced():
-    """Issue: the model (terra vs sol) is a real choice, so its picker must be
-    visible in the settings panel, not buried in the ADVANCED fold."""
+    """The model (terra vs sol) is a real choice, so its dropdown must be visible
+    in the settings panel, not buried in the ADVANCED fold."""
     ui = (ROOT / "ui" / "index.html").read_text()
     before_adv = ui.split('<details id="aiadvanced"')[0]
     assert 'id="aimodelrow"' in before_adv, "the model row must precede ADVANCED"
-    assert 'id="aimodelpicks"' in before_adv, "the model chips must be visible"
-    # a model chip takes effect on click, like a service card
-    fn = ui.split("async function loadAiModels(backend)")[1].split("\n}\n")[0]
-    assert "saveAiSettings({}, true)" in fn
+    assert '<select id="aimodel">' in before_adv, "the model dropdown must be visible"
 
 
 def test_the_local_card_finds_the_server_that_is_actually_running(store,
