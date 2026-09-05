@@ -32,6 +32,49 @@ panel, or use the Claude CLI it finds on its own. ToneCommand translates,
 verifies against the real unit, and keeps every write behind your
 confirmation ([docs/AI-BACKENDS.md](docs/AI-BACKENDS.md)).
 
+## Features
+
+The short list of what it does, so you do not have to read the changelog
+release by release.
+
+**Build and design**
+- Build a complete multi-scene rig from one sentence: signal chain, amp per
+  scene role, cab, drives, effects, scenes named on the footswitches.
+- Asks a few clarifying questions first on an open-ended build (era, scenes,
+  how heavy), then builds; builds straight away when you are specific.
+- Live scene preview: the eight-scene grid fills in as you talk the build
+  through, so you can spot a gap ("nothing in scene 8 yet") before it is built.
+- Adjust the loaded tone in plain language: "a bit more presence", "tighten
+  the gate for drop C", "make scene 1 a dry crunch".
+
+**Move sound between presets**
+- Copy an effect from another preset onto yours, aligned by scene not just by
+  channel ("make the delay like that tone's").
+- Compose a preset from parts of several: clone one whole tone, then pull the
+  delay from another and the reverb from a third.
+- Reorder blocks into the correct signal-chain order (delay before reverb,
+  drive before the amp), signal path proven intact.
+
+**Hands-on control**
+- Per-block manual controls: amp and cab, EQ, effects, with -/+ fine-tune on
+  every slider.
+- Bind the expression pedal (wah, delay mix) under Pedal 2.
+- Scenes: rename, per-scene bypass and channel, A/B compare, and undo.
+
+**Get and keep presets**
+- Install artist presets and cabs from Fractal's Gift of Tone.
+- Store only to slots you have marked disposable, and only after you confirm.
+
+**Safety and trust**
+- Read-back verification on every write, and a signal-path check so a preset
+  is never silently dead.
+- A "what will change" blast-radius preview before anything is sent, including
+  every other scene a channel-level change would move.
+- Gig lock: mid-performance, only scene changes reach the amp.
+- Bring your own AI: ChatGPT, Gemini, Grok, DeepSeek, a local model, or the
+  Claude CLI it finds on its own.
+- A tone-building rulebook the planner reads and follows on every build.
+
 ## Humans in command
 
 That is not a slogan. It is the constraint every other decision here bends to.
