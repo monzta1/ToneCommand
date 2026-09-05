@@ -1273,6 +1273,17 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                                 "the requested tone."])
                 except FM9NotFound:
                     drop_fm9()
+        # Pre-ship tone review (config/tone_rules.md rule 14): the deterministic
+        # half of the rulebook, run on the plan regardless of whether the model
+        # followed the prose. A clean cut quiet, a dry clean, or a lead that does
+        # not out-saturate the rhythm surfaces HERE, before anything is sent.
+        try:
+            from fm9 import tone_review
+            summary = tone_review.summary_from_plan(result.get("actions", []))
+            result["tone_review"] = tone_review.findings_as_dicts(
+                tone_review.review(summary))
+        except Exception:
+            result["tone_review"] = []
         return result
     except planner.PlanCancelled:
         return {"error": "stopped"}

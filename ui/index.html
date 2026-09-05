@@ -414,6 +414,22 @@
   .vmsg.vwrn { color: var(--amber); }
   .plan-actions { display: flex; gap: 12px; margin-top: 14px; }
   #plansummary { color: var(--cyan); font-size: var(--fs-sub); margin-bottom: 4px; }
+  /* Pre-ship tone check: green when the deterministic rulebook check passes,
+     amber/red when a role or level rule is broken, so it reads before send. */
+  .tonecheck { margin: 8px 0 4px; padding: 9px 12px; border-radius: 6px;
+    font-size: var(--fs-hint); border: 1px solid var(--line); }
+  .tonecheck.pass { color: var(--green, #3dffa0); border-color: rgba(61,255,160,0.35);
+    background: rgba(61,255,160,0.06); }
+  .tonecheck.warn { color: var(--amber, #ffb454); border-color: rgba(255,180,84,0.4);
+    background: rgba(255,180,84,0.07); }
+  .tonecheck.fail { color: var(--amber, #ffb454); border-color: rgba(255,120,90,0.5);
+    background: rgba(255,120,90,0.08); }
+  .tonecheck .tchead { font-weight: 600; margin-bottom: 5px; letter-spacing: 0.02em; }
+  .tonecheck ul { margin: 0; padding-left: 18px; }
+  .tonecheck li { margin: 3px 0; color: var(--text); }
+  .tonecheck li.tc-fail::marker { color: #ff785a; }
+  .tonecheck li.tc-warn::marker { color: var(--amber, #ffb454); }
+  .tonecheck .tcmark { font-weight: 700; margin-right: 4px; }
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
@@ -2305,6 +2321,7 @@
         <div class="stagecard">
           <div class="cardtitle">PLAN SUMMARY</div>
           <div id="plansummary"></div>
+          <div id="tonecheck" hidden></div>
           <div id="planhead"></div>
           <div class="intentlist" id="planintents"></div>
         </div>
@@ -5714,6 +5731,29 @@ function describe(a) {
 // Which recipe a plan came from, if any, so a transmit can be counted.
 let planRecipe = null;
 
+// The pre-ship tone check (config/tone_rules.md rule 14), run on the plan by
+// the server and shown here before send: a clean cut quiet, a dry clean, or a
+// lead that does not out-saturate the rhythm. Green when it passes.
+function renderToneCheck(findings) {
+  const box = $('tonecheck');
+  if (!box) return;
+  box.hidden = false;
+  if (!findings.length) {
+    box.className = 'tonecheck pass';
+    box.innerHTML = '<span class="tcmark">&#10003;</span> Tone check passed: '
+      + 'roles, levels and effects look right for a gig.';
+    return;
+  }
+  const fails = findings.filter(f => f.severity === 'fail').length;
+  box.className = 'tonecheck ' + (fails ? 'fail' : 'warn');
+  box.innerHTML = `<div class="tchead">Tone check: ${fails
+      ? fails + ' thing' + (fails === 1 ? '' : 's') + ' to fix before this sounds right'
+      : 'worth a look'}</div>`
+    + '<ul>' + findings.map(f =>
+        `<li class="tc-${esc(f.severity)}"><b>Scene ${f.scene}</b> ${esc(f.message)}</li>`
+      ).join('') + '</ul>';
+}
+
 function showPlan(plan) {
   planRecipe = plan.recipe || null;
   currentPlan = plan;
@@ -5726,6 +5766,7 @@ function showPlan(plan) {
   refreshBlastRadius(plan);
   const prevSrc = $('plansrc'); if (prevSrc) prevSrc.remove();
   $('plansummary').textContent = plan.summary;
+  renderToneCheck(plan.tone_review || []);
   // What the plan DOES, in one line, above the button that sends it. An
   // eight-scene build is 140 cards; the things that matter (how many changes,
   // what gets renamed, and whether a preset slot gets overwritten) were
