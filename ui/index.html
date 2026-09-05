@@ -370,7 +370,7 @@
     flex: 1; background: transparent; border: none; outline: none;
     color: var(--text); font: inherit; font-size: var(--fs-lead); caret-color: var(--cyan);
     resize: none; overflow-y: auto; line-height: 1.5; padding: 0;
-    max-height: 8.5em;          /* grows with the thought, then scrolls */
+    max-height: 6em;            /* grows with the thought, then scrolls */
   }
   .promptrow { align-items: flex-end; }
   .prompt-prefix { align-self: flex-end; line-height: 1.5; }
@@ -1797,13 +1797,14 @@
      with the composer docked below it. */
   body.chat-empty #pane-request {
     justify-content: flex-start; align-items: center;
-    border: none; background: transparent; padding: 8vh 0 0;
+    border: none; background: transparent; padding: 3vh 0 0;
+    overflow-y: auto;          /* a long paste scrolls, never runs off-screen */
   }
   body.chat-empty #pane-request #chat {
     height: auto; min-height: 0; max-height: none; flex: 0 0 auto;
     width: 100%; margin-bottom: 22px; overflow: visible;
   }
-  body.chat-empty #pane-request .cempty { flex: 0 0 auto; padding: 0; gap: 22px; }
+  body.chat-empty #pane-request .cempty { flex: 0 0 auto; padding: 0 0 3vh; gap: 12px; }
   /* Nothing behind the progress panel while a build runs - not just the idle
      hero but the whole request pane (composer + conversation), so the fixed
      progress panel and its STOP/log buttons stand alone and stay clickable
@@ -6417,7 +6418,7 @@ function growPrompt() {
   // of being computed at all.
   if (!t.value) { t.style.height = ''; return; }
   t.style.height = '0px';
-  const max = 8.5 * 16;
+  const max = 6 * 16;
   const needed = t.scrollHeight;
   t.style.height = Math.min(needed, max) + 'px';
   if (needed > max) t.style.overflowY = 'auto';
@@ -7588,7 +7589,12 @@ async function saveAiSettings(extra, keepOpen) {
   const body = Object.assign({
     backend: $('aibackend').value,
     baseUrl: $('aibaseurl').value.trim(),
-    model: $('aimodel').value.trim(),
+    // Fall back to the intended model (data-want) when the <select> has not
+    // been filled yet: a service card saves synchronously, but loadAiModels
+    // fills the dropdown asynchronously, so without this the save captured an
+    // empty model and the planner fell back to "local" (owner, 2026-09-05).
+    model: ($('aimodel').value.trim()
+            || ($('aimodel').dataset.want || '').trim()),
     apiKey: $('aikey').value,
   }, extra || {});
   try {
