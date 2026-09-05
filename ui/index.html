@@ -2126,11 +2126,16 @@
   /* Manual mode: the block controls take over most of the screen for hands-on
      tweaking, with the signal chain kept reachable at the top to switch blocks.
      The inspector's X or Escape closes it. */
-  body.manual-mode::before { content: ''; position: fixed; inset: 0; z-index: 82;
-    background: rgba(0,0,0,0.55); }
+  /* Scrim and panel both stop above the command dock (66px tall) so the dock,
+     which holds the Manual button, stays visible, lit, and clickable to toggle
+     manual mode back off. */
+  body.manual-mode::before { content: ''; position: fixed; top: 0; left: 0;
+    right: 0; bottom: 66px; z-index: 82; background: rgba(0,0,0,0.55); }
   body.manual-mode #context { position: relative; z-index: 92; }
+  body.manual-mode #shelf { position: relative; z-index: 95;
+    background: var(--bg); }
   body.manual-mode #inspector {
-    position: fixed; left: 12px; right: 12px; bottom: 10px; top: 38%;
+    position: fixed; left: 12px; right: 12px; bottom: 76px; top: 38%;
     width: auto; max-width: none;   /* override #inspector.wide's 860px cap */
     z-index: 90; margin: 0; overflow-y: auto; padding: 14px 20px;
     background: var(--panel); border: 1px solid var(--cyan-dim);
