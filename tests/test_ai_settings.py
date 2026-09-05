@@ -1390,6 +1390,11 @@ def test_the_saved_model_survives_even_if_the_fetched_list_lacks_it():
     assert "opts.unshift(prev)" in fn
     assert "sel.dataset.want" in fn
     assert "$('aimodel').dataset.want = b.model" in ui
+    # Switching backend must NOT keep the old backend's selected model, or a
+    # GPT id leaks into Gemini's list. The desired model comes from data-want
+    # only, never a fallback to the stale <select> value.
+    assert "sel.value || sel.dataset.want" not in fn
+    assert "const prev = (sel.dataset.want || '').trim();" in fn
 
 
 def test_a_backend_with_no_model_list_hides_the_model_row():

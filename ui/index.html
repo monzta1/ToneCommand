@@ -7543,9 +7543,11 @@ async function loadAiModels(backend) {
     // Show the MODEL row only when the service offers a choice.
     if ($('aimodelrow')) $('aimodelrow').hidden = !hasModels;
     const sel = $('aimodel');
-    // The desired model: what is selected, or what a caller stashed in data-want
-    // before the options existed (a <select> drops a value with no option yet).
-    const prev = (sel.value || sel.dataset.want || '').trim();
+    // The desired model is THIS backend's, carried in data-want (aiFields sets
+    // it fresh on every backend switch). Do NOT fall back to the currently
+    // selected option: that belongs to the previous backend, and prepending it
+    // leaked a GPT model into Gemini's list (owner, 2026-09-05).
+    const prev = (sel.dataset.want || '').trim();
     sel.dataset.want = '';
     sel.innerHTML = '';
     // The saved model may not be in the fetched list (a pinned or custom id):
