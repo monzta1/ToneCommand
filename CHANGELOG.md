@@ -2,7 +2,54 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## Unreleased
+## 1.0.0 (2026-09-05)
+
+First stable release. ToneCommand builds a gig-ready, multi-scene FM9 preset
+from one sentence, you review and confirm every parameter change, and it lands
+on the hardware verified by read-back. Everything below shipped into 1.0.0.
+
+### Added
+- **One-tap +Create: a blank canvas, always ready.** A single button lays a
+  fresh starter rig on a free slot, or clears the loaded edit buffer on a full
+  unit, so there is always somewhere to build. It blinks while it works and
+  focuses the composer when the canvas is ready. Blocked in gig mode, refused
+  cleanly when there is nowhere to build. GitHub #44 (owner, 2026-09-05).
+- **Both expression pedals, bound by name.** "Put global volume on Pedal 1 and
+  wah on Pedal 2" now works for either onboard pedal, not just Pedal 2. Pedal 1
+  was decoded on hardware (source ordinal 10) and productionized behind a
+  bind-pedal action, with a full modifier bind that survives store and reload;
+  unbind understands both pedals. All thirteen shipped FM9-AI presets were
+  audited and normalized to Pedal 1 = global volume, Pedal 2 = effects. GitHub
+  #11 (owner, 2026-09-05).
+- **Pick a cabinet by name in a build.** "Put a 4x12 V30 on the rhythm" is a
+  first-class planner action now, so a build chooses the cab instead of leaving
+  the template default. GitHub #45 (owner, 2026-09-05).
+- **A prebuilt starter template, laid in one pass.** A from-empty build lays the
+  whole chain it almost always wants (input, drive, amp, cab, delay, reverb,
+  output) left to right at once, extras bypassed until a tone calls for them,
+  so no cell slides and no block splices in one at a time. Laid and verified on
+  the real unit every build, never a stored file that could drift. GitHub #47
+  (owner, 2026-09-05).
+- **A bounded repair pass.** When a planned action fails verification, the
+  planner gets one scoped chance to correct it instead of the build stalling.
+  GitHub #39 (owner, 2026-09-05).
+- **A health scan after every structural build.** The moment a build lands, a
+  scan flags a dead or duplicated scene so a clone that came back wrong is
+  caught immediately, not at soundcheck. GitHub #51 (owner, 2026-09-05).
+
+### Changed
+- **Faster, more reliable verification.** Same-block parameter writes are sent
+  as one burst and confirmed in a single bulk read instead of one round-trip
+  each, with any straggler retried through a displayed write, so nothing is
+  ever written blind. The slow, timing-fragile part of a build is gone (owner,
+  2026-09-05).
+- **A tone rulebook the planner reads on every build, dialed in by ear.** The
+  clean/distorted loudness balance was set on real hardware: clean amps make far
+  less raw output so their level runs hot while distorted scenes run well below,
+  a 25 to 30 dB spread for equal perceived loudness. Cleans ship loud, leads
+  out-saturate the rhythm, no scene ships silent, and the four-amp-channel hard
+  limit is stated so the planner never promises a fifth amp voice. Validated by
+  a cold cross-genre metalcore build (owner, 2026-09-05).
 
 ### Added
 - **Compose a preset from parts of other presets.** Clone a whole tone into a

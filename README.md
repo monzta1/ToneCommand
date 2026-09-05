@@ -6,10 +6,14 @@
 
 <p align="center"><strong>OLD SOUL. NEW MACHINE. HUMANS IN COMMAND.</strong></p>
 
-Natural-language tone control for the Fractal FM9: type "give me a Van Halen
-Balance era tone with the flanger on the expression pedal", review the exact
-parameter changes it proposes, confirm, and they land on the hardware over
-USB MIDI with read-back verification.
+<p align="center"><em>ToneCommand 1.0.0</em></p>
+
+**Talk to your FM9. It builds the tone.** Type a sentence, get a gig-ready,
+multi-scene preset on your Fractal FM9 in minutes: the signal chain wired, amps
+voiced per scene, cabs chosen, scenes named on the footswitches. You read the
+exact list of parameter changes, you confirm, and only then do they land on the
+hardware over USB MIDI, verified by reading the unit back. A language model
+proposes; it never sends. Nothing reaches your amp until you say go.
 
 ## Watch it happen
 
@@ -34,46 +38,69 @@ confirmation ([docs/AI-BACKENDS.md](docs/AI-BACKENDS.md)).
 
 ## Features
 
-The short list of what it does, so you do not have to read the changelog
-release by release.
+Everything ToneCommand does, and the words that make it happen. Every prompt
+below is a real request you can type.
 
-**Build and design**
-- Build a complete multi-scene rig from one sentence: signal chain, amp per
-  scene role, cab, drives, effects, scenes named on the footswitches.
-- Asks a few clarifying questions first on an open-ended build (era, scenes,
-  how heavy), then builds; builds straight away when you are specific.
-- Live scene preview: the eight-scene grid fills in as you talk the build
-  through, so you can spot a gap ("nothing in scene 8 yet") before it is built.
-- Adjust the loaded tone in plain language: "a bit more presence", "tighten
-  the gate for drop C", "make scene 1 a dry crunch".
+**Build a whole rig from one sentence**
+- A complete multi-scene preset from a single prompt: the signal chain wired,
+  an amp voiced per scene role, a cab chosen, drives and effects placed, and
+  the scenes named on your footswitches.
+  > *"Build a modern metalcore preset in drop C: a big ambient clean, a tight
+  > chug rhythm, a lead that sings over the mix, and a heavier breakdown."*
+- One tap on **+ Create** drops a blank rig on a free slot (or clears the loaded
+  buffer on a full unit) so you always have a clean canvas to build on.
+- Open-ended ask? It asks a couple of quick questions first (era, how many
+  scenes, how heavy). Specific ask? It just builds.
+- The eight-scene grid fills in live as you talk it through, so you catch a gap
+  ("nothing in scene 8 yet") before it is built.
+- A **tone rulebook** rides on every build: cleans come out loud, leads
+  out-saturate the rhythm, no scene ships silent. That balance was dialed in by
+  ear on real hardware, so a cold build lands close on the first try.
 
-**Move sound between presets**
-- Copy an effect from another preset onto yours, aligned by scene not just by
-  channel ("make the delay like that tone's").
-- Compose a preset from parts of several: clone one whole tone, then pull the
-  delay from another and the reverb from a third.
-- Reorder blocks into the correct signal-chain order (delay before reverb,
-  drive before the amp), signal path proven intact.
+**Voice it in plain language**
+  > *"a Klon into a JCM800 with a greenback 4x12"*
+  > *"tighten the gate for drop C and bump the presence slightly"*
+  > *"make scene 1 a dry crunch rhythm and keep the wets in scene 2"*
+- Pick a cabinet by name, not by scrolling thousands of IRs: *"put a 4x12 V30 on
+  the rhythm channel."*
+- Per-block manual controls with -/+ fine-tune on every slider, a graphic EQ
+  that looks like one, and 331 amps searchable by the real gear they model.
 
-**Hands-on control**
-- Per-block manual controls: amp and cab, EQ, effects, with -/+ fine-tune on
-  every slider.
-- Bind the expression pedal (wah, delay mix) under Pedal 2.
-- Scenes: rename, per-scene bypass and channel, A/B compare, and undo.
+**Borrow tone from the tones you already own**
+- Lift an effect off another preset, aligned scene-for-scene, not just channel
+  for channel: *"make my delay like BT Steve Lukather's."*
+- Compose a preset from parts of several artists' tones:
+  > *"clone BT Marco Sfogli into slot 21, take the gain stage from it, the delay
+  > from the Andy Timmons tone, and the reverb from the Periphery one."*
+  Every source is read wire-for-wire first, then the new preset is assembled and
+  stored once. A better path to a pro tone than guessing parameters from scratch.
+- Reorder blocks into the right signal-chain order (drive before the amp, delay
+  before reverb), the path proven intact.
 
-**Get and keep presets**
+**Two expression pedals, by name**
+  > *"put global volume on Pedal 1 and wah on Pedal 2"*
+  > *"delay mix on Pedal 2 so I can swell into the chorus"*
+- Bind either onboard pedal to any continuous parameter, and unbind it the same
+  way, all by typing.
+
+**Fast, and honest about it**
+- A build lays its whole starter chain in one pass instead of splicing blocks in
+  one at a time, and verifies a block's parameters in a single read instead of
+  one-at-a-time. The slow, fragile part is gone.
+- A **health scan** after every build flags a dead or duplicated scene the
+  moment it lands. **Undo** and **A/B** the FM9 itself does not have.
 - Install artist presets and cabs from Fractal's Gift of Tone.
-- Store only to slots you have marked disposable, and only after you confirm.
 
-**Safety and trust**
-- Read-back verification on every write, and a signal-path check so a preset
-  is never silently dead.
+**Never sends behind your back**
+- Read-back verification on every write, and a signal-path check so a preset is
+  never silently dead.
 - A "what will change" blast-radius preview before anything is sent, including
   every other scene a channel-level change would move.
-- Gig lock: mid-performance, only scene changes reach the amp.
-- Bring your own AI: ChatGPT, Gemini, Grok, DeepSeek, a local model, or the
-  Claude CLI it finds on its own.
-- A tone-building rulebook the planner reads and follows on every build.
+- **Gig lock:** mid-set, only scene changes reach the amp.
+- Store only to slots you have marked disposable, and only after you confirm.
+- **Bring your own AI:** ChatGPT, Gemini, Grok, DeepSeek, Kimi, a subscription
+  you already pay for, a model on your own laptop, or the Claude CLI it finds on
+  its own.
 
 ## Humans in command
 
@@ -101,14 +128,32 @@ never ours to take, and nothing here will pretend otherwise.
 
 ## What you can say
 
-Every one of these is a real request the planner resolves into concrete,
-verified parameter changes, shown to you before anything is sent:
+Every line here is a real request the planner turns into concrete, verified
+parameter changes, shown to you before anything is sent.
 
+**Build a rig**
+- "build a modern metalcore rig in drop C: big ambient clean, tight chug
+  rhythm, a lead that sings over the mix, and a heavier breakdown"
+- "an 80s hard-rock tribute: big loud chorus cleans, a boosted JCM800 crunch,
+  and a soaring lead"
 - "give me a Van Halen Balance era tone with the flanger on the expression pedal"
+
+**Voice and tweak**
 - "a Klon into a JCM800 with a greenback 4x12"
 - "tighten the gate for drop C and bump the presence slightly"
 - "make scene 1 a dry crunch rhythm and keep the wets in scene 2"
-- "put the delay and reverb mix on pedal 2 so I can swell into the chorus"
+- "put a 4x12 Recto V30 on the rhythm channel"
+
+**Borrow from artists you own**
+- "take the gain stage from BT Marco Sfogli and the delay from the Andy Timmons
+  tone"
+- "make my delay like BT Steve Lukather's, matched per scene"
+- "clone the Periphery Misha preset into slot 22, but pull the reverb from the
+  Majesty one"
+
+**Put it under your feet**
+- "put global volume on Pedal 1 and wah on Pedal 2"
+- "delay and reverb mix on Pedal 2 so I can swell into the chorus"
 - "add a subtle octave-down layer like a POG under the lead"
 
 Requests that need facts the project cannot verify get an honest refusal
@@ -116,7 +161,7 @@ instead of an invented answer.
 
 ## The interface
 
-![The ToneCommand interface: scenes, the live routing grid, the command bar, the amp and cab panel and the graphic EQ](docs/img/ui-full.png)
+![The ToneCommand interface: the eight named scenes, the request-to-send flow, and the command bar, live from a connected FM9](docs/img/ui-full.png)
 
 Everything above is live from a connected FM9; nothing on this page is a
 mock-up. The full tour is in [docs/INTERFACE.md](docs/INTERFACE.md). The
