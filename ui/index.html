@@ -251,6 +251,16 @@
     align-self: center;
   }
   #newpreset.newbtn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+  /* Blink while it lays the blank chain, so it is obvious something is running
+     even though the button is disabled. */
+  @keyframes newpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  #newpreset.newbtn.creating {
+    color: var(--cyan); border-color: var(--cyan-dim);
+    animation: newpulse 0.85s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #newpreset.newbtn.creating { animation: none; opacity: 0.7; }
+  }
   .pillbtn.busy { border-color: var(--amber); }
   .pillbtn.busy b { color: var(--amber); }
 
@@ -3103,6 +3113,7 @@ $('newpreset').addEventListener('click', async e => {
     return;
   const btn = $('newpreset');
   btn.disabled = true; const was = btn.textContent; btn.textContent = 'Creating…';
+  btn.classList.add('creating');
   // Laying a blank chain takes a few seconds; say so up front so the greyed
   // button is not the only sign anything is happening.
   chatNote('Setting up a blank canvas to build on… (a few seconds)');
@@ -3123,7 +3134,7 @@ $('newpreset').addEventListener('click', async e => {
   } catch (err) {
     chatNote('Could not start a new preset: ' + err.message);
   } finally {
-    btn.disabled = false; btn.textContent = was;
+    btn.disabled = false; btn.textContent = was; btn.classList.remove('creating');
   }
   renderChat();
 });
