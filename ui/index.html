@@ -196,6 +196,16 @@
   }
   .sc:disabled { opacity: 0.45; cursor: default; }
   .sc.busy { border-color: var(--amber); color: var(--amber); }
+  /* Preview: the scenes a build WILL become, before it is on the amp. Dashed
+     and cyan-tinted so it reads as "coming", with empty slots dimmed and
+     italic so a gap ("nothing in 8 yet") is obvious to fill. */
+  .sc.preview { border-style: dashed; border-color: var(--cyan-dim);
+    background: linear-gradient(180deg, rgba(47,230,255,0.05), rgba(0,0,0,0.35)); }
+  .sc.preview .n { color: var(--cyan-dim); }
+  .sc.preview .nm { color: var(--cyan); }
+  .sc.preview.empty { border-color: var(--line); background: none; opacity: 0.6; }
+  .sc.preview.empty .n, .sc.preview.empty .nm { color: var(--faint); }
+  .sc.preview.empty .nm { font-style: italic; }
 
   /* Preset popover: hangs off the PRESET pill, opens scrolled to where you
      already are, so the presets either side are the first thing you see. */
@@ -2764,10 +2774,26 @@ function clearAffected() {
 }
 
 function renderScenes(s) {
-  const names = s.scenes || lastScenes;
   if (s.scenes) lastScenes = s.scenes;
   const active = s.scene ? s.scene.number : null;
   const box = $('scenes');
+  // PREVIEW: while a build is being talked through, the grid shows the eight
+  // scenes it WILL become - ghosted, with any gap ("nothing here yet") visible
+  // so the player can say "put something in 8" before it is built. Cleared once
+  // the build lands on the amp, when the real scenes take over.
+  if (scenePreview && scenePreview.length) {
+    const byN = {};
+    scenePreview.forEach(x => { byN[Number(x.n)] = String(x.name || ''); });
+    box.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => {
+      const nm = byN[n];
+      const empty = !nm;
+      return `<button class="sc preview${empty ? ' empty' : ''}" data-scene="${n}"
+                title="${empty ? 'scene ' + n + ' - nothing planned here yet' : esc(nm)}">
+                <span class="n">${n}</span><span class="nm">${empty ? 'empty' : esc(nm)}</span></button>`;
+    }).join('');
+    return;
+  }
+  const names = s.scenes || lastScenes;
   if (!names.length) { box.innerHTML = '<span class="hint">awaiting link...</span>'; return; }
   box.innerHTML = names.map(sc => {
     const on = sc.number === active ? ' on' : '';
@@ -5872,6 +5898,7 @@ let chatReady = false;         // the model thinks it has enough to go on
 let chatRequest = '';          // the agreed instruction, in its words
 let chatName = '';             // what it decided to call the preset
 let chatScenes = [];           // and what each scene it sets up is called
+let scenePreview = null;       // agreed scene layout painted into the grid as a preview
 let chatNeedsAnswer = false;    // the planner asked for one missing detail
 let chatBusy = false;          // a turn is in flight
 let chatWorking = '';          // what it is doing, said where you are looking
@@ -5924,7 +5951,7 @@ function loadChat() {
   // slate instead of a stale one.
   try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing stored */ }
   chatLog = []; chatReady = false; chatRequest = ''; chatName = '';
-  chatScenes = []; chatNeedsAnswer = false;
+  chatScenes = []; chatNeedsAnswer = false; scenePreview = null;
 }
 
 // What the wait actually looks like from here. Three different situations
@@ -6243,7 +6270,7 @@ function renderChat() {
     if (chatLog.length > 1 && !window.confirm(
           'Clear this conversation? It cannot be brought back.')) return;
     chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
-    chatNeedsAnswer = false;
+    chatNeedsAnswer = false; scenePreview = null; renderScenes({});
     try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing to undo */ }
     renderChat();
     $('prompt').focus();
@@ -6675,6 +6702,8 @@ async function talk() {
         chatRequest = d.request || '';
         chatName = d.name || '';
         chatScenes = Array.isArray(d.scenes) ? d.scenes : [];
+        // Paint the agreed scene layout into the grid as a live preview.
+        if (chatScenes.length) { scenePreview = chatScenes; renderScenes({}); }
         landed = true;
       }
     }
@@ -7679,6 +7708,8 @@ async function apply() {
     $('sendfoot').hidden = false;
     setDirty(true);
     stageDone.send = true;
+    // The build is on the amp now; drop the preview so the real scenes show.
+    scenePreview = null;
     renderRail();
     const rescan = fixPending;
     fixPending = false;
