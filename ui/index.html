@@ -1221,11 +1221,12 @@
 /* A quiet "using <model>" tag pinned to the top-right corner of the request
    section, not a banner across the hero. Absolute so it never pushes the hero
    around; clickable to open AI settings. */
-#aiwho { position: absolute; top: 12px; right: 16px; z-index: 3;
-         width: auto; margin: 0; padding: 0; text-align: right;
-         background: none; border: none; cursor: pointer; font: inherit;
-         font-size: var(--fs-label); letter-spacing: 0.04em;
-         color: var(--faint, #8a93a6); opacity: 0.75; }
+#aiwho { position: absolute; top: 12px; right: 22px; z-index: 3;
+         width: auto; max-width: calc(100% - 44px); margin: 0; padding: 0;
+         text-align: right; white-space: nowrap; overflow: hidden;
+         text-overflow: ellipsis; background: none; border: none;
+         cursor: pointer; font: inherit; font-size: var(--fs-label);
+         letter-spacing: 0.04em; color: var(--faint, #8a93a6); opacity: 0.75; }
 #aiwho:hover { opacity: 1; }
 #aiwho b { color: var(--muted); font-weight: 600; }
 #aiwho .chg { opacity: 0.7; text-decoration: underline; margin-left: 6px; }
@@ -1787,8 +1788,12 @@
     width: 100%; margin-bottom: 22px; overflow: visible;
   }
   body.chat-empty #pane-request .cempty { flex: 0 0 auto; padding: 0; gap: 22px; }
-  /* Nothing behind the progress panel while a build runs. */
-  body.working-on.chat-empty #pane-request { visibility: hidden; }
+  /* Nothing behind the progress panel while a build runs - not just the idle
+     hero but the whole request pane (composer + conversation), so the fixed
+     progress panel and its STOP/log buttons stand alone and stay clickable
+     instead of the transparent composer sitting over them and eating the
+     clicks. */
+  body.working-on #pane-request { visibility: hidden; }
   body.chat-empty #pane-request .cask { font-size: 22px; opacity: 0.92; }
   body.chat-empty #pane-request .egs { justify-content: center; max-width: 640px; }
   /* The prompt is the whole point of this screen, so it gets presence: a
