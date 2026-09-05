@@ -57,6 +57,23 @@ below is a real request you can type.
   out-saturate the rhythm, no scene ships silent. That balance was dialed in by
   ear on real hardware, so a cold build lands close on the first try.
 
+**Build a tone from a video you do not have time to watch**
+- Paste a YouTube link to somebody's rig rundown and get a plan against your own
+  FM9 without watching it. When the video has captions (nearly all do, whether
+  the creator published them or YouTube auto-generated them) it reads the whole
+  transcript and pulls out only the parts that matter in about twenty seconds:
+  the intro, the sponsor read, the merch plug and every tangent are thrown out,
+  and a two-hour walkthrough becomes a compact tone spec.
+  > *"build the rhythm tone from this rig rundown: youtube.com/watch?v=..."*
+- No captions? It transcribes the audio locally, on your machine, in a few
+  minutes (up to about ninety minutes of runtime; past that it asks you to paste
+  the part that matters).
+- A forum thread or a pasted chat about someone's tone works the same way: drop
+  in a URL or the text of the conversation and it does the same read-and-extract.
+- It marks which numbers the source actually stated and which it chose, so a
+  guess never wears the source's authority. Ballpark to review and tweak, not a
+  clone, and a build from someone else's video never stores to a slot on its own.
+
 **Voice it in plain language**
   > *"a Klon into a JCM800 with a greenback 4x12"*
   > *"tighten the gate for drop C and bump the presence slightly"*
@@ -143,6 +160,11 @@ parameter changes, shown to you before anything is sent.
 - "tighten the gate for drop C and bump the presence slightly"
 - "make scene 1 a dry crunch rhythm and keep the wets in scene 2"
 - "put a 4x12 Recto V30 on the rhythm channel"
+
+**Build from a video or a conversation**
+- "build the lead tone from this rig rundown: https://youtube.com/watch?v=..."
+- "here is a forum thread about a worship rig, build me scene 1 from it: <url>"
+- paste a whole chat about someone's tone and say "make this on my FM9"
 
 **Borrow from artists you own**
 - "take the gain stage from BT Marco Sfogli and the delay from the Andy Timmons
