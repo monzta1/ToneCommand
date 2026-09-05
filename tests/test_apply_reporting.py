@@ -82,6 +82,33 @@ def test_an_empty_grid_is_provisioned_not_lectured(client, monkeypatch):
     assert all("no free pass-through cell" not in r["detail"] for r in results)
 
 
+def test_an_empty_build_lays_the_starter_template_not_the_bare_chain(
+        client, monkeypatch):
+    """Issue #47: the empty-slot foundation now lays the richer starter template
+    (via starter_template.lay), not the bare four-block chain, so drive/delay/
+    reverb are already present and the planner's add_block for them no-ops
+    instead of splicing."""
+    called = {}
+    monkeypatch.setattr(server._fm9, "read_grid", lambda: [])
+    monkeypatch.setattr(server._fm9, "status_dump", lambda: [])
+
+    def fake_lay(dev, reg, slot=None, **k):
+        called["lay"] = slot
+        return {"ok": True, "detail": "template laid"}
+
+    def fake_build(*a, **k):
+        called["build"] = True
+        return {"ok": True, "detail": "bare chain"}
+
+    monkeypatch.setattr(server.starter_template, "lay", fake_lay)
+    monkeypatch.setattr(server.scratch_build, "build", fake_build)
+    results = client.post("/api/apply", json={"actions": [
+        {"kind": "add_block", "block": "delay", "instance": 1}]}).json()["results"]
+    assert "lay" in called, "empty build must lay the starter template"
+    assert "build" not in called, "must not fall back to the bare four-block chain"
+    assert results[0]["action"]["kind"] == "build_chain"
+
+
 @pytest.mark.parametrize("pos,phrase", [
     ("pre", "before the amp"),
     ("post", "after the amp"),

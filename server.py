@@ -25,7 +25,7 @@ from fm9.device import FM9, FM9NotFound, get_cab_slots
 from fm9.registry import Registry
 from fm9 import (acquire, ai_settings, bundlefile, cabfile, describe, designs, editbuffer, health,
                  planner, presetfile, recipes as recipebook, rigprofile,
-                 scratch_build, share)
+                 scratch_build, share, starter_template)
 # `slots` is a local variable in more than one function here, so the module
 # gets a name that cannot be shadowed by one.
 from fm9 import slots as slotops
@@ -1268,8 +1268,10 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                     if fm9.read_grid() == []:
                         adds[0]["validation_warnings"] = (
                             adds[0]["validation_warnings"] + [
-                                "This slot is empty. ToneCommand will build "
-                                "the basic signal path first, then voice "
+                                "This slot is empty. ToneCommand will lay a "
+                                "starter template first (input, drive, amp, "
+                                "cab, delay, reverb, output; the extras "
+                                "bypassed until the tone uses them), then voice "
                                 "the requested tone."])
                 except FM9NotFound:
                     drop_fm9()
@@ -3883,7 +3885,12 @@ def _apply_for(body: ApplyBody, on_step=None):
                 try:
                     if fm9.read_grid() == []:      # no cells at all: empty
                         cur = fm9.current_preset()
-                        chain = (scratch_build.build(fm9, reg, slot=cur[0])
+                        # Lay the whole starter template at once (issue #47):
+                        # placing left to right on the empty grid never slides a
+                        # cell, so no splice happens. add_block for a template
+                        # block then no-ops (it is already present), so what used
+                        # to splice in drive/delay/reverb costs nothing.
+                        chain = (starter_template.lay(fm9, reg, slot=cur[0])
                                  if cur else
                                  {"ok": False,
                                   "detail": "could not read which preset is "
@@ -3891,8 +3898,10 @@ def _apply_for(body: ApplyBody, on_step=None):
                         results.append({
                             "action": {"kind": "build_chain"},
                             "ok": bool(chain.get("ok")),
-                            "detail": "Built the basic signal path first, "
-                                      "then continued with your tone."})
+                            "detail": "Built the basic signal path first "
+                                      "(starter template: drive, delay and "
+                                      "reverb laid in bypassed, ready to switch "
+                                      "on), then continued with your tone."})
                         log.info("apply: empty slot foundation: %s",
                                  chain.get("detail", ""))
                         if on_step is not None:
