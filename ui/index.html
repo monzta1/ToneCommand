@@ -3102,7 +3102,11 @@ $('newpreset').addEventListener('click', async e => {
       !confirm('Start a new preset? This leaves your current unsaved changes behind.'))
     return;
   const btn = $('newpreset');
-  btn.disabled = true; const was = btn.textContent; btn.textContent = 'NEW...';
+  btn.disabled = true; const was = btn.textContent; btn.textContent = 'Creating…';
+  // Laying a blank chain takes a few seconds; say so up front so the greyed
+  // button is not the only sign anything is happening.
+  chatNote('Setting up a blank canvas to build on… (a few seconds)');
+  renderChat();
   try {
     const r = await fetch('/api/new-preset', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: '{}'});
@@ -3112,8 +3116,9 @@ $('newpreset').addEventListener('click', async e => {
         + (r.status === 409 ? ' Free a slot in Storage, then try again.' : ''));
     } else {
       await refresh();
-      chatNote(`Blank canvas ready on slot ${d.slot_label || d.slot}. `
-        + 'Type what you want it to sound like and I will build it.');
+      chatNote('Blank canvas ready. Describe the tone you want and I will build '
+        + 'it. Nothing changes on your amp until you send.');
+      const p = $('prompt'); if (p) p.focus();   // cursor where they type next
     }
   } catch (err) {
     chatNote('Could not start a new preset: ' + err.message);
