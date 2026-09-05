@@ -7807,6 +7807,18 @@ async function apply() {
         + (stored.length ? bufferNote
                          : ` Nothing is stored in the preset until you choose `
                            + `STORE PRESET, and UNDO puts the previous sound back.`));
+    // Auto health after a build (issue #51): clone/dead/silent scenes the
+    // plan-time review cannot see, because the final grid is the starter
+    // template plus the plan. Surfaced here so a duplicate footswitch is
+    // caught the moment it lands, not left for a manual scan.
+    const health = (out.health || []).filter(f => f && f.kind);
+    if (health.length) {
+      chatNote('One thing to check on the scenes: '
+        + health.map(f => f.detail
+            || `${f.kind}: scene${(f.scenes || []).length === 1 ? '' : 's'} `
+               + `${(f.scenes || []).join(', ')}`).join(' ')
+        + ' Ask me to fix any of these and I will.');
+    }
     // Transmits, not downloads. This is the moment a recipe actually reached
     // somebody's rig, which is a far better signal than a fetch and much
     // harder to inflate by refreshing a page. Queued locally, so a gig with

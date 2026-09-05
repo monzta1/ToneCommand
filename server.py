@@ -3814,6 +3814,7 @@ def api_apply_stream(body: ApplyBody):
 
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
+    health_findings: list = []
     if _gig_mode["on"]:
         blocked = [a.kind for a in body.actions if a.kind not in GIG_SAFE_KINDS]
         if blocked:
@@ -3961,10 +3962,29 @@ def _apply_for(body: ApplyBody, on_step=None):
                                                   f"({len(remaining)}): "
                                                   f"add_block failed"})
                     break
+
+            # After a build that changed scene structure, surface clone/dead
+            # scenes automatically (issue #51). The plan-time tone review cannot
+            # catch clones: the final grid is the starter template (laid by the
+            # foundation, not the plan) plus the plan's own blocks, so only a
+            # fingerprint scan of what actually landed sees it. Kept light (no
+            # level reads = no per-parameter sweep) and only run when the plan
+            # touched structure, never on a plain param tweak.
+            _STRUCTURAL = {"add_block", "set_channel", "set_bypass",
+                           "rename_scene", "reorder", "set_type"}
+            if (any(a.kind in _STRUCTURAL for a in body.actions)
+                    and any(r.get("ok") for r in results)):
+                try:
+                    scan = health.scan(fm9, reg, read_levels=False)
+                    health_findings = [f for f in scan.get("findings", [])
+                                       if f.get("kind") in
+                                       ("clone", "dead", "silent")]
+                except Exception as e:
+                    log.warning("apply: post-build health scan failed: %s", e)
         except FM9NotFound:
             drop_fm9()
             return JSONResponse({"error": "FM9 not connected"}, status_code=503)
-    return {"results": results}
+    return {"results": results, "health": health_findings}
 
 
 def main():

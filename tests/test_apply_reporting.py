@@ -109,6 +109,37 @@ def test_an_empty_build_lays_the_starter_template_not_the_bare_chain(
     assert results[0]["action"]["kind"] == "build_chain"
 
 
+def test_a_structural_build_auto_surfaces_clone_scenes(client, monkeypatch):
+    """Issue #51: the plan-time review cannot see clones (the final grid is the
+    template plus the plan), so a structural apply runs the fingerprint scan of
+    what landed and returns its clone/dead findings."""
+    clone = {"kind": "clone", "severity": "warn", "scenes": [4, 8],
+             "detail": "scenes 4, 8 are identical"}
+    called = {}
+
+    def fake_scan(fm9, reg, read_levels=True, on_scene=None):
+        called["read_levels"] = read_levels
+        return {"findings": [clone]}
+
+    monkeypatch.setattr(server.health, "scan", fake_scan)
+    d = client.post("/api/apply", json={"actions": [
+        {"kind": "set_channel", "block": "amp", "value": 2}]}).json()
+    assert d.get("health") == [clone], "clone scan not surfaced after a build"
+    assert called.get("read_levels") is False, "scan should skip level reads"
+
+
+def test_a_plain_param_tweak_does_not_run_the_scan(client, monkeypatch):
+    """The scene sweep is not free, so a pure param edit must not trigger it."""
+    called = {}
+    monkeypatch.setattr(server.health, "scan",
+                        lambda *a, **k: called.setdefault("ran", True) or {"findings": []})
+    d = client.post("/api/apply", json={"actions": [
+        {"kind": "set_param", "block": "amp", "param": "DISTORT_DRIVE",
+         "value": 5}]}).json()
+    assert "ran" not in called, "a param-only tweak must not run the health scan"
+    assert d.get("health") == []
+
+
 @pytest.mark.parametrize("pos,phrase", [
     ("pre", "before the amp"),
     ("post", "after the amp"),
