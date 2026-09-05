@@ -241,12 +241,13 @@ def test_the_conversation_outlives_a_reload():
 
 
 def test_storage_is_never_trusted():
-    """An older version of this page, or a half-written entry, must not take
-    the panel down with it."""
+    """The conversation is cleared on every load rather than restored, so a
+    stale or half-written stored entry can never take the panel down: loadChat
+    removes the key and starts empty, inside a try/catch."""
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("function loadChat()")[1].split("\n}\n")[0]
-    assert "Array.isArray(d.log)" in fn
-    assert "['user', 'assistant', 'note'].includes(m.role)" in fn
+    assert "removeItem(CHAT_KEY)" in fn
+    assert "chatLog = []" in fn
     assert "catch (e)" in fn
 
 
@@ -294,7 +295,7 @@ def test_enter_sends_and_shift_enter_writes_a_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     fn = ui.split("$('prompt').addEventListener('keydown'")[1].split("});")[0]
     assert "e.shiftKey" in fn and "e.preventDefault();" in fn
-    assert "Enter to generate a plan" in ui
+    assert "Press Enter" in ui
 
 
 # --- and the small things that make it feel finished ----------------------
@@ -395,8 +396,8 @@ def test_the_explaining_shrank_to_one_line():
     ui = (ROOT / "ui" / "index.html").read_text()
     hint = ui.split('class="hint composerhint">')[1].split("</div>")[0]
     assert len(hint) < 100, "the composer hint is a line, not a paragraph"
-    assert "Enter to generate a plan" in hint
-    assert "reaches the FM9 until you send" in hint
+    assert "Press Enter" in hint
+    assert "your amp until you say go" in hint
 
 
 # --- saying what it is doing ----------------------------------------------
@@ -786,11 +787,14 @@ def test_the_browser_says_what_it_will_be_called_before_you_build():
     assert "engage(chatRequest, chatName, chatScenes)" in ui
 
 
-def test_the_name_survives_a_reload_with_the_rest():
+def test_a_reload_starts_a_fresh_conversation():
+    """On refresh the conversation clears rather than restoring the last one,
+    so every load is a clean slate (owner request 2026-09-04). The build state
+    that rode along with it (name, scenes, ready) is reset too."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "name: chatName" in ui
     load = ui.split("function loadChat()")[1].split("\n}\n")[0]
-    assert "chatName = typeof d.name === 'string'" in load
+    assert "removeItem(CHAT_KEY)" in load
+    assert "chatName = ''" in load and "chatReady = false" in load
 
 
 # --- a five-minute build that looks like a dead button --------------------
@@ -1183,11 +1187,12 @@ def test_the_panel_says_exactly_what_each_scene_will_be_called():
     assert "engage(chatRequest, chatName, chatScenes)" in ui
 
 
-def test_the_scene_names_survive_a_reload():
+def test_a_reload_clears_the_scene_state_too():
+    """The per-scene state that rode with the conversation is reset on reload,
+    part of the same fresh-slate behaviour."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    assert "scenes: chatScenes" in ui
     load = ui.split("function loadChat()")[1].split("\n}\n")[0]
-    assert "chatScenes = Array.isArray(d.scenes)" in load
+    assert "chatScenes = []" in load
 
 
 # --- the plan panel, when the plan is 114 changes long ---------------------

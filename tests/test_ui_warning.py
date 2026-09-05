@@ -62,8 +62,11 @@ def test_the_settings_live_behind_the_drawer_not_on_the_page():
     for control in ("aibackend", "aikey", "aisave", "aiclearkey"):
         assert f'id="{control}"' in drawer, f"{control} escaped the drawer"
     assert UI.count('data-label="WHO PLANS YOUR TONES"') == 1
-    assert 'id="aiopen"' in UI.split("<script>")[0].split('id="drawer"')[0], \
-        "no way to reach the settings from the hardware bar"
+    # The header gear was removed (one settings icon, in the footer). AI
+    # settings are reached by clicking the "using <model>" tag, which the
+    # markup carries as #aiwho.
+    assert 'id="aiwho"' in UI.split("<script>")[0], \
+        "no way to reach AI settings (the model tag is gone)"
 
 
 def test_it_opens_closed():
@@ -91,41 +94,24 @@ def test_no_id_is_declared_twice():
         [i for i in set(ids) if ids.count(i) > 1]
 
 
-def test_the_gear_carries_no_label():
-    """It briefly showed the backend name, which made a settings gear look
-    like it was called AUTO. A label on a control names the control. Which
-    model answered belongs on the plan it produced, where it already is."""
-    gear = re.search(r'<button class="gear".*?</button>', UI, re.S).group(0)
-    assert "<svg" in gear and "</svg>" in gear
-    assert not re.search(r">\s*[A-Za-z]", gear.split("<svg")[0].split(">", 1)[1]), \
-        "text next to the icon names the control, not the backend"
-    assert "ailabel" not in UI
-
-
-def test_the_gear_is_drawn_not_typed():
-    """U+2699 is drawn small inside its own em box, so raising font-size moved
-    it barely at all and it stayed a speck beside the LINK pill. A path is
-    sized by the numbers we give it."""
-    assert "&#9881;" not in UI
-    gear = re.search(r'<button class="gear".*?</button>', UI, re.S).group(0)
-    size = re.search(r'width="(\d+)"', gear)
-    assert size and int(size.group(1)) >= 18, "still too small to hit comfortably"
-
-
-def test_the_gear_is_last_in_the_header_and_quiet():
-    """Out of the way means after the status readout, not interrupting it,
-    and without the border that would make it read as a third status pill."""
-    status = UI.split('<div class="status">')[1].split("</header>")[0]
-    assert status.index('id="aiopen"') > status.index('id="link"')
-    style = UI.split("  .gear {")[1].split("}")[0]
-    assert "border: none" in style and "background: none" in style
+def test_there_is_one_settings_gear_and_it_is_a_drawn_icon():
+    """Two gears were confusing (a header AI gear and a footer settings gear).
+    The header gear is gone; the single settings gear lives in the footer, is
+    an SVG drawn icon (not an emoji speck), and AI settings open from the model
+    tag instead."""
+    assert '<button class="gear"' not in UI, "the old header gear is gone"
+    shset = re.search(r'<button class="shbtn ico" id="shset".*?</button>', UI, re.S)
+    assert shset, "footer settings gear missing"
+    assert "<svg" in shset.group(0), "settings gear should be a drawn SVG icon"
+    assert 'aria-label="Settings"' in shset.group(0)
 
 
 def test_which_backend_is_driving_is_still_reachable_before_a_plan_runs():
-    """Quiet is not the same as silent: the tooltip answers it on hover, and
-    it reads from the saved settings rather than the dropdown, which can be
-    sitting on a selection the user never saved."""
-    assert "$('aiopen').title" in SCRIPT
+    """Quiet is not the same as silent: the "using <model>" tag names the
+    planner and opens AI settings on click, and it reads from the saved
+    settings rather than the dropdown, which can be sitting on a selection the
+    user never saved."""
+    assert "aiModal(true)" in SCRIPT and "el.onclick" in SCRIPT
     load = SCRIPT.split("async function loadAiSettings()")[1].split("\n}")[0]
     assert "aiGear(d.settings.backend" in load
 
@@ -158,10 +144,13 @@ def test_the_warning_is_as_loud_as_the_active_scene():
 
 
 def test_it_says_what_it_means():
-    """Colour says something is different. It does not say what. The badge
-    names it, in the corner where the active scene keeps its dot."""
+    """A change is shown as an amber dot in the corner the active scene keeps
+    its dot, not a text label: the compact one-line scene cell has no room for
+    a label (it overlapped the name), and the WHAT WILL CHANGE panel already
+    names which scenes."""
     badge = UI.split(".sc.willchange::after {")[1].split("}")[0]
-    assert "WILL CHANGE" in badge
+    assert "content: ''" in badge and "border-radius: 50%" in badge
+    assert "WILL CHANGE" not in badge
 
 
 def test_the_badge_does_not_collide_with_the_active_dot():

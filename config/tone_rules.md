@@ -55,6 +55,25 @@ the tool got it wrong once.
   (near 0 or positive), not cut. Do not cut the level of an already-weak scene.
 - Balance for equal perceived loudness: rhythm scenes within about 1 dB of each
   other, leads 2-3 dB above, cleans matched so they sit in the same mix.
+- LOUDNESS IS THE WHOLE GAIN STAGE, NOT JUST THE AMP LEVEL KNOB. A scene's
+  perceived volume is the sum of: amp LEVEL, amp MASTER, any engaged drive/boost
+  LEVEL, and every engaged parallel wet block. Balance ALL of it across scenes,
+  not the amp level alone.
+- PARALLEL WET BLOCKS SUM. When several time effects (multitap, delay, reverb,
+  chorus) run in PARALLEL into a mixer, their outputs ADD. Four parallel wets
+  near unity is roughly +6 dB on top of the dry - enough to make a scene jump
+  out. Keep each parallel wet's mix/level modest, and drop the amp LEVEL to
+  compensate when you engage several at once.
+- A BOOST STACKS ON THE AMP. Engaging a drive/boost (a high drive LEVEL) adds
+  gain ON TOP of the amp. A big boost plus a hot MASTER plus stacked parallel
+  wets is how a lead scene comes out painfully loud. If you engage a boost or
+  extra wets on a lead, trim the amp LEVEL/MASTER so the scene still lands within
+  2-3 dB of the rhythm scenes.
+- HARD CAP: no scene may be more than ~4 dB louder than the preset's rhythm
+  scenes. A lead that stacks a boost and several parallel wets WILL exceed this
+  unless you cut its level to compensate. Learned 2026-09-04 from a Richie
+  Sambora build whose two lead scenes (a boost + master 6 + four parallel wets
+  engaged) came out "extra super loud" while the cleans sat far below.
 - Say the level reasoning in the reasons.
 
 ## 5. Effects follow the artist's actual style, not a rigid rule

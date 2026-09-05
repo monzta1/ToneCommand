@@ -17,6 +17,24 @@ Notable changes to ToneCommand. Dates are UTC.
   reference preset onto the current build wire for wire. Both copy settings and
   bypass; the signal-chain order is not moved yet (owner, 2026-09-04).
 
+### Changed
+- **A cleaner, less cluttered UI for a non-technical player.** Scene names now
+  read in full across a full-width row with the signal chain stacked below and
+  hidden by default (a "View signal chain" button reveals it). Less jargon (the
+  chain legend and prompt hint are plain language), crisp SVG icons in the
+  footer instead of emoji, a single settings gear (AI settings open from the
+  "using <model>" tag), sliders gain -/+ nudge buttons and open expanded for
+  precise tweaks, and the conversation starts fresh on every reload. Several
+  overlaps were fixed (a scene "will change" marker is now a dot, not text over
+  the name; the confirm-stage warning no longer overlaps its checkbox; the
+  build-progress panel no longer shows the prompt through it) (owner,
+  2026-09-04).
+- **A loudness guardrail in the tone rulebook.** Perceived scene volume is the
+  whole gain stage, not just the amp level: parallel wet blocks sum, a boost
+  stacks on the amp, and no scene may be more than ~4 dB louder than the rhythm
+  scenes. Came from a build whose two lead scenes stacked a boost and four
+  parallel wets and came out painfully loud (owner, 2026-09-04).
+
 ### Added
 - **Both new features now have a natural-language front door, tested end to
   end on hardware.** Reorder and scene-aware copy existed only as API

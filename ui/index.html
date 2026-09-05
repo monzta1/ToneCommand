@@ -157,19 +157,30 @@
      this is the one control that gets used while playing. */
   .scenes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; }
   .sc {
-    /* min-width:0 or the grid will not shrink the button below its own text,
-       so the ellipsis below never fires and the name escapes the box */
+    /* Number and name inline on one row: the context band is a fixed 152px,
+       and stacking the name under a big number needed ~36px a cell, which
+       overflowed once there were four rows. Inline keeps each cell short
+       enough that all eight fit, and hands the name the rest of the width so
+       it reads in full. min-width:0 lets the cell shrink so the ellipsis can
+       fire instead of the name escaping the box. */
     position: relative; cursor: pointer; text-align: left; min-width: 0;
-    padding: 11px 11px 10px; border: 1px solid #241a3d; border-radius: 4px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; border: 1px solid #241a3d; border-radius: 5px;
     background: linear-gradient(180deg, rgba(185,140,255,0.05), rgba(0,0,0,0.4));
     color: var(--muted); font-family: inherit; font-size: var(--fs-hint);
-    letter-spacing: 0.06em; transition: border-color .12s, color .12s, box-shadow .12s;
+    letter-spacing: 0.04em; transition: border-color .12s, color .12s, box-shadow .12s;
   }
   .sc:hover:not(:disabled) { border-color: var(--violet-dim); color: var(--text); }
-  .sc .n { display: block; font-size: var(--fs-lead); font-weight: 600; line-height: 1; }
+  .sc .n { flex: none; min-width: 17px; text-align: center;
+           font-size: var(--fs-lead); font-weight: 700; line-height: 1; opacity: 0.9; }
   .sc .nm {
-    display: block; margin-top: 6px; font-size: var(--fs-hint); color: var(--muted);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    /* Inline beside the number, one line, the rest of the cell width its own.
+       Full scene name; ellipsis + tooltip only for the rare name too long for
+       even the two-column cell. */
+    flex: 1; min-width: 0; margin-top: 0;
+    font-size: var(--fs-hint); color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    letter-spacing: 0.02em; text-transform: none;
   }
   .sc.on {
     border-color: var(--violet); color: var(--violet);
@@ -281,14 +292,14 @@
     animation: willpulse 1.6s ease-in-out infinite;
   }
   .sc.willchange .n, .sc.willchange .nm { color: var(--amber); }
-  /* Colour alone says something is different; it does not say what. The badge
-     names it, in the corner where the active scene keeps its dot, so the two
-     states read as answers to the same question. */
+  /* An amber dot in the same corner the active scene keeps its dot, not a
+     "WILL CHANGE" text label: the compact one-line cell has no room for the
+     label and it overlapped the scene name. The amber cell says something will
+     change; the "WHAT WILL CHANGE" panel names exactly which scenes. */
   .sc.willchange::after {
-    content: 'WILL CHANGE'; position: absolute; top: 6px; right: 7px;
-    font-size: var(--fs-badge); letter-spacing: 0.13em; color: var(--amber);
-    background: rgba(255,180,84,0.14); border: 1px solid rgba(255,180,84,0.45);
-    border-radius: 2px; padding: 2px 4px; line-height: 1; font-weight: 600;
+    content: ''; position: absolute; top: 7px; right: 8px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber); box-shadow: 0 0 10px var(--amber);
   }
   @keyframes willpulse {
     50% { box-shadow: 0 0 8px rgba(255,180,84,0.16), inset 0 0 26px rgba(255,180,84,0.06); }
@@ -642,6 +653,20 @@
 
   /* A real range input: draggable, keyboard reachable, and it arrives with
      the accessibility a div and a mousemove handler would have to reinvent. */
+  /* Slider flanked by - / + nudge buttons: a drag is imprecise on a small
+     slider, so each tap moves exactly one step for fine tuning. */
+  .knobmid { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .knobmid input[type=range] { flex: 1 1 auto; min-width: 0; }
+  .nudge {
+    flex: none; width: 27px; height: 27px; border-radius: 6px;
+    border: 1px solid var(--line); background: rgba(120,180,255,0.05);
+    color: var(--muted); font: inherit; font-size: 17px; line-height: 1;
+    cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; user-select: none;
+  }
+  .nudge:hover { color: var(--cyan); border-color: var(--cyan-dim);
+    background: rgba(47,230,255,0.09); }
+  .nudge:active { transform: translateY(1px); }
   .knob input[type=range] {
     -webkit-appearance: none; appearance: none; width: 100%; height: 16px;
     background: none; cursor: pointer; margin: 0;
@@ -1193,12 +1218,19 @@
 /* The "planning with" line at the top of the COMMAND console. Quiet,
    because it is ambient status, but a button, because reading it and
    wanting to change it are one gesture apart. */
-#aiwho { display: block; width: 100%; text-align: left; margin: 0 0 8px;
-         padding: 0; background: none; border: none; cursor: pointer;
-         font: inherit; font-size: 12px; color: var(--dim, #8a93a6); }
-#aiwho b { color: var(--accent, #6ea8fe); font-weight: 600; }
-#aiwho .chg { opacity: 0.6; text-decoration: underline; margin-left: 6px; }
-#aiwho.needs { color: var(--amber, #e0a83c); }
+/* A quiet "using <model>" tag pinned to the top-right corner of the request
+   section, not a banner across the hero. Absolute so it never pushes the hero
+   around; clickable to open AI settings. */
+#aiwho { position: absolute; top: 12px; right: 16px; z-index: 3;
+         width: auto; margin: 0; padding: 0; text-align: right;
+         background: none; border: none; cursor: pointer; font: inherit;
+         font-size: var(--fs-label); letter-spacing: 0.04em;
+         color: var(--faint, #8a93a6); opacity: 0.75; }
+#aiwho:hover { opacity: 1; }
+#aiwho b { color: var(--muted); font-weight: 600; }
+#aiwho .chg { opacity: 0.7; text-decoration: underline; margin-left: 6px; }
+#aiwho.needs { color: var(--amber, #e0a83c); opacity: 1; }
+#pane-request { position: relative; }
 /* The models, always all of them. See loadAiModels for why the datalist
    alone was not enough. */
 #aimodelpicks { display: flex; flex-wrap: wrap; gap: 6px;
@@ -1661,16 +1693,44 @@
 
   /* Layer 3: live context strip */
   #context {
-    flex: 0 0 152px; margin-bottom: 0; padding: 14px 16px 10px;
-    overflow: hidden; display: flex; flex-direction: column;
+    /* Grows to its content: a short band with just the scene row when the
+       chain is hidden, taller when the chain is revealed below it. */
+    flex: 0 0 auto; margin-bottom: 0; padding: 14px 16px 12px;
+    display: flex; flex-direction: column;
   }
-  .ctxrow { display: flex; gap: 16px; min-height: 0; flex: 1; }
+  /* The signal chain scales to the band. A branched preset (parallel delay,
+     pitch, mixer rows) is tall, and at natural height it and the legend below
+     it fell off the fixed band. Capping the SVG height lets it shrink to fit,
+     letterboxed and centred, so the whole chain and its legend stay visible. */
+  #context svg.grid { max-height: 138px; }
+  #context .pathzone .gridnote {
+    margin-top: 6px; gap: 12px; flex-wrap: nowrap; overflow: hidden;
+  }
+  /* Scenes as a full-width row on top, the signal chain stacked below it, so
+     the scenes use the whole width instead of a cramped left column with dead
+     space beside it. */
+  .ctxrow { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
   #context .scenes {
-    flex: 0 0 396px; display: grid;
-    grid-template-columns: repeat(4, 1fr); grid-auto-rows: 42px; gap: 8px;
-    align-content: start;
+    /* Full-width row of scenes: four across, two rows. Each cell is now wide
+       (~340px) so even long scene names read in full. */
+    flex: 0 0 auto; width: 100%; display: grid;
+    grid-template-columns: repeat(4, 1fr); grid-auto-rows: 44px;
+    gap: 8px; align-content: start;
   }
   .pathzone { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  /* Signal chain collapsed by default: one reveal button centred in the space;
+     open shows the chain + a small "hide" in the legend. */
+  #chainshow { display: none; align-self: center; margin: auto; gap: 9px;
+    align-items: center; padding: 11px 18px; border-radius: 9px;
+    border: 1px solid var(--line); background: rgba(120,180,255,0.03);
+    color: var(--muted); font: inherit; font-size: var(--fs-hint);
+    letter-spacing: 0.08em; cursor: pointer; }
+  #chainshow:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+  #chainshow .cico { font-size: 20px; line-height: 1; }
+  body.chain-hidden #chainshow { display: inline-flex; }
+  body.chain-hidden .pathzone > .gridwrap,
+  body.chain-hidden .pathzone > .gridnote { display: none; }
+  #chainhide { cursor: pointer; }
   .pathzone .gridwrap { flex: 1; overflow: auto hidden; min-height: 0; }
   .pathzone .gridnote { margin-top: 2px; }
 
@@ -1692,8 +1752,62 @@
   }
   @media (max-width: 1279px) {
     #workspace { grid-template-columns: 184px minmax(520px, 1fr) 320px; }
-    #context .scenes { flex-basis: 364px; }
   }
+  /* REQUEST stage has nothing to put in the left nav column but "tell it what
+     you want", so that column is dead space there. Collapse it and give the
+     width to the composer; Plan/Review/Send bring it back with real content. */
+  /* The right rail carries the block inspector and the plan cards. When it has
+     neither - idle, or after a send once the plan is cleared - it is dead space
+     ("nothing on the right"), so drop its whole column. The targetcard and
+     manualcard are always [hidden] now, so :has ignores them. */
+  #rightrail:not(:has(#inspector:not([hidden]))):not(:has(.railcard:not([hidden]))) {
+    display: none;
+  }
+  #workspace:not(:has(#rightrail #inspector:not([hidden]))):not(:has(#rightrail .railcard:not([hidden]))) {
+    grid-template-columns: 224px minmax(560px, 1fr);
+  }
+  /* Request stage: the left nav is empty there too, so collapse it and give the
+     composer the full, centred width; the rail still returns for the inspector
+     or plan cards via the rules above. */
+  body[data-stage="request"] #stagenav { display: none; }
+  body[data-stage="request"] #workspace { grid-template-columns: minmax(560px, 1fr) 356px; }
+  body[data-stage="request"] #workspace:not(:has(#rightrail #inspector:not([hidden]))):not(:has(#rightrail .railcard:not([hidden]))) {
+    grid-template-columns: minmax(560px, 1fr);
+  }
+  /* Idle: a compact centred hero (question + prompt + examples together)
+     rather than a 52vh empty scroll box with the prompt stranded at the far
+     bottom. Once a conversation exists the chat fills and scrolls normally
+     with the composer docked below it. */
+  body.chat-empty #pane-request {
+    justify-content: flex-start; align-items: center;
+    border: none; background: transparent; padding: 8vh 0 0;
+  }
+  body.chat-empty #pane-request #chat {
+    height: auto; min-height: 0; max-height: none; flex: 0 0 auto;
+    width: 100%; margin-bottom: 22px; overflow: visible;
+  }
+  body.chat-empty #pane-request .cempty { flex: 0 0 auto; padding: 0; gap: 22px; }
+  /* Nothing behind the progress panel while a build runs. */
+  body.working-on.chat-empty #pane-request { visibility: hidden; }
+  body.chat-empty #pane-request .cask { font-size: 22px; opacity: 0.92; }
+  body.chat-empty #pane-request .egs { justify-content: center; max-width: 640px; }
+  /* The prompt is the whole point of this screen, so it gets presence: a
+     centred input card rather than a line stranded at the foot of an empty
+     panel. */
+  body.chat-empty #pane-request .composer {
+    max-width: 680px; width: 100%; margin: 26px auto 0; border-top: none;
+    padding: 4px 6px 0;
+  }
+  body.chat-empty #pane-request .promptrow {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel); padding: 14px 16px;
+    box-shadow: 0 2px 24px rgba(0,0,0,0.25);
+  }
+  body.chat-empty #pane-request .promptrow:focus-within {
+    border-color: var(--cyan-dim); box-shadow: 0 0 0 1px var(--cyan-dim),
+      0 2px 28px rgba(47,230,255,0.10);
+  }
+  body.chat-empty #pane-request .composerhint { text-align: center; margin-top: 12px; }
   #stagenav, #rightrail {
     min-height: 0; overflow-y: auto; border: 1px solid var(--line);
     border-radius: 4px; background: var(--panel); padding: 12px;
@@ -1853,7 +1967,14 @@
     color: var(--muted); margin-bottom: 4px; }
   .cfact .cfv { font-size: var(--fs-sub); color: var(--text); }
   .cblast { color: var(--amber); font-size: var(--fs-body);
-    letter-spacing: 0.04em; margin-bottom: 14px; min-height: 1.4em; }
+    letter-spacing: 0.04em; margin-bottom: 14px; min-height: 1.4em;
+    line-height: 1.5; }
+  /* The confirm pane is a flex column; without this its children shrink when
+     the content is tall, and a two-line warning got squeezed to one line and
+     spilled over the checkbox below it. Keep each child at its natural height
+     and let the pane scroll instead of overlapping. */
+  #pane-confirm { overflow-y: auto; }
+  #pane-confirm > * { flex-shrink: 0; }
   .cack { display: flex; gap: 10px; align-items: center;
     font-size: var(--fs-body); color: var(--text); cursor: pointer; }
   .cack input { width: 18px; height: 18px; accent-color: var(--cyan); }
@@ -1928,6 +2049,25 @@
   }
   .shbtn:hover { color: var(--text); border-color: var(--line); }
   .shbtn.on { color: var(--cyan); border-color: var(--cyan-dim); }
+  /* Icon buttons: a glyph, not a word, with the name in the tooltip. Square
+     and quiet until hovered. */
+  .shbtn.ico {
+    width: 46px; height: 40px; padding: 0; letter-spacing: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .shbtn.ico svg { width: 23px; height: 23px; display: block; }
+  .shbtn.ico:hover:not(:disabled) {
+    color: var(--cyan); border-color: var(--cyan-dim);
+    background: rgba(47,230,255,0.06);
+  }
+  .shbtn.ico:disabled { opacity: 0.35; cursor: default; }
+  /* undo is an icon in the shelf now, not the old cyan pill */
+  #shelf #undo.ico { background: transparent; border-color: transparent;
+    color: var(--muted); font-weight: 400; height: 40px; padding: 0; }
+  #shelf #undo.ico:not(:disabled) { color: var(--cyan); }
+  #shelf #undo.ico:disabled { border-color: transparent; }
+  .shbtn.ico .badge { position: absolute; top: 2px; right: 2px; margin: 0;
+    min-width: 14px; font-size: 9px; padding: 0 3px; }
   .shbtn .badge {
     display: inline-block; margin-left: 6px; min-width: 18px;
     text-align: center; border-radius: 2px; padding: 0 4px;
@@ -2028,13 +2168,10 @@
               title="performance lockout: while on, only scene changes reach the FM9">GIG LOCK</button>
       <button class="pill off" id="link" title="click to look for the FM9 again">
         <span class="dot"></span><span id="linktext">LINK</span></button>
-      <button class="gear" id="aiopen" aria-label="settings">
-        <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
-             stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
-             stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.1"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg></button>
+      <!-- The settings gear lives once, in the footer. AI/planner settings are
+           reached by clicking the "using <model>" tag, so a second gear here
+           was a duplicate. -->
+
     </div>
   </header>
 
@@ -2066,13 +2203,17 @@
     <div class="ctxrow">
       <div class="scenes" id="scenes"></div>
       <div class="pathzone">
+        <!-- The signal chain is hidden by default to keep the top clean; this
+             reveals it on a click. -->
+        <button id="chainshow" title="Show the signal chain">
+          <span class="cico">&#9974;</span> View signal chain</button>
         <div class="gridwrap" id="blocks"><span class="hint">awaiting link...</span></div>
         <div class="gridnote">
-          <span class="k"><span class="sw" style="background:var(--cyan)"></span>carrying signal</span>
-          <span class="k"><span class="sw" style="background:#3b5262"></span>not reached</span>
-          <span class="k">dashed = bypassed</span>
-          <span class="k">click a block to open it</span>
-          <button class="k gridzoom" id="gridzoom">EXPAND</button>
+          <span class="k"><span class="sw" style="background:var(--cyan)"></span>on</span>
+          <span class="k"><span class="sw" style="background:#3b5262"></span>off</span>
+          <span class="k">tap a pedal to tweak it</span>
+          <button class="k gridzoom" id="gridzoom" title="Bigger view" aria-label="Bigger view">&#9974;</button>
+          <button class="k" id="chainhide" title="Hide the signal chain">&#10005; hide</button>
           <span class="k" id="gridwhy"></span>
         </div>
       </div>
@@ -2128,7 +2269,7 @@
                       placeholder="Describe the sound, or paste a link..."></textarea>
             <button id="engage">GENERATE PLAN</button>
           </div>
-          <div class="hint composerhint">Enter to generate a plan. Nothing reaches the FM9 until you send.</div>
+          <div class="hint composerhint">Press Enter. Nothing changes on your amp until you say go.</div>
         </div>
         <!-- Source reading is reached through the same prompt. These controls
              retain the established implementation without exposing a second
@@ -2215,11 +2356,16 @@
     <aside id="rightrail">
       <!-- The stage rail: hardware target, blast radius, preflight. -->
       <div id="stagerail">
-        <div class="railcard" id="targetcard">
+        <!-- HARDWARE TARGET and MANUAL CONTROLS lived here but were redundant:
+             the preset and active scene are already in the header and scene
+             rail, and every block in the chain opens its own controls on a
+             click. Kept in the DOM (hidden) so the code that fills targetbody
+             stays valid; the openamp shortcut moves to the empty-state hero. -->
+        <div class="railcard" id="targetcard" hidden>
           <div class="cardtitle">HARDWARE TARGET</div>
           <div class="railbody" id="targetbody">...</div>
         </div>
-        <div class="railcard needs-rig" id="manualcard">
+        <div class="railcard needs-rig" id="manualcard" hidden>
           <div class="cardtitle">MANUAL CONTROLS</div>
           <div class="railbody">Click any block in the signal chain above to
             open its controls: amp and cab, sliders, EQ, effects.
@@ -2281,10 +2427,10 @@
   <!-- LAYER 5: the command shelf. Undo is the most important recovery
        action and never depends on scroll or stage. -->
   <footer id="shelf">
-    <button id="undo" disabled>UNDO</button>
-    <span id="undowhat">nothing to undo yet</span>
+    <button id="undo" class="shbtn ico" title="Undo" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 3 13 9 13"/><path d="M4 13a9 9 0 1 0 2.2-9.4L3 7"/></svg></button>
+    <span id="undowhat" hidden>nothing to undo yet</span>
     <span class="pillwrap">
-      <button class="shbtn" id="shcompare">COMPARE A/B</button>
+      <button class="shbtn" id="shcompare" title="Compare A/B" aria-label="Compare A/B">A / B</button>
       <div class="pop comparepop" id="comparepop" hidden>
         <div class="abrow">
           <span class="lbl">A</span>
@@ -2300,11 +2446,11 @@
       </div>
     </span>
     <span class="spacer"></span>
-    <button class="shbtn" id="shdiag">DIAGNOSTICS<span class="badge" id="diagbadge" hidden></span></button>
-    <button class="shbtn" id="shlib">LIBRARY</button>
-    <button class="shbtn" id="shstore">STORAGE</button>
-    <button class="shbtn" id="shact">ACTIVITY<span class="badge" id="actbadge" hidden></span></button>
-    <button class="shbtn" id="shset">SETTINGS</button>
+    <button class="shbtn ico" id="shdiag" title="Diagnostics" aria-label="Diagnostics"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="badge" id="diagbadge" hidden></span></button>
+    <button class="shbtn ico" id="shlib" title="Library" aria-label="Library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg></button>
+    <button class="shbtn ico" id="shstore" title="Save / Storage" aria-label="Save / Storage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
+    <button class="shbtn ico" id="shact" title="Activity" aria-label="Activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="badge" id="actbadge" hidden></span></button>
+    <button class="shbtn ico" id="shset" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </footer>
 
   <!-- Utility drawers: they support the command loop but are not steps in
@@ -2621,8 +2767,9 @@ function renderScenes(s) {
   box.innerHTML = names.map(sc => {
     const on = sc.number === active ? ' on' : '';
     const warn = affectedScenes.has(sc.number) ? ' willchange' : '';
-    // A scene that did not answer shows its number and nothing else, rather
-    // than a name we cannot back up.
+    // The full scene name; the wider two-column cell has room for it, and the
+    // tooltip carries it in full for the rare name too long even for that. A
+    // scene that did not answer shows its number and nothing else.
     const nm = sc.name ? esc(sc.name) : '&nbsp;';
     return `<button class="sc${on}${warn}" data-scene="${sc.number}" title="${sc.name ? esc(sc.name) : 'scene ' + sc.number}">
               <span class="n">${sc.number}</span><span class="nm">${nm}</span></button>`;
@@ -3284,7 +3431,11 @@ function shortLabel(label) {
   if (!label) return '';
   const m = label.match(/^(.*?) (\d+)$/);
   if (!m) return label;
-  return (SHORT[m[1]] || m[1]) + ' ' + m[2];
+  const name = SHORT[m[1]] || m[1];
+  // Drop a redundant "1": there is only one of its kind, so the number is
+  // noise ("Cab 1" -> "Cab"). A genuine second block keeps its number so the
+  // two stay distinguishable ("Amp 2" stays "Amp 2").
+  return m[2] === '1' ? name : name + ' ' + m[2];
 }
 
 async function loadGrid() {
@@ -4974,9 +5125,13 @@ function knobRow(key, m, value) {
       <span class="v">${value}${unit}</span></div>`;
   }
   return `<div class="knob" data-key="${esc(key)}">${lab}
-    <input type="range" min="${m.min}" max="${m.max}" step="${stepFor(span)}"
-           value="${value}" style="--pct:${pct}%"
-           aria-label="${esc(m.label)}" title="${esc(m.label)}: ${m.min} to ${m.max}">
+    <div class="knobmid">
+      <button class="nudge" data-nudge="-1" tabindex="-1" aria-label="a little less">&minus;</button>
+      <input type="range" min="${m.min}" max="${m.max}" step="${stepFor(span)}"
+             value="${value}" style="--pct:${pct}%"
+             aria-label="${esc(m.label)}" title="${esc(m.label)}: ${m.min} to ${m.max}">
+      <button class="nudge" data-nudge="1" tabindex="-1" aria-label="a little more">+</button>
+    </div>
     ${val}</div>`;
 }
 
@@ -5270,6 +5425,17 @@ function closeGrid() {
 let gridOpen = false;
 
 $('gridzoom').onclick = openGrid;
+// Signal chain is collapsed by default; these reveal/hide it and remember the
+// choice for next time.
+function setChainHidden(hidden) {
+  document.body.classList.toggle('chain-hidden', hidden);
+  try { localStorage.setItem('chainHidden', hidden ? '1' : '0'); } catch (e) {}
+}
+$('chainshow')?.addEventListener('click', () => setChainHidden(false));
+$('chainhide')?.addEventListener('click', () => setChainHidden(true));
+setChainHidden((() => {
+  try { return localStorage.getItem('chainHidden') !== '0'; } catch (e) { return true; }
+})());
 $('gridclose').onclick = closeGrid;
 
 $('gridmodal').addEventListener('click', e => {
@@ -5435,6 +5601,26 @@ eachBox(box => box.addEventListener('click', async e => {
                      param: m.param, value: Number(b.dataset.zero)}, null);
   row.classList.remove('busy');
   b.disabled = false;
+}));
+
+// The - / + buttons nudge the slider one step and commit it, for fine tuning
+// a value a drag cannot land precisely. Goes through the same input/change
+// path a drag uses, so the readout updates and the write is verified alike.
+eachBox(box => box.addEventListener('click', e => {
+  const b = e.target.closest('button.nudge');
+  if (!b) return;
+  const row = b.closest('[data-key]');
+  const el = row?.querySelector('input[type=range]');
+  if (!el || el.disabled) return;
+  const step = Number(el.step) || 1;
+  const min = Number(el.min), max = Number(el.max);
+  let v = Math.max(min, Math.min(max, Number(el.value) + Number(b.dataset.nudge) * step));
+  const dec = (String(step).split('.')[1] || '').length;
+  v = Number(v.toFixed(dec));
+  if (v === Number(el.value)) return;
+  el.value = v;
+  el.dispatchEvent(new Event('input', {bubbles: true}));
+  el.dispatchEvent(new Event('change', {bubbles: true}));
 }));
 
 eachBox(box => box.addEventListener('change', async e => {
@@ -5728,24 +5914,12 @@ function saveChat() {
 }
 
 function loadChat() {
-  try {
-    const raw = localStorage.getItem(CHAT_KEY);
-    if (!raw) return;
-    const d = JSON.parse(raw);
-    // Trust nothing that comes back out of storage: an older version of this
-    // page, or a half-written entry, must not take the panel down with it.
-    if (!d || !Array.isArray(d.log)) return;
-    chatLog = d.log.filter(m => m && typeof m.content === 'string'
-                             && ['user', 'assistant', 'note'].includes(m.role));
-    chatReady = !!d.ready;
-    chatRequest = typeof d.request === 'string' ? d.request : '';
-    chatName = typeof d.name === 'string' ? d.name : '';
-    chatScenes = Array.isArray(d.scenes) ? d.scenes : [];
-    chatNeedsAnswer = !!d.needsAnswer;
-  } catch (e) {
-    chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
-    chatNeedsAnswer = false;
-  }
+  // Every load starts fresh: a refresh clears the conversation rather than
+  // restoring the last exchange, so the player always begins with a clean
+  // slate instead of a stale one.
+  try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing stored */ }
+  chatLog = []; chatReady = false; chatRequest = ''; chatName = '';
+  chatScenes = []; chatNeedsAnswer = false;
 }
 
 // What the wait actually looks like from here. Three different situations
@@ -5828,6 +6002,10 @@ function renderWorking() {
   const busy = chatBusy || planSending || !!srcWork;
   const on = busy || !!workDone;
   el.hidden = !on;
+  // While work is running, the fixed progress panel is the focus. Hide the
+  // idle request hero behind it so its placeholder text does not show through
+  // or beside the panel (the overlap that read as a broken screen).
+  document.body.classList.toggle('working-on', busy);
   el.classList.toggle('open', on && workOpen);
   if (!on) return;
   // Built ONCE and updated in place. Rebuilding innerHTML every second
@@ -5951,6 +6129,10 @@ function renderChat() {
   // state and the exchange.
   const feed = $('cscroll');
   $('cempty').hidden = !!chatLog.length;
+  // Idle vs in-conversation drive different layouts: idle centres a compact
+  // hero (question + prompt together), a conversation fills and scrolls with
+  // the composer docked at the bottom.
+  document.body.classList.toggle('chat-empty', !chatLog.length);
   if (!chatLog.length) { feed.innerHTML = ''; saveChat(); return; }
   feed.innerHTML = chatLog.map(m =>
     m.role === 'note'
@@ -7065,11 +7247,13 @@ function aiGear(backend) {
   // which named service it is, so say that instead when it matches one.
   const svc = b && (b.backend === 'openai' || b.backend === '')
     ? aiPresetFor(aiSavedBaseUrl || aiEnvBaseUrl) : null;
-  const name = svc ? svc.name : (b ? b.short : '');
-  $('aiopen').classList.toggle('needs', broken);
-  $('aiopen').title = broken
-    ? `AI settings. ${name} is not ready: ${b.needs || b.why}.`
-    : `AI settings. Planning with ${name || 'the first backend available'}.`;
+  // The header gear is gone; the "using <model>" tag (renderAiWho) is where a
+  // broken backend now shows, so this only needs to keep that tag honest.
+  const el = $('aiwho');
+  if (el) {
+    el.classList.toggle('needs', broken);
+    if (!broken && name) el.title = `Planning with ${name}. Click to change.`;
+  }
 }
 
 function aiModal(open) {
@@ -7117,10 +7301,13 @@ function renderAiWho(p) {
   if (!p || (!p.service && !p.problem)) { el.hidden = true; return; }
   el.hidden = false;
   el.classList.toggle('needs', !!p.problem);
+  // Kept out of the way: a small "using <model>" tag on the side, not a
+  // banner across the hero. Clicking it still opens AI settings.
   el.innerHTML = p.problem
-    ? `${esc(p.problem)}<span class="chg">open AI settings</span>`
-    : `Tone planner ready with <b>${esc(p.service)}</b>`
-      + `<span class="chg">change</span>`;
+    ? `${esc(p.problem)}<span class="chg">settings</span>`
+    : `using <b>${esc(p.model || p.service)}</b>`;
+  el.title = p.problem ? p.problem
+    : `Planner: ${p.service}${p.model ? ' · ' + p.model : ''}. Click to change.`;
   el.onclick = () => aiModal(true);
 }
 
@@ -7603,7 +7790,6 @@ $('chat').addEventListener('scroll', () => {
 });
 $('apply').onclick = apply;
 
-$('aiopen').onclick = () => aiModal(true);
 $('aisave').onclick = () => saveAiSettings();
 $('aiclearkey').onclick = () => saveAiSettings({clearKey: true});
 // Typing an address by hand still lights the matching chip, or clears it.
@@ -7695,6 +7881,10 @@ function setStage(name, force) {
   if (!force && !canEnter(name)) return;
   if (stage === 'confirm' && name !== 'confirm') disarmSend();
   stage = name;
+  // Drives layout per stage in CSS: the left nav column is empty in Request
+  // (just "tell it what you want"), so that stage collapses it and lets the
+  // composer take the width. Later stages bring it back with real content.
+  document.body.dataset.stage = name;
   for (const s of STAGES) {
     $('pane-' + s).hidden = s !== name;
     const nav = $('nav-' + s);
@@ -8083,6 +8273,11 @@ const INSPECT_PANEL = {
 function selectBlock(fam) {
   $('stagerail').hidden = true;
   $('inspector').hidden = false;
+  // Open roomy by default: the sliders are easier to set precisely with the
+  // controls expanded, so a block opens wide and can be collapsed if wanted.
+  $('inspector').classList.add('wide');
+  $('inspexpand').classList.add('on');
+  $('inspexpand').textContent = 'COLLAPSE';
   // The player's name for the block, not the wire family: DISTORT is an
   // amp on every screen a guitarist reads.
   const label = GROUP_NAMES[String(fam || '').toUpperCase()] || fam || 'BLOCK';
