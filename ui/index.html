@@ -2082,44 +2082,22 @@
   .shbtn.on { color: var(--cyan); border-color: var(--cyan-dim); }
   /* Icon buttons: a glyph, not a word, with the name in the tooltip. Square
      and quiet until hovered. */
-  /* Dock-style tiles: big, colourful, glossy rounded squares like the macOS
-     Dock, each with its own gradient and a white glyph. The ::before is the
-     top gloss highlight; the box-shadow gives depth and an inset top edge. */
+  /* Big, high-res, crisp icons that fit the app's own look - not glossy macOS
+     app tiles. Same larger size, clean line glyphs, a subtle rounded hover
+     surface, theme colour on hover. */
   .shbtn.ico {
-    width: 48px; height: 48px; padding: 0; letter-spacing: 0; border: none;
-    border-radius: 13px; position: relative;
-    display: inline-flex; align-items: center; justify-content: center;
-    color: #fff; background: linear-gradient(180deg, #8a94a6, #5b6472);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.12) inset,
-      0 -6px 12px rgba(0,0,0,0.28) inset;
-    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    width: 46px; height: 46px; padding: 0; letter-spacing: 0; border: none;
+    border-radius: 10px; position: relative; background: transparent;
+    color: var(--muted); display: inline-flex; align-items: center;
+    justify-content: center; transition: color .12s, background .12s, transform .12s;
   }
-  .shbtn.ico::before {
-    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 52%;
-    border-radius: 13px 13px 40% 40% / 13px 13px 22px 22px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.38), rgba(255,255,255,0));
-    pointer-events: none;
-  }
-  .shbtn.ico svg { width: 26px; height: 26px; display: block; position: relative;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
-  .shbtn.ico:hover:not(:disabled) {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 18px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.18) inset;
-    filter: saturate(1.15) brightness(1.06);
-  }
-  .shbtn.ico:active:not(:disabled) { transform: translateY(-1px); }
-  .shbtn.ico:disabled { opacity: 0.4; cursor: default; filter: grayscale(0.4); }
-  /* per-icon colours, in dock spirit */
-  #shelf #undo.ico { background: linear-gradient(180deg, #5aa9ff, #1f6fe0); }
-  #shcompare { background: linear-gradient(180deg, #4fd6e0, #12a0b8); }
-  #shmanual  { background: linear-gradient(180deg, #b892ff, #6c4dff); }
-  #shdiag { background: linear-gradient(180deg, #43e08a, #14a862); }
-  #shlib  { background: linear-gradient(180deg, #ffc24a, #f2860a); }
-  #shstore{ background: linear-gradient(180deg, #59cbfa, #0a84d8); }
-  #shact  { background: linear-gradient(180deg, #ff7a72, #e23a3a); }
-  #shset  { background: linear-gradient(180deg, #aab3c2, #6b7480); }
-  .shbtn.ico .abtxt { position: relative; font-size: 16px; font-weight: 700;
-    letter-spacing: 0.02em; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+  .shbtn.ico svg { width: 27px; height: 27px; display: block;
+    shape-rendering: geometricPrecision; }
+  .shbtn.ico:hover:not(:disabled) { color: var(--cyan);
+    background: rgba(47,230,255,0.09); }
+  .shbtn.ico:active:not(:disabled) { transform: translateY(1px); }
+  .shbtn.ico:disabled { opacity: 0.4; cursor: default; }
+  .shbtn.ico .abtxt { font-size: 16px; font-weight: 700; letter-spacing: 0.03em; }
   /* Manual mode: the block controls take over most of the screen for hands-on
      tweaking, with the signal chain kept reachable at the top to switch blocks.
      The inspector's X or Escape closes it. */
@@ -2134,11 +2112,10 @@
   }
   body.manual-mode #inspector .insphead { position: sticky; top: -14px;
     background: var(--panel); padding-top: 6px; z-index: 3; }
-  .shbtn.ico .badge { position: absolute; top: -4px; right: -4px; margin: 0;
-    min-width: 16px; height: 16px; border-radius: 8px; font-size: 10px;
-    padding: 0 4px; line-height: 16px; background: #ff3b30; color: #fff;
-    border: 1.5px solid var(--bg, #0d1214); box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-    z-index: 2; }
+  .shbtn.ico .badge { position: absolute; top: 4px; right: 4px; margin: 0;
+    min-width: 15px; height: 15px; border-radius: 8px; font-size: 10px;
+    padding: 0 4px; line-height: 15px; background: #ff3b30; color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5); z-index: 2; }
   .shbtn .badge {
     display: inline-block; margin-left: 6px; min-width: 18px;
     text-align: center; border-radius: 2px; padding: 0 4px;
