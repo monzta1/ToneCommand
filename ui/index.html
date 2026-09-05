@@ -6025,6 +6025,23 @@ let chatScenes = [];           // and what each scene it sets up is called
 let scenePreview = null;       // agreed scene layout painted into the grid as a preview
 let chatNeedsAnswer = false;    // the planner asked for one missing detail
 let chatBusy = false;          // a turn is in flight
+// The elapsed counter and the "working / still there / stuck" banner are time
+// based, but they only recompute when renderChat runs, which used to be only
+// when a stream token arrived. During the planner's long silent generation no
+// tokens arrive for a minute or more, so the counter FROZE and looked stuck.
+// This ticker re-renders once a second while a turn is in flight, so the count
+// keeps moving and the stuck-detection can fire. It self-stops when idle.
+let chatTicker = null;
+function startChatTicker() {
+  if (chatTicker) return;
+  chatTicker = setInterval(() => {
+    if (chatBusy || planSending) renderChat();
+    else stopChatTicker();
+  }, 1000);
+}
+function stopChatTicker() {
+  if (chatTicker) { clearInterval(chatTicker); chatTicker = null; }
+}
 let chatWorking = '';          // what it is doing, said where you are looking
 let chatStream = '';           // the reply so far, mid-flight
 let chatStarted = 0;           // when this turn began
@@ -6830,6 +6847,7 @@ async function talk() {
   chatReady = false;
   chatBusy = true;
   chatStarted = Date.now();
+  startChatTicker();
   chatStream = '';
   chatAbort = new AbortController();
   renderChat();
@@ -6887,6 +6905,7 @@ async function talk() {
   } finally {
     clearInterval(tick);
     chatBusy = false;
+    stopChatTicker();
     chatStream = '';
     chatAbort = null;
     b.disabled = false;
@@ -6902,6 +6921,7 @@ async function talk() {
 async function streamPlan(payload) {
   chatBusy = true;
   chatStarted = Date.now();
+  startChatTicker();
   chatAlive = Date.now();
   chatLastByte = 0;
   chatStream = '';
@@ -6950,6 +6970,7 @@ async function streamPlan(payload) {
   } finally {
     clearInterval(tick);
     chatBusy = false;
+    stopChatTicker();
     chatBuilding = false;
     chatQueued = '';
     chatAbort = null;
@@ -7743,6 +7764,7 @@ async function apply() {
   // panels down; somebody who has just pressed TRANSMIT is looking at
   // TRANSMIT, and it said nothing at all.
   planSending = true; planSent = 0; planTotal = total;
+  startChatTicker();
   workLog = [];
   const say = (n) => {
     planSent = n;
@@ -7924,6 +7946,7 @@ async function apply() {
   } finally {
     chatWorking = '';
     planSending = false;
+    stopChatTicker();
     renderWorking();
     $('apply').innerHTML = 'SEND TO FM9';
     $('apply').disabled = false; $('discard').disabled = false;
