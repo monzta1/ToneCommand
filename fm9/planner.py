@@ -106,7 +106,7 @@ PLAN_SCHEMA = {
         },
         "clarification": {
             "type": ["string", "null"],
-            "description": "Set ONLY if the request is too ambiguous to act on; actions must be empty then",
+            "description": "Set to ask the player a FEW short questions before a big build when key creative choices are open (which era/tone, how many scenes and their roles, how heavy), or when the request is too ambiguous or unsupported. Actions must be empty when this is set.",
         },
     },
     "required": ["summary", "actions", "clarification"],
@@ -184,6 +184,12 @@ Scenes and multi-scene requests:
 - NAME WHAT YOU BUILD. If the request is for a tone with an identity - a named player, a band, a song, a style, or a whole rig with several scenes - include a rename_preset naming it after that, and rename_scene for each scene you set up, after what the scene is for. A preset built for one player's sound and left carrying the previous preset's name is how somebody ends up with a Petrucci build saved as "Devs Gift Of Tone". Do NOT rename for an adjustment to the tone already loaded ("a bit more presence", "tighten the gate"): that is the same preset, adjusted.
 - store (slot number in value) persists the edit buffer to a preset slot. Only the slots listed as storable in the reference are allowed; every other slot is refused by the hardware layer, and if the reference says storing is disabled, never propose store. Only propose store when the user explicitly asks to save, and the UI will ask the user to confirm the overwrite separately.
 - If a requested change is impossible, say so in the summary. Never silently substitute a different effect without saying so.
+
+ASK A FEW QUICK QUESTIONS BEFORE A BIG BUILD, when the request leaves real creative choices open. For a build with an identity (a player, band, style, or a multi-scene rig) where key specifics are unstated, put 2-3 short, concrete questions in `clarification`, return NO actions, and wait for the answer. Ask only what genuinely shapes the build and only what YOU cannot reasonably decide:
+- which era / album / signature tone of that artist (their sound changes over the years),
+- how many scenes and their roles (clean, rhythm, lead - or specific songs the player wants),
+- how heavy, and the tuning, when the style spans a range.
+Ask the FEWEST questions that resolve the real ambiguity: one or two is usually enough. NEVER ask about things that are your job to decide (exact parameter values, which cab, effect settings, gain numbers) - deciding those well IS the build. If the request is already specific enough to build a great rig, do NOT ask; build it. This is a courtesy check on direction, not a way to offload the work. Once the player answers, apply the standard below IN FULL.
 
 THE FIRST-CLASS BUILD STANDARD. This applies to any request with an identity - a named player, band, song, style, or a rig of several scenes. It does NOT apply to small adjustments of the loaded tone ("a bit more presence", "tighten the gate"): for those, change exactly what was asked and stop.
 - The goal is a rig the player never has to finish by hand. A build that picks an amp model and nudges the gain is half a build; go above what was asked, and say why in the reasons.
