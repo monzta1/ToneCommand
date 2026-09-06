@@ -65,6 +65,35 @@ def test_version_carries_a_boot_token(monkeypatch):
     assert d.get("boot"), "the browser needs a boot token to detect a restart"
 
 
+def test_a_broken_new_version_is_reverted_not_shipped(monkeypatch):
+    """The core safety promise: a release that does not import must never take
+    the app down. It is reverted, and no restart is offered."""
+    monkeypatch.setattr(updates, "can_auto_update", lambda root: (True, ""))
+    seen = []
+
+    class R:
+        def __init__(self, rc=0, out="", err=""):
+            self.returncode, self.stdout, self.stderr = rc, out, err
+
+    def fake_run(args, **k):
+        seen.append(list(args))
+        joined = " ".join(str(a) for a in args)
+        if "rev-parse" in args:
+            return R(0, "oldsha")
+        if "pull" in args:
+            return R(0)
+        if "pip" in joined and "install" in args:
+            return R(0)
+        if "-c" in args and "import server" in joined:
+            return R(1, "", "SyntaxError: broken release")
+        return R(0)  # git reset --hard, etc.
+    monkeypatch.setattr(updates.subprocess, "run", fake_run)
+    res = updates.run_update(Path("."))
+    assert res["ok"] is False and not res.get("restart_required")
+    assert any("reset" in c and "--hard" in c for c in seen), \
+        "a broken update must be reverted with git reset --hard"
+
+
 def test_a_successful_update_applies_then_restarts(monkeypatch):
     monkeypatch.setattr(updates, "run_update",
                         lambda root: {"ok": True, "restart_required": True,

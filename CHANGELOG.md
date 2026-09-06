@@ -2,6 +2,17 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## 1.2.2 (2026-09-06)
+
+### Changed
+- **A bad release can no longer break the updater.** Before it will restart, an
+  update now proves the new code actually loads (imports and builds the app) in
+  a throwaway check. If the pull, the reinstall, or that check fails, the
+  checkout is reverted to the version that was already running and the failure
+  is reported, so the working server is never stopped for code that has not been
+  shown to start. If a restart somehow does not come back, the page shows a
+  plain recovery step instead of a blank error (owner, 2026-09-06).
+
 ## 1.2.1 (2026-09-06)
 
 ### Changed

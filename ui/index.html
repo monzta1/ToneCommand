@@ -5008,8 +5008,16 @@ async function waitForRestart(before) {
       }
     } catch (e) { /* mid-restart, keep polling */ }
   }
-  updProgress(100, 'Update applied. Reload the page if it does not refresh itself.');
-  setTimeout(() => location.reload(), 1500);
+  // Never saw a fresh process in time. If the server is up after all, reload;
+  // otherwise leave clear recovery guidance, never a blank connection error.
+  try {
+    await fetch('/api/version', {cache: 'no-store'});
+    location.reload();
+  } catch (e) {
+    updProgress(100, 'The update finished but the app did not come back on its '
+      + 'own. Start it again in your terminal with: tonecommand');
+    updating = false; updButtons(false);
+  }
 }
 $('checkupd').onclick = checkUpdate;
 $('updnow').onclick = runUpdate;

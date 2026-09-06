@@ -146,31 +146,76 @@ def can_auto_update(root: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _git(root: Path, *args, timeout: int = 30):
+    return subprocess.run(["git", "-C", str(root), *args],
+                          capture_output=True, text=True, timeout=timeout)
+
+
+def _revert(root: Path, commit: str) -> None:
+    """Put the checkout back exactly where it was, so a failed update leaves the
+    working version intact on disk rather than a half-applied one."""
+    if not commit:
+        return
+    try:
+        _git(root, "reset", "--hard", commit)
+    except Exception:
+        pass
+
+
 def run_update(root: Path) -> dict:
-    """Pull and reinstall, in place. Guarded by can_auto_update. Never restarts
-    the process: returns restart_required so the app can ask instead of yanking
-    a live session. Never raises."""
+    """Pull, reinstall, and PROVE the new code loads before the app will restart
+    into it. Guarded by can_auto_update. Never restarts the process itself.
+    Never raises.
+
+    The safety guarantee for the player: any failure anywhere (pull, reinstall,
+    or the new code not importing) reverts the checkout to the version that was
+    already running and reports it. A broken release can never take the app
+    down, because the working server is never stopped for code that has not been
+    shown to start.
+    """
     ok, why = can_auto_update(root)
     if not ok:
         return {"ok": False, "detail": why, "restart_required": False}
+    old = ""
     try:
-        pull = subprocess.run(["git", "-C", str(root), "pull", "--ff-only"],
-                              capture_output=True, text=True, timeout=120)
+        old = _git(root, "rev-parse", "HEAD", timeout=8).stdout.strip()
+        pull = _git(root, "pull", "--ff-only", timeout=120)
         if pull.returncode != 0:
             return {"ok": False, "restart_required": False,
-                    "detail": f"git pull failed: "
+                    "detail": f"git pull failed, nothing changed: "
                               f"{(pull.stderr or pull.stdout).strip()[:200]}"}
         inst = subprocess.run([sys.executable, "-m", "pip", "install", "-e", "."],
                               cwd=str(root), capture_output=True, text=True,
                               timeout=600)
         if inst.returncode != 0:
+            _revert(root, old)
             return {"ok": False, "restart_required": False,
-                    "detail": f"reinstall failed: {(inst.stderr or '').strip()[:200]}"}
+                    "detail": "reinstall failed, so the update was reverted and "
+                              "nothing changed. Your current version keeps running."}
+        # The new code must import and build the app, or the app never restarts
+        # into it. This is the guarantee that a bad release cannot brick the
+        # update: the running server keeps serving, and the checkout is reverted.
+        smoke = subprocess.run(
+            [sys.executable, "-c", "import server; assert server.app is not None"],
+            cwd=str(root), capture_output=True, text=True, timeout=90)
+        if smoke.returncode != 0:
+            _revert(root, old)
+            return {"ok": False, "restart_required": False,
+                    "detail": "the new version did not load, so the update was "
+                              "reverted and nothing changed. Your current version "
+                              "keeps running."}
         return {"ok": True, "restart_required": True,
-                "detail": "Updated. Restart ToneCommand to finish."}
+                "detail": "Updated. Restarting ToneCommand..."}
     except subprocess.TimeoutExpired:
+        _revert(root, old)
         return {"ok": False, "restart_required": False,
-                "detail": "the update took too long; run git pull yourself"}
+                "detail": "the update took too long and was reverted; nothing "
+                          "changed. Try again, or run git pull yourself."}
+    except Exception as exc:
+        _revert(root, old)
+        return {"ok": False, "restart_required": False,
+                "detail": f"the update could not complete and was reverted "
+                          f"({str(exc)[:120]}). Nothing changed."}
 
 
 def restart_process(root: Path, close_hook=None) -> None:
