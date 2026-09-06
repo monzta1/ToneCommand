@@ -3166,6 +3166,24 @@
     .stgline { width: 18px; margin-left: 2px; margin-right: 2px; }
   }
 
+  /* ---- Update notice (notify + one-click update) ---- */
+  #updbanner {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap; padding: 9px 18px; color: var(--text);
+    font-size: var(--fs-hint);
+    background: linear-gradient(180deg, rgba(255,180,84,0.14), rgba(255,180,84,0.05));
+    border-bottom: 1px solid rgba(255,180,84,0.4);
+    box-shadow: var(--bevel);
+  }
+  #updbanner .updtext { color: var(--amber); letter-spacing: 0.04em; }
+  #updbanner #updnotes { color: var(--cyan); }
+  #updbanner #upddismiss { margin-left: auto; }
+  #updbanner .updbox {
+    flex-basis: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 6px;
+    background: #060c14; border: 1px solid var(--line); color: var(--text);
+    font-size: var(--fs-hint); white-space: pre-wrap;
+  }
+
 </style>
   <link rel="icon" type="image/png" href="/logo.png">
 </head>
@@ -3221,6 +3239,18 @@
 
     </div>
   </header>
+
+  <!-- A quiet notice when a newer release exists. Notify + one-click update
+       only: the app never pulls or restarts on its own. -->
+  <div id="updbanner" hidden>
+    <span class="updtext" id="updtext"></span>
+    <a id="updnotes" href="#" target="_blank" rel="noopener">release notes</a>
+    <button class="small" id="updcmds">HOW TO UPDATE</button>
+    <button class="small armed" id="updnow" hidden>UPDATE &amp; RESTART</button>
+    <button class="small" id="upddismiss" title="dismiss">&#10005;</button>
+    <div class="updbox" id="updcmdbox" hidden></div>
+    <div class="updbox" id="updresult" hidden></div>
+  </div>
 
   <!-- LAYER 2: the five-stage command rail. The machine may propose; the
        human reviews, confirms, and sends. Only current or completed stages
@@ -3684,6 +3714,14 @@
           </div>
           <span class="hint" style="margin:0">Reduced motion follows the
             operating system setting.</span>
+        </div>
+      </div>
+
+      <div class="console" data-nofold data-label="ABOUT">
+        <div class="hint" id="aboutver">ToneCommand</div>
+        <div class="saverow">
+          <button class="small" id="checkupd">CHECK FOR UPDATES</button>
+          <span class="hint" style="margin:0" id="checkupdout"></span>
         </div>
       </div>
     </div>
@@ -4853,6 +4891,61 @@ async function watchLink() {
   }
 }
 watchLink();
+
+// --- Version and updates: show what is running, notify on a newer release,
+// and (never on its own) pull + reinstall on one click. ---
+let updDismissed = false;
+function updCmdText(d) {
+  const isWin = /win/i.test(navigator.platform) || /windows/i.test(navigator.userAgent);
+  return ((isWin ? d.commands_windows : d.commands) || []).join('\n');
+}
+function renderVersion(d) {
+  if (!d) return;
+  $('aboutver').textContent = `ToneCommand ${d.current || '?'}`
+    + (d.update_available ? ` (latest ${d.latest})` : ' (up to date)');
+  const b = $('updbanner');
+  if (!d.update_available || updDismissed) { b.hidden = true; return; }
+  $('updtext').textContent = `ToneCommand ${d.latest} is available (you have ${d.current}).`;
+  if (d.notes_url) { $('updnotes').href = d.notes_url; $('updnotes').hidden = false; }
+  else { $('updnotes').hidden = true; }
+  $('updnow').hidden = !d.can_update;   // only offered on a clean main checkout
+  $('updcmdbox').textContent = updCmdText(d);
+  b.hidden = false;
+}
+async function loadVersion() {
+  try { renderVersion(await (await fetch('/api/version')).json()); } catch (e) {}
+}
+async function checkUpdate() {
+  $('checkupdout').textContent = 'checking...';
+  try {
+    const d = await (await fetch('/api/version/check', {method: 'POST'})).json();
+    $('checkupdout').textContent = d.update_available
+      ? `${d.latest} available` : `up to date (${d.current})`;
+    await loadVersion();
+  } catch (e) { $('checkupdout').textContent = 'could not reach GitHub'; }
+}
+async function runUpdate() {
+  const btn = $('updnow');
+  btn.disabled = true; btn.textContent = 'UPDATING…';
+  $('updresult').hidden = false;
+  $('updresult').textContent = 'Pulling and reinstalling…';
+  try {
+    const d = await (await fetch('/api/update', {method: 'POST'})).json();
+    $('updresult').textContent = d.detail || (d.ok ? 'Updated.' : 'Update failed.');
+    if (d.ok && d.restart_required) {
+      $('updresult').textContent += ' Quit and relaunch ToneCommand to finish.';
+      btn.hidden = true;
+    } else { btn.disabled = false; btn.textContent = 'UPDATE & RESTART'; }
+  } catch (e) {
+    $('updresult').textContent = 'Update failed. Run git pull yourself.';
+    btn.disabled = false; btn.textContent = 'UPDATE & RESTART';
+  }
+}
+$('checkupd').onclick = checkUpdate;
+$('updnow').onclick = runUpdate;
+$('updcmds').onclick = () => { const x = $('updcmdbox'); x.hidden = !x.hidden; };
+$('upddismiss').onclick = () => { updDismissed = true; $('updbanner').hidden = true; };
+loadVersion();
 // Answered from its own endpoint once at startup, so the pill is truthful
 // before the first full state poll lands (and with the rig unplugged).
 (async () => {

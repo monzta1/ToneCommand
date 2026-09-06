@@ -3709,6 +3709,53 @@ def api_gig_state():
     return {"gig_mode": _gig_mode["on"]}
 
 
+@app.get("/api/version")
+def api_version():
+    """The running version, the newest GitHub release (cached, silent offline),
+    and whether the one-click updater may apply it here."""
+    from fm9 import updates as _updates
+    cur = _updates.current_version()
+    latest = _updates.latest_release(ROOT)
+    st = _updates.repo_state(ROOT)
+    avail = bool(latest) and _updates.is_newer(latest["version"], cur)
+    can, why = _updates.can_auto_update(ROOT)
+    return {
+        "current": cur,
+        "latest": (latest or {}).get("version"),
+        "update_available": avail,
+        "notes_url": (latest or {}).get("url"),
+        "git": st["git"], "branch": st["branch"], "clean": st["clean"],
+        "can_update": bool(can and avail), "why": why,
+        "commands": _updates.upgrade_commands(),
+        "commands_windows": _updates.upgrade_commands("windows"),
+    }
+
+
+@app.post("/api/version/check")
+def api_version_check():
+    """A manual re-check that bypasses the six-hour cache."""
+    from fm9 import updates as _updates
+    latest = _updates.latest_release(ROOT, force=True)
+    cur = _updates.current_version()
+    return {"current": cur, "latest": (latest or {}).get("version"),
+            "update_available": bool(latest) and _updates.is_newer(
+                latest["version"], cur),
+            "notes_url": (latest or {}).get("url")}
+
+
+@app.post("/api/update")
+def api_update():
+    """Pull and reinstall in place. Blocked in gig mode; never restarts the
+    process itself. The response says whether a restart is now needed."""
+    from fm9 import updates as _updates
+    if _gig_mode["on"]:
+        return JSONResponse(
+            {"ok": False, "detail": "gig lock is on; updating is disabled mid-set",
+             "restart_required": False}, status_code=423)
+    result = _updates.run_update(ROOT)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409)
+
+
 @app.get("/api/ai-settings")
 def api_ai_settings_state():
     """The saved planner choice, plus what this host can actually run.

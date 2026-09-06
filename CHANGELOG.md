@@ -2,6 +2,19 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## Unreleased
+
+### Added
+- **Version awareness and one-click updates.** Settings shows the running
+  version and a CHECK FOR UPDATES button. On launch the app asks GitHub for the
+  latest release (cached, silent when offline) and, when it is behind, shows a
+  banner with the new version, a release-notes link, and the exact upgrade
+  commands for the player's OS. On a clean checkout on the main branch it also
+  offers a one-click UPDATE button that runs `git pull` and the reinstall for
+  you. It never pulls or restarts on its own, is blocked during gig lock, and
+  refuses a checkout with local changes or on another branch, so a live FM9
+  session is never yanked out from under you (owner, 2026-09-06).
+
 ## 1.1.0 (2026-09-06)
 
 A full visual redesign of the interface, and the review stage is now editable.
