@@ -4925,6 +4925,16 @@ function updProgress(pct, text) {
     el.hidden = !text; el.textContent = text || '';
   });
 }
+// The update button is always shown once a newer release exists. It is only
+// clickable on a clean main checkout; otherwise it is disabled and its tooltip
+// says why (so it never silently vanishes and confuses the player).
+function setUpdBtn(btn, d) {
+  if (!btn) return;
+  btn.hidden = false;
+  btn.disabled = !d.can_update;
+  btn.title = d.can_update ? 'Update and restart, no terminal needed'
+                           : (d.why || 'Update with the commands shown');
+}
 function renderVersion(d) {
   if (!d) return;
   bootId = d.boot || bootId;
@@ -4933,10 +4943,11 @@ function renderVersion(d) {
   // Settings ABOUT: the same update controls as the banner, in place.
   const set = $('aboutupd');
   if (d.update_available) {
-    $('aboutupdmsg').textContent = `Version ${d.latest} is available.`;
+    $('aboutupdmsg').textContent = `Version ${d.latest} is available.`
+      + (d.can_update ? '' : ` (one-click update unavailable: ${d.why})`);
     if (d.notes_url) { $('setupdnotes').href = d.notes_url; $('setupdnotes').hidden = false; }
     else { $('setupdnotes').hidden = true; }
-    $('setupdnow').hidden = !d.can_update;
+    setUpdBtn($('setupdnow'), d);
     set.hidden = false;
   } else { set.hidden = true; }
   // Top banner.
@@ -4945,7 +4956,7 @@ function renderVersion(d) {
   $('updtext').textContent = `ToneCommand ${d.latest} is available (you have ${d.current}).`;
   if (d.notes_url) { $('updnotes').href = d.notes_url; $('updnotes').hidden = false; }
   else { $('updnotes').hidden = true; }
-  $('updnow').hidden = !d.can_update;   // only offered on a clean main checkout
+  setUpdBtn($('updnow'), d);   // always shown; disabled + reason when it cannot auto-update here
   $('updcmdbox').textContent = updCmdText(d);
   b.hidden = false;
 }
