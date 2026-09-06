@@ -171,3 +171,47 @@ def run_update(root: Path) -> dict:
     except subprocess.TimeoutExpired:
         return {"ok": False, "restart_required": False,
                 "detail": "the update took too long; run git pull yourself"}
+
+
+def restart_process(root: Path, close_hook=None) -> None:
+    """Relaunch the server in place so new code loads, with nothing for the
+    player to do.
+
+    The safe sequence, in order:
+    1. Spawn a DETACHED relauncher that waits for this server's port to free,
+       then starts a fresh one. It outlives this process on purpose.
+    2. Run close_hook to release the FM9's CoreMIDI port cleanly, so the restart
+       never leaves a poisoned port behind (the one hard rule for this tool).
+    3. SIGTERM ourselves for uvicorn's graceful shutdown. Never a hard kill,
+       and never os.execv, which would inherit the listening socket and fail to
+       rebind. The detached relauncher binds the freed port and reconnects.
+    """
+    import os
+    import signal
+    py = sys.executable
+    relaunch = (
+        "import time, socket, subprocess\n"
+        "root = " + repr(str(root)) + "\n"
+        "py = " + repr(py) + "\n"
+        "def bound():\n"
+        "    s = socket.socket()\n"
+        "    try:\n"
+        "        s.connect(('127.0.0.1', 8909)); s.close(); return True\n"
+        "    except OSError:\n"
+        "        return False\n"
+        "for _ in range(240):\n"          # wait up to 2 minutes for the port
+        "    if not bound(): break\n"
+        "    time.sleep(0.5)\n"
+        "subprocess.Popen([py, '-c', 'from server import main; main()'], cwd=root)\n"
+    )
+    try:
+        subprocess.Popen([py, "-c", relaunch], cwd=str(root),
+                         start_new_session=True)
+    except Exception:
+        return  # could not spawn the relauncher; leave the server running
+    try:
+        if close_hook:
+            close_hook()
+    except Exception:
+        pass
+    os.kill(os.getpid(), signal.SIGTERM)

@@ -59,6 +59,32 @@ def test_update_is_blocked_during_a_gig(monkeypatch):
     monkeypatch.setitem(server._gig_mode, "on", False)
 
 
+def test_version_carries_a_boot_token(monkeypatch):
+    monkeypatch.setattr(updates, "latest_release", lambda *a, **k: None)
+    d = TestClient(server.app).get("/api/version").json()
+    assert d.get("boot"), "the browser needs a boot token to detect a restart"
+
+
+def test_a_successful_update_applies_then_restarts(monkeypatch):
+    monkeypatch.setattr(updates, "run_update",
+                        lambda root: {"ok": True, "restart_required": True,
+                                      "detail": "Updated."})
+    called = {"restart": False}
+    monkeypatch.setattr(updates, "restart_process",
+                        lambda root, close_hook=None: called.__setitem__("restart", True))
+    import threading
+
+    class RunNow:  # fire the scheduled restart synchronously for the test
+        def __init__(self, delay, fn):
+            self.fn = fn
+
+        def start(self):
+            self.fn()
+    monkeypatch.setattr(threading, "Timer", RunNow)
+    d = TestClient(server.app).post("/api/update").json()
+    assert d["restarting"] is True and called["restart"] is True
+
+
 def test_update_refuses_a_dirty_or_wrong_branch_checkout(monkeypatch):
     # never pull over local work
     monkeypatch.setattr(updates, "repo_state",

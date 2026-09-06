@@ -3709,6 +3709,12 @@ def api_gig_state():
     return {"gig_mode": _gig_mode["on"]}
 
 
+# A fresh token each process launch, so the browser can tell a restarted server
+# apart from the one it was talking to and reload once the update lands.
+import secrets as _secrets
+_BOOT_ID = _secrets.token_hex(8)
+
+
 @app.get("/api/version")
 def api_version():
     """The running version, the newest GitHub release (cached, silent offline),
@@ -3726,6 +3732,7 @@ def api_version():
         "notes_url": (latest or {}).get("url"),
         "git": st["git"], "branch": st["branch"], "clean": st["clean"],
         "can_update": bool(can and avail), "why": why,
+        "boot": _BOOT_ID,
         "commands": _updates.upgrade_commands(),
         "commands_windows": _updates.upgrade_commands("windows"),
     }
@@ -3745,14 +3752,30 @@ def api_version_check():
 
 @app.post("/api/update")
 def api_update():
-    """Pull and reinstall in place. Blocked in gig mode; never restarts the
-    process itself. The response says whether a restart is now needed."""
+    """Pull, reinstall, and restart the server so the player does nothing.
+
+    Blocked in gig mode. On success it schedules a graceful self-restart a
+    moment after this response is sent (never a hard kill, and the FM9's MIDI
+    port is released first), so the browser can poll `boot` in /api/version and
+    reload onto the new version on its own.
+    """
     from fm9 import updates as _updates
     if _gig_mode["on"]:
         return JSONResponse(
             {"ok": False, "detail": "gig lock is on; updating is disabled mid-set",
-             "restart_required": False}, status_code=423)
+             "restarting": False}, status_code=423)
     result = _updates.run_update(ROOT)
+    if result.get("ok"):
+        import threading as _threading
+
+        def _restart():
+            hook = (_fm9.close) if (_fm9 is not None
+                                    and hasattr(_fm9, "close")) else None
+            _updates.restart_process(ROOT, close_hook=hook)
+        # After this response has flushed, so the browser gets the go-ahead.
+        _threading.Timer(1.0, _restart).start()
+        result["restarting"] = True
+        result["detail"] = "Updated. Restarting ToneCommand..."
     return JSONResponse(result, status_code=200 if result.get("ok") else 409)
 
 

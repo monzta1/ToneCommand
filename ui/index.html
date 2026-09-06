@@ -3183,6 +3183,9 @@
     background: #060c14; border: 1px solid var(--line); color: var(--text);
     font-size: var(--fs-hint); white-space: pre-wrap;
   }
+  .updprog { margin-top: 8px; }
+  #updbanner .updprog { flex-basis: 100%; }
+  .updavail { color: var(--amber); }
 
 </style>
   <link rel="icon" type="image/png" href="/logo.png">
@@ -3248,6 +3251,7 @@
     <button class="small" id="updcmds">HOW TO UPDATE</button>
     <button class="small armed" id="updnow" hidden>UPDATE &amp; RESTART</button>
     <button class="small" id="upddismiss" title="dismiss">&#10005;</button>
+    <div class="sendbar updprog" id="updprog" hidden><i></i></div>
     <div class="updbox" id="updcmdbox" hidden></div>
     <div class="updbox" id="updresult" hidden></div>
   </div>
@@ -3719,6 +3723,16 @@
 
       <div class="console" data-nofold data-label="ABOUT">
         <div class="hint" id="aboutver">ToneCommand</div>
+        <div id="aboutupd" hidden>
+          <div class="hint updavail" id="aboutupdmsg"></div>
+          <div class="saverow">
+            <button class="small armed" id="setupdnow">UPDATE NOW</button>
+            <a id="setupdnotes" href="#" target="_blank" rel="noopener"
+               class="hint" style="margin:0">release notes</a>
+          </div>
+          <div class="sendbar updprog" id="setupdprog" hidden><i></i></div>
+          <div class="hint" id="setupdresult"></div>
+        </div>
         <div class="saverow">
           <button class="small" id="checkupd">CHECK FOR UPDATES</button>
           <span class="hint" style="margin:0" id="checkupdout"></span>
@@ -4893,16 +4907,39 @@ async function watchLink() {
 watchLink();
 
 // --- Version and updates: show what is running, notify on a newer release,
-// and (never on its own) pull + reinstall on one click. ---
-let updDismissed = false;
+// and update + restart in place on one click, from the banner or Settings,
+// with a progress bar in both. The player never touches the terminal. ---
+let updDismissed = false, updating = false, bootId = null;
 function updCmdText(d) {
   const isWin = /win/i.test(navigator.platform) || /windows/i.test(navigator.userAgent);
   return ((isWin ? d.commands_windows : d.commands) || []).join('\n');
 }
+function updProgress(pct, text) {
+  ['updprog', 'setupdprog'].forEach(id => {
+    const bar = $(id); if (!bar) return;
+    bar.hidden = pct <= 0;
+    const fill = bar.querySelector('i'); if (fill) fill.style.width = Math.max(0, pct) + '%';
+  });
+  ['updresult', 'setupdresult'].forEach(id => {
+    const el = $(id); if (!el) return;
+    el.hidden = !text; el.textContent = text || '';
+  });
+}
 function renderVersion(d) {
   if (!d) return;
+  bootId = d.boot || bootId;
   $('aboutver').textContent = `ToneCommand ${d.current || '?'}`
     + (d.update_available ? ` (latest ${d.latest})` : ' (up to date)');
+  // Settings ABOUT: the same update controls as the banner, in place.
+  const set = $('aboutupd');
+  if (d.update_available) {
+    $('aboutupdmsg').textContent = `Version ${d.latest} is available.`;
+    if (d.notes_url) { $('setupdnotes').href = d.notes_url; $('setupdnotes').hidden = false; }
+    else { $('setupdnotes').hidden = true; }
+    $('setupdnow').hidden = !d.can_update;
+    set.hidden = false;
+  } else { set.hidden = true; }
+  // Top banner.
   const b = $('updbanner');
   if (!d.update_available || updDismissed) { b.hidden = true; return; }
   $('updtext').textContent = `ToneCommand ${d.latest} is available (you have ${d.current}).`;
@@ -4924,25 +4961,48 @@ async function checkUpdate() {
     await loadVersion();
   } catch (e) { $('checkupdout').textContent = 'could not reach GitHub'; }
 }
+function updButtons(disabled) {
+  [$('updnow'), $('setupdnow')].forEach(b => { if (b) b.disabled = disabled; });
+}
 async function runUpdate() {
-  const btn = $('updnow');
-  btn.disabled = true; btn.textContent = 'UPDATING…';
-  $('updresult').hidden = false;
-  $('updresult').textContent = 'Pulling and reinstalling…';
+  if (updating) return; updating = true;
+  updButtons(true);
+  const before = bootId;
+  updProgress(20, 'Downloading update...');
   try {
     const d = await (await fetch('/api/update', {method: 'POST'})).json();
-    $('updresult').textContent = d.detail || (d.ok ? 'Updated.' : 'Update failed.');
-    if (d.ok && d.restart_required) {
-      $('updresult').textContent += ' Quit and relaunch ToneCommand to finish.';
-      btn.hidden = true;
-    } else { btn.disabled = false; btn.textContent = 'UPDATE & RESTART'; }
+    if (!d.ok) {
+      updProgress(0, d.detail || 'Update failed. Use the commands above to update by hand.');
+      updating = false; updButtons(false); return;
+    }
+    updProgress(65, 'Installing and restarting...');
+    await waitForRestart(before);
   } catch (e) {
-    $('updresult').textContent = 'Update failed. Run git pull yourself.';
-    btn.disabled = false; btn.textContent = 'UPDATE & RESTART';
+    updProgress(0, 'Update failed. Use the commands above to update by hand.');
+    updating = false; updButtons(false);
   }
+}
+// The server restarts itself a moment after replying, so poll until a fresh
+// process (a new boot token) answers, then reload onto the new version.
+async function waitForRestart(before) {
+  updProgress(85, 'Restarting ToneCommand...');
+  for (let i = 0; i < 80; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const v = await (await fetch('/api/version', {cache: 'no-store'})).json();
+      if (v && v.boot && v.boot !== before) {
+        updProgress(100, `Updated to ${v.current}. Reloading...`);
+        setTimeout(() => location.reload(), 900);
+        return;
+      }
+    } catch (e) { /* mid-restart, keep polling */ }
+  }
+  updProgress(100, 'Update applied. Reload the page if it does not refresh itself.');
+  setTimeout(() => location.reload(), 1500);
 }
 $('checkupd').onclick = checkUpdate;
 $('updnow').onclick = runUpdate;
+$('setupdnow').onclick = runUpdate;
 $('updcmds').onclick = () => { const x = $('updcmdbox'); x.hidden = !x.hidden; };
 $('upddismiss').onclick = () => { updDismissed = true; $('updbanner').hidden = true; };
 loadVersion();

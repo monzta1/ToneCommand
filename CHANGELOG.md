@@ -2,6 +2,17 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## Unreleased
+
+### Changed
+- **Updating is now fully hands-off.** The update button lives in the banner
+  AND in Settings, both show a progress bar, and the app pulls, reinstalls, and
+  **restarts itself** so the player never touches the terminal. The restart is
+  graceful (never a hard kill) and releases the FM9's MIDI port first, so it
+  cannot leave a poisoned port; the browser watches a per-launch boot token and
+  reloads onto the new version on its own once the fresh server answers (owner,
+  2026-09-06).
+
 ## 1.2.0 (2026-09-06)
 
 ### Added
