@@ -32,7 +32,16 @@ _cache: dict = {"at": 0.0, "data": None}
 
 
 def current_version() -> str:
-    """The running version, from installed package metadata."""
+    """The running version, from installed package metadata.
+
+    TONECOMMAND_VERSION_OVERRIDE wins when set, so the update flow can be tested
+    on demand: launch with it set to an older version and the app will see the
+    real latest release as an available update, banner and all.
+    """
+    import os
+    override = os.environ.get("TONECOMMAND_VERSION_OVERRIDE", "").strip()
+    if override:
+        return override
     try:
         from importlib.metadata import version
         return version("tonecommand")

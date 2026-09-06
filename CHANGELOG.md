@@ -2,7 +2,7 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## Unreleased
+## 1.2.0 (2026-09-06)
 
 ### Added
 - **Version awareness and one-click updates.** Settings shows the running
@@ -13,7 +13,20 @@ Notable changes to ToneCommand. Dates are UTC.
   offers a one-click UPDATE button that runs `git pull` and the reinstall for
   you. It never pulls or restarts on its own, is blocked during gig lock, and
   refuses a checkout with local changes or on another branch, so a live FM9
-  session is never yanked out from under you (owner, 2026-09-06).
+  session is never yanked out from under you. `TONECOMMAND_VERSION_OVERRIDE`
+  reports a chosen version so the update flow can be exercised on demand
+  (owner, 2026-09-06).
+
+### Changed
+- **Install docs make all three OSes unmissable.** The README Install section
+  now shows macOS, Windows and Linux with visible commands instead of hiding
+  Windows behind a link, and SETUP.md gains a proper Linux section (owner,
+  2026-09-06).
+- **A rulebook guardrail so a delay never hides the note again.** From a live
+  SLO build where the delay ran so wet the dry note was inaudible: the dry must
+  always be heard, a pedal on a wet mix must never reach a dry-killing value,
+  effects bypass Thru not Mute, and never claim a structure you do not build
+  (owner, 2026-09-06).
 
 ## 1.1.0 (2026-09-06)
 

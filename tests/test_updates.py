@@ -18,6 +18,11 @@ def test_current_version_is_reported():
     assert v and isinstance(v, str)
 
 
+def test_a_version_override_lets_the_flow_be_tested(monkeypatch):
+    monkeypatch.setenv("TONECOMMAND_VERSION_OVERRIDE", "1.0.0")
+    assert updates.current_version() == "1.0.0"
+
+
 @pytest.mark.parametrize("latest,current,newer", [
     ("1.2.0", "1.1.0", True),
     ("1.1.0", "1.1.0", False),
