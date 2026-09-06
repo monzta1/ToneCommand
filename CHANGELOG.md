@@ -2,6 +2,36 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## 1.1.0 (2026-09-06)
+
+A full visual redesign of the interface, and the review stage is now editable.
+
+### Added
+- **Inline value editing in Review.** Every numeric parameter with a published
+  range is now an editable field in the AFTER column. Type a new value and it
+  lights amber the moment it differs from the plan; on commit it clamps to the
+  block's real min and max, and an "edited" chip resets it to the planned value.
+  The number you set is exactly what the confirmed send transmits, through the
+  same read-back-verified path, so the plan is a starting point you can dial in,
+  not a take-it-or-leave-it (owner, 2026-09-06).
+- **Prev/next preset arrows.** The preset field is wider so a full name reads,
+  and flanking arrows step the loaded preset on the FM9 without opening the list
+  (owner, 2026-09-06).
+
+### Changed
+- **A rack/HUD redesign of the whole interface.** The five-stage flow (Request,
+  Plan, Review, Confirm, Send) is now a row of angled hexagon step-tabs with an
+  icon each, lit on the active stage and turning to a green check once a stage is
+  done. Machined panels, a brushed faceplate and footer, a labelled command
+  shelf, and the signal chain shown by default, centred and enlarged so it uses
+  the full width instead of hugging the left. The layout, the scene rack, the
+  review table and the confirm gate are the same ones as before, reskinned; no
+  functionality was removed, and the full test suite stayed green throughout
+  (owner, 2026-09-06).
+- **Holds up on a short desktop.** On a low screen the live signal chain yields
+  its space so a populated Review list is never squeezed to nothing (owner,
+  2026-09-06).
+
 ## 1.0.0 (2026-09-05)
 
 First stable release. ToneCommand builds a gig-ready, multi-scene FM9 preset

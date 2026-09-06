@@ -17,15 +17,16 @@ proposes; it never sends. Nothing reaches your amp until you say go.
 
 ## Watch it happen
 
-One sentence, one freshly erased FM9 slot, and six minutes later a complete
-eight-scene Judas Priest preset stands on the hardware: signal chain wired
-from nothing, amps voiced per era, scenes named on the footswitches, stored
-under its own name. Unedited, on a real unit.
+One sentence, "build me a Soldano SLO-100 inspired rig", and ToneCommand builds
+seven complete scenes around one of the most legendary high-gain amps ever made:
+crunch and rhythm through high-gain brutality to a singing SLO-style lead. It
+plans the signal chain, voices every scene, and shows you exactly what it will
+do. You confirm. It builds. Then you play. On a real FM9, scene by scene.
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=jCNAZyyt5o8">
-    <img src="https://img.youtube.com/vi/jCNAZyyt5o8/maxresdefault.jpg"
-         alt="Watch: one typed sentence becomes an 8-scene Judas Priest FM9 preset in six minutes"
+  <a href="https://youtu.be/2P8VZ1OwF1k">
+    <img src="https://img.youtube.com/vi/2P8VZ1OwF1k/maxresdefault.jpg"
+         alt="Watch: ToneCommand builds a 7-scene Soldano SLO-100 inspired preset on a real FM9, then plays every scene"
          width="820">
   </a>
 </p>

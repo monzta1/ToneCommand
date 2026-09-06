@@ -1212,6 +1212,15 @@ def test_the_actions_stay_visible_while_the_changes_scroll():
     assert "overflow-y: auto" in css
 
 
+def test_short_desktop_reserves_visible_space_for_review_changes():
+    """Live context must not squeeze a populated Review list to zero."""
+    ui = (ROOT / "ui" / "index.html").read_text()
+    short = ui.split("@media (max-height: 840px)")[1].split("</style>")[0]
+    assert "#context .pathzone { display: none; }" in short
+    review = short.split("#pane-review #plancards.changetable {")[1].split("}")[0]
+    assert "min-height: 104px" in review
+
+
 def test_the_changes_are_collapsed_and_say_how_many():
     ui = (ROOT / "ui" / "index.html").read_text()
     assert '<details id="plandetail">' in ui
