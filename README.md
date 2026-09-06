@@ -30,6 +30,18 @@ under its own name. Unedited, on a real unit.
   </a>
 </p>
 
+And here is what it sounds like: all eight scenes of a drop C metalcore preset,
+every one of them built by typing a sentence, played straight through on the
+hardware. Proof, not screenshots.
+
+<p align="center">
+  <a href="https://youtu.be/7f840w5mQis">
+    <img src="https://img.youtube.com/vi/7f840w5mQis/maxresdefault.jpg"
+         alt="Watch: playing through all 8 scenes of a drop C metalcore FM9 preset built with ToneCommand"
+         width="820">
+  </a>
+</p>
+
 Bring your own AI: pick ChatGPT, Gemini, Grok, DeepSeek, Kimi, a subscription
 you already pay for, or a model on your own laptop by name in the settings
 panel, or use the Claude CLI it finds on its own. ToneCommand translates,
