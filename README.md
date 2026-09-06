@@ -17,6 +17,10 @@ proposes; it never sends. Nothing reaches your amp until you say go.
 
 ## Watch it happen
 
+Two videos, both real, both on a real FM9.
+
+**▶ THE WALKTHROUGH: building a Soldano SLO-100 inspired rig**
+
 One sentence, "build me a Soldano SLO-100 inspired rig", and ToneCommand builds
 seven complete scenes around one of the most legendary high-gain amps ever made:
 crunch and rhythm through high-gain brutality to a singing SLO-style lead. It
@@ -31,9 +35,10 @@ do. You confirm. It builds. Then you play. On a real FM9, scene by scene.
   </a>
 </p>
 
-And here is what it sounds like: all eight scenes of a drop C metalcore preset,
-every one of them built by typing a sentence, played straight through on the
-hardware. Proof, not screenshots.
+**▶ THE PLAYTHROUGH: every scene of a finished preset, played on the FM9**
+
+All eight scenes of a drop C metalcore preset, every one of them built by typing
+a sentence, played straight through on the hardware. Proof, not screenshots.
 
 <p align="center">
   <a href="https://youtu.be/7f840w5mQis">
