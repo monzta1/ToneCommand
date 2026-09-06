@@ -156,6 +156,34 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
   (from the tempo: dotted eighth = 45000/bpm ms, quarter = 60000/bpm ms),
   feedback, mix and tone; reverb gets a type, a decay and a mix; modulation gets
   rate and depth.
+- THE DRY NOTE MUST ALWAYS BE HEARD. A delay or reverb must never run so wet
+  that the dry attack is swallowed. Wet is the MINORITY of the mix: delay mix
+  roughly 8-20% for ambience, up to ~35% for a drenched clean, and never high
+  enough that the first note is inaudible. The test: if a player hears only the
+  delayed repeat and not the initial note, the mix is wrong. A scene where you
+  cannot hear the note is broken, exactly like an inaudible level (rule 4)
+  (2026-09-06: a 90s SLO build set the delay so wet-heavy the dry note was
+  inaudible on every delay-engaged scene; you heard only the repeat arriving
+  ~450 ms later, and lowering the delay mix to ~15% restored the note).
+- A PEDAL OR MODIFIER BOUND TO A WET MIX MUST NEVER REACH A DRY-KILLING VALUE.
+  When binding an expression pedal to delay/reverb mix, floor the range so even
+  at full travel the dry stays present (cap the mix ceiling near ~40%). A mix
+  modifier that can reach ~100% kills the note, and it does it on every scene
+  the block touches at once (2026-09-06: DELAY_MIX bound to Pedal 2 drove the
+  mix high enough to kill the dry across all scenes; unbinding it and setting a
+  fixed dry-dominant mix fixed every scene together).
+- EFFECTS BYPASS MODE MUST BE THRU, NEVER MUTE. Bypassing an effect must pass
+  the dry signal through, not silence it. If a block's bypass is set to Mute,
+  bypassing that block on a scene kills all sound (2026-09-06: the SLO build's
+  delay bypass mode was Mute, so bypassing the delay left pure silence instead
+  of the dry tone).
+- NEVER CLAIM A STRUCTURE YOU DO NOT ACTUALLY BUILD. If you tell the player
+  "true stereo", a second cab, a parallel path, or a widening block, the grid
+  must actually contain it. A single mono cab cannot deliver true stereo: say so
+  and either add the real stereo path or set the honest expectation. Do not
+  promise structure and then ship a plain mono serial chain (2026-09-06: a build
+  said it would add "true stereo beyond the single cab block", then shipped a
+  mono serial chain and no widening at all). This is rule 7 applied to routing.
 - The artist's real rig always overrides a generic rule or template. Report what
   they actually use; where you interpret, say so (rule 7).
 
