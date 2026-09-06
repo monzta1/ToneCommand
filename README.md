@@ -268,11 +268,12 @@ unreachable, on every device, forever.
 - **Back up first anyway.** Run a full Fractal-Bot backup before using any
   third-party MIDI tool, this one included.
 
-## Quick start
+## Install
 
-Tested on macOS with Python 3.12, FM9 firmware 11.00 and 12.00
-(Windows steps are in [docs/SETUP.md](docs/SETUP.md), untested but
-expected to work):
+**macOS, Windows and Linux are all supported.** Pick yours below. Drivers and
+troubleshooting for each are in [docs/SETUP.md](docs/SETUP.md).
+
+**macOS** (tested on Apple Silicon, Python 3.12, FM9 firmware 11.00 / 12.00):
 
 ```bash
 git clone https://github.com/monzta1/ToneCommand.git
@@ -280,8 +281,32 @@ cd ToneCommand
 python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/tonecommand
-# open http://127.0.0.1:8909 with the FM9 connected and powered on
 ```
+
+**Windows** (untested by the maintainer, expected to work; needs Fractal's USB
+driver, the same one FM9-Edit uses, before the FM9's MIDI ports appear):
+
+```bat
+git clone https://github.com/monzta1/ToneCommand.git
+cd ToneCommand
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -e .
+.venv\Scripts\tonecommand
+```
+
+**Linux** (untested, expected to work; the MIDI library builds against ALSA, so
+install its headers first):
+
+```bash
+sudo apt install build-essential libasound2-dev python3-venv   # Debian/Ubuntu
+git clone https://github.com/monzta1/ToneCommand.git
+cd ToneCommand
+python3 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/tonecommand
+```
+
+Then open <http://127.0.0.1:8909> with the FM9 connected and powered on.
 
 A signed-in Claude Code CLI is found on its own; any other AI is a chip in
 the gear menu ([docs/AI-BACKENDS.md](docs/AI-BACKENDS.md)). To build tones

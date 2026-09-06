@@ -1,7 +1,12 @@
 # Install and setup
 
-Tested on macOS (Apple Silicon) with Python 3.12 and an FM9 connected over
-USB, on firmware 11.00 and 12.00.
+ToneCommand runs on **macOS, Windows and Linux**. macOS is the tested path;
+Windows and Linux are documented and expected to work. Pick your OS below.
+
+## macOS
+
+Tested on Apple Silicon with Python 3.12 and an FM9 connected over USB, on
+firmware 11.00 and 12.00.
 
 ```bash
 git clone https://github.com/monzta1/ToneCommand.git
@@ -48,6 +53,40 @@ Windows notes:
   [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by hand as
   its own documentation directs, or use any of the key-based services,
   the Claude CLI, or a local model, which need no helper at all.
+
+## Linux
+
+Untested by the maintainer, expected to work. The steps match macOS, with one
+prerequisite: the MIDI library (`python-rtmidi`) is compiled against ALSA, so a
+bare system needs a compiler and the ALSA development headers before the pip
+install can build it.
+
+```bash
+sudo apt install build-essential libasound2-dev python3-venv   # Debian/Ubuntu
+# Fedora/RHEL: sudo dnf install @development-tools alsa-lib-devel python3-virtualenv
+# Arch:        sudo pacman -S base-devel alsa-lib
+git clone https://github.com/monzta1/ToneCommand.git
+cd ToneCommand
+python3 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/tonecommand
+# open http://127.0.0.1:8909 with the FM9 connected and powered on
+```
+
+Linux notes:
+
+- No vendor driver is needed: the FM9 shows up as a standard USB-MIDI (ALSA)
+  device. If its ports do not appear, confirm your user can access the device;
+  USB-MIDI is normally reachable without extra permissions on a modern desktop.
+- Instant cable-detection is macOS-only (CoreMIDI). On Linux the link falls back
+  to the five-second poll and the reconnect pill, the same as Windows.
+- For video builds, install ffmpeg with `apt install ffmpeg` (or your distro's
+  package manager) instead of Homebrew.
+- The guided one-click setup for the ChatGPT subscription route is Homebrew-
+  based; on Linux install
+  [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by hand as its own
+  documentation directs, or use any key-based service, the Claude CLI, or a
+  local model, which need no helper at all.
 
 Planner configuration (which AI answers your sentences) is in
 [AI-BACKENDS.md](AI-BACKENDS.md). The default needs nothing: a signed-in
