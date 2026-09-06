@@ -2,7 +2,7 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## Unreleased
+## 1.2.1 (2026-09-06)
 
 ### Changed
 - **Updating is now fully hands-off.** The update button lives in the banner
