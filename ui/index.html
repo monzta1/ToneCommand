@@ -3709,6 +3709,20 @@
         <div class="hint" id="tonedirout"></div>
       </div>
 
+      <div class="console" data-nofold data-label="IR SERVICE (IRCommand)">
+        <div class="hint">Optional. Point ToneCommand at your local IRCommand
+          service so it can recommend a cab IR from your own library when it
+          builds a tone. Empty means off, and ToneCommand behaves exactly as it
+          does today (factory cabs, no IR step).</div>
+        <div class="saverow">
+          <input id="irurl" autocomplete="off" spellcheck="false"
+                 placeholder="http://127.0.0.1:8770">
+          <button id="irsave">SET</button>
+          <button class="small" id="irtest">TEST</button>
+        </div>
+        <div class="hint" id="irstatus"></div>
+      </div>
+
       <div class="console" data-nofold data-label="APPEARANCE">
         <div class="hz">
           <span class="lbl">TEXT SIZE</span>
@@ -5025,6 +5039,36 @@ $('setupdnow').onclick = runUpdate;
 $('updcmds').onclick = () => { const x = $('updcmdbox'); x.hidden = !x.hidden; };
 $('upddismiss').onclick = () => { updDismissed = true; $('updbanner').hidden = true; };
 loadVersion();
+
+// --- IR SERVICE (IRCommand): point ToneCommand at a local IR matcher, or off.
+async function loadIrStatus() {
+  try {
+    const d = await (await fetch('/api/ir/status')).json();
+    $('irurl').value = d.url || '';
+    $('irurl').disabled = !!d.pinned;
+    $('irsave').disabled = !!d.pinned;
+    let msg;
+    if (!d.enabled) msg = 'Off. ToneCommand uses factory cabs, no IR step.';
+    else if (d.reachable) msg = `Connected: ${d.cabs} cab IRs available`
+      + (d.pinned ? ' (pinned by the environment).' : '.');
+    else msg = 'Set, but the service is not reachable. Start IRCommand: '
+      + 'python3 cli.py serve';
+    $('irstatus').textContent = msg;
+  } catch (e) { $('irstatus').textContent = ''; }
+}
+async function saveIr() {
+  $('irstatus').textContent = 'saving...';
+  try {
+    const r = await fetch('/api/ir/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: $('irurl').value.trim()})});
+    if (r.status === 409) { $('irstatus').textContent = (await r.json()).error; return; }
+    await loadIrStatus();
+  } catch (e) { $('irstatus').textContent = 'could not save'; }
+}
+$('irsave').onclick = saveIr;
+$('irtest').onclick = loadIrStatus;
+loadIrStatus();
 // Answered from its own endpoint once at startup, so the pill is truthful
 // before the first full state poll lands (and with the rig unplugged).
 (async () => {

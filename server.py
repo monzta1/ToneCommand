@@ -3779,6 +3779,38 @@ def api_update():
     return JSONResponse(result, status_code=200 if result.get("ok") else 409)
 
 
+@app.get("/api/ir/status")
+def api_ir_status():
+    """Whether the optional IRCommand cab-recommendation service is configured
+    (TONECOMMAND_IR_SERVICE) and reachable. Off by default, empty when unset."""
+    from fm9 import ir_service
+    return ir_service.status()
+
+
+@app.get("/api/ir/recommend")
+def api_ir_recommend(need: str = "", target: str = "fm9", k: int = 3):
+    """Ask IRCommand for the best cab IRs for a need. Returns enabled:false and
+    no results when the service is unset, so the caller can skip the IR step."""
+    from fm9 import ir_service
+    if not ir_service.enabled():
+        return {"enabled": False, "results": []}
+    return {"enabled": True, "results": ir_service.recommend(need, target, k) or []}
+
+
+@app.post("/api/ir/config")
+def api_ir_config(body: dict):
+    """Save the IRCommand service URL from Settings (empty turns it off). Refused
+    when the environment pins it, so an operator pin cannot be edited from the UI."""
+    from fm9 import ir_service
+    if ir_service.env_url():
+        return JSONResponse(
+            {"error": "the IR service is pinned by the environment "
+                      "(TONECOMMAND_IR_SERVICE); unset it to change it here"},
+            status_code=409)
+    ir_service.set_url(body.get("url", ""))
+    return ir_service.status()
+
+
 @app.get("/api/ai-settings")
 def api_ai_settings_state():
     """The saved planner choice, plus what this host can actually run.

@@ -2,6 +2,19 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## Unreleased
+
+### Added
+- **Optional IRCommand cab-recommendation bridge, off by default.** A new
+  Settings > IR SERVICE field points ToneCommand at a local IRCommand service
+  (a separate local tool that catalogues and matches your own IR library). Empty
+  means off and nothing changes: factory cabs, no IR step, no network. When set,
+  ToneCommand can ask IRCommand for the best cab IR for a tone. `GET
+  /api/ir/status` and `GET /api/ir/recommend`, both no-ops when unset; the client
+  never raises, so a missing or broken service can never break a build. The url
+  saves like the tone folder and the `TONECOMMAND_IR_SERVICE` env var pins it for
+  operators (owner, 2026-09-07).
+
 ## 1.2.2 (2026-09-06)
 
 ### Changed
