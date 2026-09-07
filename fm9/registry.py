@@ -21,6 +21,20 @@ LEGACY_CAB_BANK = "3"      # FM9_CAB_BANK_NAMES: 3 = LEGACY
 
 # v1.4 PDF Appendix 1: family -> effect ID of instance 1 (instances contiguous)
 EFFECT_ID_BASE = {
+    # System settings, not a grid block: one instance, addressed as effect id 1.
+    #
+    # Found by differential measurement on hardware (issue #66). Every
+    # bulk_read for ids 0..36 was captured, the owner changed exactly one front
+    # panel setting, and the captures were diffed. Out of 16,236 values exactly
+    # one moved: block 1 index 72, which is GLOBAL_IN1_SOURCE in the catalogue,
+    # tracking Input 1 Source DIGITAL -> ANALOG. Twelve other globals then
+    # cross-checked inside their declared ranges.
+    #
+    # paramId maps directly to the bulk_read index, so get_param_wire works
+    # unchanged. Note block 1 is large (about 14,900 values) and needs a
+    # generous read timeout; a short one truncates the burst at a different
+    # point each time, which looks exactly like the value changing.
+    "GLOBAL": (1, 1),
     "INPUT": (37, 5), "OUTPUT": (42, 4), "COMP": (46, 4), "GEQ": (50, 4),
     "PEQ": (54, 4), "DISTORT": (58, 4), "CABINET": (62, 4), "REVERB": (66, 4),
     "DELAY": (70, 4), "MULTITAP": (74, 4), "CHORUS": (78, 4), "FLANGER": (82, 4),
@@ -36,6 +50,18 @@ EFFECT_ID_BASE = {
 }
 
 # user-facing block names -> catalog family
+#: Families that are READABLE but must never be reachable through the plan and
+#: action path.
+#:
+#: GLOBAL was added to EFFECT_ID_BASE so its parameters can be READ, which is
+#: what makes restoring the player's routing possible at all. But resolve_block
+#: accepts any family name present in EFFECT_ID_BASE, so that addition silently
+#: made globals writable by a plan. A global write has no proven restore yet,
+#: and writing one blind is the exact hazard issue #56 exists to prevent, so
+#: resolve_block refuses these. Reads go through spec() directly and are
+#: unaffected.
+NOT_PLANNABLE = frozenset({"GLOBAL"})
+
 BLOCK_ALIASES = {
     "amp": "DISTORT", "amplifier": "DISTORT", "distort": "DISTORT",
     "cab": "CABINET", "cabinet": "CABINET",
@@ -229,6 +255,10 @@ class Registry:
                 fam = name.strip().upper()
             else:
                 raise KeyError(f"unknown block: {name}")
+        if fam in NOT_PLANNABLE:
+            raise KeyError(
+                f"{fam} is readable but cannot be targeted by an action: "
+                "a global write has no proven restore path yet (issue #56)")
         return (fam, self.effect_id(fam, instance))
 
     def spec(self, family: str, param_id: int, instance: int = 1) -> ParamSpec:
