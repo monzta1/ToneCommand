@@ -1,0 +1,322 @@
+[
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 1,
+  "scene_name": "High/Lead (Try Drv2B Klon)",
+  "amp_level": -7.0,
+  "drive": 1.55,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 2,
+  "scene_name": "Low (try CS2 boost)",
+  "amp_level": -7.13,
+  "drive": 2.74,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 3,
+  "scene_name": "Gain Rhythm",
+  "amp_level": -7.48,
+  "drive": 5.66,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 4,
+  "scene_name": "High/Lead (Try DrvB Klon)",
+  "amp_level": -7.43,
+  "drive": 7.57,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 5,
+  "scene_name": "*Clean",
+  "amp_level": -7.0,
+  "drive": 1.55,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 6,
+  "scene_name": "*Low (try CS2 boost)",
+  "amp_level": -7.13,
+  "drive": 2.74,
+  "reverb": 2.0,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 7,
+  "scene_name": "*Gain Rhythm",
+  "amp_level": -7.48,
+  "drive": 5.66,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "#2 AC-30 Top Boost  '25",
+  "scene": 8,
+  "scene_name": "*High/Lead",
+  "amp_level": -7.43,
+  "drive": 7.57,
+  "reverb": 4.26,
+  "delay": 9.78,
+  "chorus": null
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 1,
+  "scene_name": "LwrLead (Try CS2)",
+  "amp_level": -13.94,
+  "drive": 3.35,
+  "reverb": 8.94,
+  "delay": 9.79,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 2,
+  "scene_name": "Rhythm",
+  "amp_level": -14.74,
+  "drive": 5.42,
+  "reverb": 2.0,
+  "delay": 9.79,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 3,
+  "scene_name": "Lead A (Try CS3 FAT, or Drv2=B)",
+  "amp_level": -14.92,
+  "drive": 3.85,
+  "reverb": 8.94,
+  "delay": 15.0,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 4,
+  "scene_name": "Lead B mo Gain",
+  "amp_level": -14.4,
+  "drive": 6.87,
+  "reverb": 8.94,
+  "delay": 15.0,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 5,
+  "scene_name": "*LwrLead",
+  "amp_level": -13.94,
+  "drive": 3.35,
+  "reverb": 2.0,
+  "delay": 9.79,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 6,
+  "scene_name": "*Rhythm w/Chorus",
+  "amp_level": -14.74,
+  "drive": 5.42,
+  "reverb": 2.0,
+  "delay": 9.79,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 7,
+  "scene_name": "*Lead A (Try Drv2=B or CS3)",
+  "amp_level": -14.92,
+  "drive": 3.85,
+  "reverb": 2.0,
+  "delay": 15.0,
+  "chorus": 25.03
+ },
+ {
+  "preset": "Lead 2 FAS (w/V30s)  '25",
+  "scene": 8,
+  "scene_name": "*Lead B w/Chorus, wet Delay",
+  "amp_level": -14.4,
+  "drive": 6.87,
+  "reverb": 8.94,
+  "delay": 28.02,
+  "chorus": 24.83
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 1,
+  "scene_name": "LowCrunch (try CS2, CS3)",
+  "amp_level": -8.43,
+  "drive": 3.82,
+  "reverb": 4.7,
+  "delay": 9.79,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 2,
+  "scene_name": "RhythmCrunch (Try Drv2A TScrmr)",
+  "amp_level": -9.07,
+  "drive": 5.54,
+  "reverb": 4.7,
+  "delay": 9.79,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 3,
+  "scene_name": "Mo'Gain Crunch",
+  "amp_level": -9.06,
+  "drive": 7.61,
+  "reverb": 4.7,
+  "delay": 9.79,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 4,
+  "scene_name": "High Gain/Lead",
+  "amp_level": -9.24,
+  "drive": 9.31,
+  "reverb": 14.5,
+  "delay": 9.79,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 5,
+  "scene_name": "*Lower",
+  "amp_level": -8.43,
+  "drive": 3.82,
+  "reverb": 4.7,
+  "delay": 9.79,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 6,
+  "scene_name": "*Rhythm Crunch w/Chorus",
+  "amp_level": -9.07,
+  "drive": 5.54,
+  "reverb": 2.0,
+  "delay": 11.01,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 7,
+  "scene_name": "*Mo'Gain Crunch w/Delay",
+  "amp_level": -9.06,
+  "drive": 7.61,
+  "reverb": 4.7,
+  "delay": 9.1,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Rhythm by FAS  '25",
+  "scene": 8,
+  "scene_name": "*High/Lead w/Chorus",
+  "amp_level": -9.24,
+  "drive": 9.31,
+  "reverb": 14.5,
+  "delay": 15.0,
+  "chorus": 25.2
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 1,
+  "scene_name": "OldLowTweed (Try CS2, CS3, CS5)",
+  "amp_level": -8.55,
+  "drive": 0.97,
+  "reverb": 2.0,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 2,
+  "scene_name": "Rhythm  (Try CS2, CS3, CS5)",
+  "amp_level": -8.55,
+  "drive": 2.39,
+  "reverb": 2.0,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 3,
+  "scene_name": "Mo'Gain",
+  "amp_level": -10.46,
+  "drive": 4.13,
+  "reverb": 2.0,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 4,
+  "scene_name": "High/Lead",
+  "amp_level": -10.44,
+  "drive": 5.0,
+  "reverb": 2.0,
+  "delay": 21.76,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 5,
+  "scene_name": "*OldLowTweed",
+  "amp_level": -8.55,
+  "drive": 0.97,
+  "reverb": 8.02,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 6,
+  "scene_name": "*Rhythm",
+  "amp_level": -8.55,
+  "drive": 2.39,
+  "reverb": 2.0,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 7,
+  "scene_name": "*Mo'Gain",
+  "amp_level": -10.46,
+  "drive": 4.13,
+  "reverb": 14.5,
+  "delay": 15.0,
+  "chorus": null
+ },
+ {
+  "preset": "Supertweed FAS '25",
+  "scene": 8,
+  "scene_name": "*High/Lead",
+  "amp_level": -10.44,
+  "drive": 5.0,
+  "reverb": 2.0,
+  "delay": 21.76,
+  "chorus": null
+ }
+]

@@ -1,13 +1,17 @@
-"""Issue #50: make the rulebook's adjectives into arithmetic.
+"""Issue #50: why absolute parameter floors were tried, and why they were removed.
 
-config/tone_rules.md says a clean gets a "generous mix" and a lead is "audibly
-more saturated". A build satisfied every adjective and still arrived timid,
-because 12 percent reverb is as "generous" as 40 percent to anything that
-cannot measure. These are the numbers those words mean.
+v1 turned the rulebook's adjectives into numeric floors, each sitting just above
+a value the owner had rejected in one build. Checked against 104 scenes from 13
+presets of AustinBuddy's '25 pack, read off the owner's own FM9, those floors
+raised 196 FAIL findings against professionally voiced, gig-ready work.
+
+The tests below pin the retraction, so nobody reintroduces the floors without
+first beating the evidence.
 """
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -15,138 +19,121 @@ import server
 from fm9 import tone_review
 from fm9.tone_review import Scene
 
-
-def sykes_build():
-    """The John Sykes build exactly as recorded on hardware in issue #50, which
-    the owner judged not release-ready. Every value here is from the issue."""
-    return [
-        Scene(n=1, name="Clean", role="clean", amp_level=-8.0,
-              effects={"DELAY", "REVERB", "CHORUS"},
-              fx_mix={"REVERB": 12.0, "DELAY": 18.0, "CHORUS": 22.0}),
-        Scene(n=2, name="Rhythm", role="rhythm", amp_gain=7.5, amp_level=-12.0,
-              boost_gain=7.5),
-        Scene(n=3, name="Lead", role="lead", amp_gain=7.8, amp_level=-10.0,
-              boost_gain=6.0, effects={"DELAY", "REVERB"},
-              fx_mix={"REVERB": 15.0, "DELAY": 18.0}),
-    ]
+FIXTURE = Path(__file__).resolve().parent / "data" / "austinbuddy_sample.json"
 
 
-def messages(scenes):
-    return " | ".join(f.message for f in tone_review.review(scenes))
+def role_of(name: str):
+    n = (name or "").lower()
+    if any(w in n for w in ("lead", "solo", "burn")):
+        return "lead"
+    if any(w in n for w in ("clean", "cln", "spank", "chime")):
+        return "clean"
+    if any(w in n for w in ("rhythm", "rhy", "crunch", "chug", "grind")):
+        return "rhythm"
+    return None
 
 
-# --- the build that shipped must now be caught -------------------------
-
-def test_the_rejected_build_is_now_refused():
-    """It previously passed. Every complaint in the issue is now arithmetic."""
-    found = tone_review.review(sykes_build())
-    assert any(f.severity == "fail" for f in found)
-
-
-@pytest.mark.parametrize("complaint,needle", [
-    ("quiet clean", "amp level -8"),
-    ("cut rhythm", "amp level -12"),
-    ("cut lead", "amp level -10"),
-    ("timid reverb", "reverb mix 12%"),
-    ("timid delay", "delay mix 18%"),
-    ("timid chorus", "chorus mix 22%"),
-    ("undercooked lead", "not clearly above the rhythm"),
-    ("clean boost, not an overdrive", "dialled below the rhythm"),
-])
-def test_every_complaint_in_the_issue_is_caught(complaint, needle):
-    assert needle in messages(sykes_build()), complaint
+def professional_presets():
+    """Real scenes read off the hardware, grouped by preset."""
+    rows = json.loads(FIXTURE.read_text())
+    by = {}
+    for r in rows:
+        by.setdefault(r["preset"], []).append(
+            Scene(n=r["scene"], name=r["scene_name"],
+                  role=role_of(r["scene_name"]),
+                  amp_gain=r["drive"], amp_level=r["amp_level"],
+                  fx_mix={k.upper(): r[k] for k in ("reverb", "delay", "chorus")
+                          if r.get(k) is not None}))
+    return by
 
 
-def test_the_boost_check_is_the_subtle_one():
-    """A boost dialled BELOW the rhythm it is meant to push is a clean volume
-    push. Engagement checks cannot see this; only comparing the numbers can."""
-    scenes = sykes_build()
-    assert "clean volume push" in messages(scenes)
-    scenes[2].boost_gain = 9.0            # now genuinely pushing the amp
-    assert "clean volume push" not in messages(scenes)
+# --- the retraction, pinned -------------------------------------------
+
+def test_the_absolute_floors_are_gone():
+    """Removed, not tuned. Their reintroduction should break this."""
+    pol = tone_review.targets()
+    assert pol.get("version", 0) >= 2
+    assert "all_roles" not in pol, "the amp-level floor must not come back"
+    for spec in (pol.get("roles") or {}).values():
+        assert "mix_min" not in spec, "effect-mix floors must not come back"
+        assert "amp_level_min" not in spec
 
 
-# --- a good build must pass --------------------------------------------
-
-def good_build():
-    return [
-        Scene(n=1, name="Clean", role="clean", amp_level=-2.0,
-              effects={"DELAY", "REVERB", "CHORUS"},
-              fx_mix={"REVERB": 35.0, "DELAY": 28.0, "CHORUS": 34.0}),
-        Scene(n=2, name="Rhythm", role="rhythm", amp_gain=7.5, amp_level=-3.0,
-              boost_gain=7.5, fx_mix={"REVERB": 12.0}),
-        Scene(n=3, name="Lead", role="lead", amp_gain=9.2, amp_level=-2.0,
-              boost_gain=8.5, effects={"DELAY", "REVERB"},
-              fx_mix={"REVERB": 28.0, "DELAY": 24.0}),
-    ]
+def test_the_policy_records_why_it_was_refuted():
+    raw = json.loads(tone_review.TARGETS_PATH.read_text())
+    text = json.dumps(raw).lower()
+    assert "refuted" in text
+    assert "196" in text and "104" in text, "keep the measured counts"
+    assert "output trim" in text, "keep WHY the parameter cannot work"
 
 
-def test_a_build_that_meets_the_floors_has_no_failures():
-    fails = [f for f in tone_review.review(good_build()) if f.severity == "fail"]
-    assert not fails, [f.message for f in fails]
+@pytest.mark.parametrize("preset", list(professional_presets()))
+def test_professional_presets_raise_no_findings_from_the_numeric_policy(preset):
+    """The floors used to fail every one of these scenes. Whatever the review
+    says about professional work now, it must not come from my policy."""
+    scenes = professional_presets()[preset]
+    for f in tone_review.review(scenes):
+        assert "floor" not in f.message, f"{preset}: {f.message}"
+        assert "below the" not in f.message or "rhythm" in f.message, \
+            f"{preset}: {f.message}"
 
 
-def test_the_rhythm_ceiling_is_a_ceiling_not_a_floor():
-    """Rhythm reverb is the one value that must stay LOW."""
-    scenes = good_build()
-    assert "above the 25% ceiling" not in messages(scenes)
-    scenes[1].fx_mix["REVERB"] = 45.0
-    assert "above the 25% ceiling" in messages(scenes)
+def test_the_pack_really_does_sit_below_the_old_floor():
+    """Guards the evidence itself: if this ever stops being true, the argument
+    for the retraction needs re-examining."""
+    scenes = [s for rows in professional_presets().values() for s in rows]
+    lows = [s.amp_level for s in scenes if s.amp_level is not None]
+    assert lows and max(lows) < -6.0, \
+        "every professional scene sat below the old -6 dB floor"
 
 
-# --- the policy itself --------------------------------------------------
+def test_the_pack_reverb_is_far_under_the_old_clean_floor():
+    scenes = [s for rows in professional_presets().values() for s in rows]
+    revs = [s.fx_mix["REVERB"] for s in scenes if "REVERB" in s.fx_mix]
+    assert revs and max(revs) < 25.0, \
+        "the old 25% clean reverb floor exceeded the pack's maximum"
 
-def test_targets_load_and_are_versioned():
-    t = tone_review.targets()
-    assert t["version"] >= 1 and t["issue"] == 50
-    assert set(t["roles"]) >= {"clean", "lead", "rhythm"}
+
+# --- what survives, and only as advice ---------------------------------
+
+def test_nothing_from_the_experiment_is_still_wired_up():
+    """The relational lead-versus-rhythm idea already existed as rule 10, so
+    the numeric-policy attempt contributed no surviving check. Its own
+    'advisory' duplicate was removed rather than left to double-report."""
+    scenes = [Scene(n=1, name="Rhythm", role="rhythm", amp_gain=6.5),
+              Scene(n=2, name="Lead", role="lead", amp_gain=6.6)]
+    found = tone_review.review(scenes)
+    assert not [f for f in found if "within" in f.message], \
+        "the duplicate advisory must not have come back"
+    # rule 10 itself is pre-existing and still fires; that is not mine to change
+    assert any(f.rule == "10" for f in found)
 
 
-def test_a_missing_policy_disables_the_checks_rather_than_crashing(monkeypatch):
-    """A policy file that is absent or corrupt must never take a build down."""
+def test_the_policy_file_says_nothing_reads_it():
+    raw = tone_review.TARGETS_PATH.read_text().lower()
+    assert "record, not a policy" in raw
+
+
+def test_a_missing_policy_still_disables_everything_cleanly(monkeypatch):
     monkeypatch.setattr(tone_review, "TARGETS_PATH",
                         tone_review.TARGETS_PATH.parent / "nope.json")
     assert tone_review.targets() == {}
-    tone_review.review(sykes_build())          # must not raise
+    tone_review.review([Scene(n=1, name="Lead", role="lead", amp_gain=1.0)])
 
 
-def test_a_corrupt_policy_disables_the_checks(monkeypatch, tmp_path):
-    bad = tmp_path / "bad.json"
-    bad.write_text("{not json")
-    monkeypatch.setattr(tone_review, "TARGETS_PATH", bad)
-    assert tone_review.targets() == {}
+# --- the planner must not be told refuted numbers ----------------------
 
-
-def test_the_policy_records_where_its_numbers_came_from():
-    """These are calibrated to one rejected build, not universal truth, and the
-    file has to say so or someone will treat them as physics."""
-    raw = json.loads(tone_review.TARGETS_PATH.read_text())
-    prov = " ".join(raw["_provenance"]).lower()
-    assert "rejected" in prov and "not a number invented here" in prov
-    assert "editable" in prov
-
-
-# --- the planner is told the same numbers -------------------------------
-
-def test_the_planner_is_given_the_floors():
+def test_the_planner_is_no_longer_given_the_floors():
     lines = " ".join(server._tone_target_lines())
-    assert "amp level at or above -6" in lines
-    assert "reverb mix >= 25%" in lines
-    assert "boost must NOT be dialled below" in lines
+    assert "amp level at or above" not in lines
+    assert "reverb mix >=" not in lines
 
 
-def test_the_planner_grounding_is_absent_when_the_policy_is(monkeypatch):
-    monkeypatch.setattr(tone_review, "targets", lambda: {})
-    assert server._tone_target_lines() == []
+# --- depth capture is still useful even without floors -----------------
 
-
-def test_the_floors_reach_the_actual_param_reference():
-    assert "NUMERIC TONE FLOORS" in server.PARAM_REFERENCE
-
-
-# --- depth is captured from a plan, not just engagement -----------------
-
-def test_a_plan_that_sets_a_mix_records_its_depth():
+def test_a_plan_that_sets_a_mix_still_records_its_depth():
+    """Worth keeping: a future check that measures AUDIO will want to know what
+    the plan asked for, even though the value alone proves nothing."""
     scenes = tone_review.summary_from_plan([
         {"kind": "set_scene", "value": 1},
         {"kind": "set_param", "block": "reverb", "param": "REVERB_MIX",
@@ -155,34 +142,6 @@ def test_a_plan_that_sets_a_mix_records_its_depth():
     assert scenes[0].fx_mix["REVERB"] == 12.0
 
 
-def test_a_plan_that_sets_a_boost_records_it():
-    scenes = tone_review.summary_from_plan([
-        {"kind": "set_scene", "value": 3},
-        {"kind": "set_param", "block": "drive", "param": "FUZZ_DRIVE",
-         "value": 6.0},
-    ])
-    assert scenes[0].boost_gain == 6.0
-
-
-def test_a_scene_with_no_role_is_not_judged_by_the_floors():
-    """A scene whose role cannot be inferred might be a deliberate quiet
-    interlude. The suite already pins "no role means no role-specific
-    finding", and the numeric floors must respect that rather than override
-    it. The role-independent backstop stays the softer -12 dB warning.
-
-    Caught by CI: the first version of the floor fired on every scene and
-    broke test_tone_review.py::test_unknown_role_is_skipped_not_guessed.
-    """
+def test_a_scene_with_no_role_is_still_not_judged():
     assert tone_review.review(
         [Scene(4, "Scene 4", None, amp_gain=2.0, amp_level=-8.0)]) == []
-
-
-def test_the_very_low_backstop_still_applies_without_a_role():
-    """-12 dB is flagged whatever the scene is, but as a warning."""
-    found = tone_review.review([Scene(4, "Scene 4", None, amp_level=-14.0)])
-    assert found and all(f.severity == "warn" for f in found)
-
-
-def test_a_known_role_is_still_held_to_the_floor():
-    found = tone_review.review([Scene(4, "Rhythm", "rhythm", amp_level=-8.0)])
-    assert any("below the -6 dB floor" in f.message for f in found)

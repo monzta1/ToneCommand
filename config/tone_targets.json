@@ -1,59 +1,49 @@
 {
-  "version": 1,
+  "version": 2,
   "issue": 50,
-  "_why": [
-    "config/tone_rules.md says a clean gets a 'generous mix' and a lead is",
-    "'audibly more saturated'. Neither the planner nor tone_review.py can act on",
-    "an adjective: a 12 percent reverb satisfies 'generous' exactly as well as 40",
-    "does, which is how a build shipped at 12 and read as compliant. Strengthening",
-    "the prose was tried on 2026-09-04 and could not have worked, because the",
-    "problem is not emphasis, it is that the rule is unfalsifiable.",
+  "_status": "The v1 numeric floors were TESTED AGAINST PROFESSIONAL PRESETS AND REFUTED. They are removed, not tuned.",
+  "_what_happened": [
+    "v1 turned the rulebook's adjectives into absolute parameter floors: amp",
+    "level at or above -6 dB, clean reverb at or above 25 percent, and so on.",
+    "Every number sat just above a value the owner had rejected in one build",
+    "(issue #50), which felt like sound provenance at the time.",
     "",
-    "These are the numbers those adjectives mean, so a violation is arithmetic",
-    "rather than a matter of taste."
+    "Checked against 104 scenes from 13 presets of AustinBuddy's '25 pack,",
+    "read off the owner's own FM9, the floors raised 196 FAIL findings against",
+    "work that is professionally voiced and gig-ready. 104 of 104 scenes failed",
+    "the amp-level floor. The clean reverb floor of 25 percent exceeded the",
+    "pack's MAXIMUM reverb of 14.5 percent."
   ],
-  "_provenance": [
-    "Every floor sits just above a value the owner ACTUALLY REJECTED on hardware",
-    "in the John Sykes build (issue #50), not a number invented here:",
-    "  amp levels  -8 clean, -12 rhythm, -10 lead  -> 'nothing is loud enough'",
-    "  reverb mix  12   chorus mix 22   delay mix 18 -> 'nearly dry'",
-    "  lead gain   7.8 with the boost at 6.0, BELOW the rhythm's 7.5",
-    "The hand-fix that helped raised amp levels to about -2.",
+  "_why_it_cannot_work": [
+    "DISTORT_LEVEL is an output trim, not loudness. The pack pins",
+    "DISTORT_MASTER at 10.00 (median across all 104 scenes) and uses amp level",
+    "to compensate, so a harder-driven scene reads QUIETER by that parameter:",
     "",
-    "These are a starting point calibrated to one build and one player. They are",
-    "versioned and editable, and they are FLOORS that flag, never silent",
-    "rewrites. If a style genuinely wants a dry clean, the finding is dismissed",
-    "rather than the number being wrong."
+    "            amp_level median   master median   drive median",
+    "  clean          -8.11            10.00           2.03",
+    "  rhythm         -9.57            10.00           5.54",
+    "  lead          -12.44            10.00           6.81",
+    "",
+    "Leads sit lowest precisely because they are driven hardest. A floor on",
+    "that parameter punishes correct gain staging.",
+    "",
+    "The decisive comparison. The build the owner REJECTED versus the pack he",
+    "would GIG, on the values v1 policed:",
+    "",
+    "                  rejected      gig-ready",
+    "  clean level       -8.00          -8.11",
+    "  reverb mix        12.0%           4.26%",
+    "  delay mix         18.0%          11.0%",
+    "",
+    "They are indistinguishable, and the rejected build has MORE reverb and",
+    "delay. No threshold on these parameters can separate them, because the",
+    "difference lives in gain staging, amp model and voicing."
   ],
-  "all_roles": {
-    "amp_level_min": -6.0,
-    "_amp_level_min": "A distorted amp turned down 10 dB reads thin, not aggressive. -8, -10 and -12 were all rejected."
-  },
-  "roles": {
-    "clean": {
-      "requires_engaged": ["DELAY", "REVERB"],
-      "amp_level_min": -4.0,
-      "mix_min": {
-        "REVERB": 25.0,
-        "DELAY": 20.0,
-        "CHORUS": 30.0
-      },
-      "_note": "The 80s/arena clean is lush by definition. Rejected at reverb 12, delay 18, chorus 22."
-    },
-    "lead": {
-      "gain_margin_over_rhythm": 1.5,
-      "boost_must_not_sit_below_rhythm": true,
-      "mix_min": {
-        "REVERB": 20.0,
-        "DELAY": 18.0
-      },
-      "_note": "A lead needs space and a sustain tail, and a boost dialled BELOW the rhythm's is a clean-volume push, not an overdrive pushing the amp."
-    },
-    "rhythm": {
-      "mix_max": {
-        "REVERB": 25.0
-      },
-      "_note": "Rhythm is the exception: reverb stays LOW so the tightness survives. This is a ceiling, not a floor."
-    }
-  }
+  "_conclusion": [
+    "Issue #50 cannot be closed with parameter thresholds. 'Too quiet' is a",
+    "property of AUDIO, and nothing here measures audio. Answering it honestly",
+    "needs measured output, which is the re-amp capture path in issue #56.",
+    ""
+  ],
+  "_nothing_active": "This file is a RECORD, not a policy. Nothing reads it for enforcement any more. The relational lead-versus-rhythm idea already existed as rule 10 in fm9/tone_review.py, so the v1 experiment contributed no surviving check. It is kept so the approach is not tried again without first beating the evidence."
 }

@@ -128,45 +128,13 @@ def review(scenes: list[Scene]) -> list[Finding]:
                     f"lead sits {s.amp_level - rhythm_level:.0f} dB over the rhythm; "
                     "the cap is about +4, trim its level"))
 
-    # --- numeric policy (issue #50) ---------------------------------------
-    # The prose rules are qualitative, so a build could satisfy every adjective
-    # and still arrive timid. These compare against config/tone_targets.json.
-    pol = targets()
-    if pol:
-        floor = (pol.get("all_roles") or {}).get("amp_level_min")
-        for s_ in scenes:
-            # Only judge a scene whose ROLE is known. A scene we cannot name
-            # might be a deliberate quiet interlude, and "no role means no
-            # role-specific finding" is a principle the suite already pins.
-            # The role-independent backstop stays the softer -12 dB warning
-            # further down.
-            if floor is not None and s_.role and s_.amp_level is not None \
-                    and s_.amp_level < floor:
-                out.append(Finding(s_.n, "4", "fail",
-                    f"amp level {s_.amp_level:g} dB is below the {floor:g} dB "
-                    "floor; a distorted amp turned down reads thin, not "
-                    "aggressive"))
-            spec = (pol.get("roles") or {}).get(s_.role or "") or {}
-            for fam, low in (spec.get("mix_min") or {}).items():
-                got = s_.fx_mix.get(fam)
-                if got is not None and got < low:
-                    out.append(Finding(s_.n, "11", "fail",
-                        f"{fam.lower()} mix {got:g}% is below the {low:g}% "
-                        f"floor for a {s_.role}; engaged is not the same as "
-                        "audible"))
-            for fam, high in (spec.get("mix_max") or {}).items():
-                got = s_.fx_mix.get(fam)
-                if got is not None and got > high:
-                    out.append(Finding(s_.n, "11", "warn",
-                        f"{fam.lower()} mix {got:g}% is above the {high:g}% "
-                        f"ceiling for a {s_.role}; it softens the tightness"))
-            if spec.get("boost_must_not_sit_below_rhythm") \
-                    and s_.boost_gain is not None and rhythm_boost is not None \
-                    and s_.boost_gain < rhythm_boost:
-                out.append(Finding(s_.n, "11", "fail",
-                    f"the lead boost ({s_.boost_gain:g}) is dialled below the "
-                    f"rhythm's ({rhythm_boost:g}); that is a clean volume push, "
-                    "not an overdrive pushing the amp"))
+    # Issue #50: an attempt to add absolute parameter floors here was tested
+    # against 104 scenes of professionally voiced presets and refuted. It
+    # raised 196 failures against gig-ready work, because DISTORT_LEVEL is an
+    # output trim rather than loudness and a harder-driven scene reads quieter
+    # by it. config/tone_targets.json records the measurements. The relational
+    # lead-versus-rhythm idea already exists as rule 10 above, so nothing from
+    # that attempt survives here.
 
     # whole-build: nothing inaudibly quiet (rule 4)
     for s in scenes:
