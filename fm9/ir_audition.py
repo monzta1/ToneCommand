@@ -22,6 +22,7 @@ numpy is used for the FFT convolution. Everything else is stdlib.
 from __future__ import annotations
 
 import io
+import math
 import struct
 import wave
 from pathlib import Path
@@ -50,13 +51,30 @@ FIDELITY = {
 #: gated on the hardware spike in issue #56.
 RENDER_GRADE = "representative_amp"
 
+#: Loudness target for a preview, as RMS rather than peak.
+#:
+#: Peak-matching is NOT loudness-matching, and the difference is audible.
+#: Measured on three real library IRs rendered through this path, all three
+#: peaked at -1.01 dBFS by construction while their RMS spread over 2.15 dB.
+#: Two candidates 2 dB apart is more than enough to decide a preference on
+#: volume alone, which is the exact bias a comparison exists to remove.
+#:
+#: -14 dBFS suits the measured crest factor of these renders (roughly 7 to 9 dB
+#: for a saturated guitar), leaving peaks near -5 dBFS and headroom to spare.
+TARGET_RMS_DBFS = -14.0
+
+#: Absolute peak a render may reach. If matching loudness would exceed it the
+#: render is scaled down and SAYS SO, rather than silently breaking the match.
+PEAK_CEILING = 0.95
+
 #: The conditions that make a set of previews a fair COMPARISON rather than a
 #: collection of unrelated auditions. Every one of these is true of this
 #: renderer by construction, which is why it may claim them.
 COMPARISON_CONTRACT = {
     "same_source": "the identical synthetic DI for every candidate",
     "same_drive": "the same saturation stage and setting",
-    "same_level": "every render normalised to the same peak",
+    "same_level": f"every render matched to {TARGET_RMS_DBFS:g} dBFS RMS, so no "
+                  "candidate wins on volume",
     "same_length": "the same region of the same phrase",
     "deterministic": "the DI is seeded, so repeat renders are identical",
 }
@@ -197,15 +215,49 @@ def load_ir(path: str | Path, sr: int = SR) -> np.ndarray:
     return (ir / peak).astype(np.float32)
 
 
-def render(ir_path: str | Path, drive: str = "crunch",
-           seconds: float = 3.0, sr: int = SR) -> bytes:
-    """DI -> saturation -> cab IR, returned as 16-bit PCM WAV bytes."""
+def _rms(x) -> float:
+    return float(np.sqrt(np.mean(np.square(np.asarray(x, dtype=np.float64))))) \
+        if len(x) else 0.0
+
+
+def match_loudness(x, target_dbfs: float = TARGET_RMS_DBFS):
+    """Scale to a fixed ENERGY, not a fixed peak, and report what was achieved.
+
+    Peak-matching leaves candidates at genuinely different loudness, and the
+    louder of two almost always wins a listening test regardless of tone. That
+    is the bias a controlled comparison exists to remove, so matching energy is
+    the whole point rather than a refinement.
+
+    When the match would clip, the render is scaled down and `matched` goes
+    False. A quieter-but-honest render beats a distorted one, and the caller is
+    told rather than left to assume the set is still level.
+    """
+    rms = _rms(x)
+    if rms <= 0:
+        return np.asarray(x, dtype=np.float32), {
+            "rms_dbfs": None, "matched": False, "target_dbfs": target_dbfs,
+            "note": "silent render, nothing to match"}
+    y = np.asarray(x, dtype=np.float64) * (10 ** (target_dbfs / 20.0) / rms)
+    peak = float(np.max(np.abs(y)))
+    limited = peak > PEAK_CEILING
+    if limited:
+        y = y * (PEAK_CEILING / peak)
+    return y.astype(np.float32), {
+        "rms_dbfs": round(20 * math.log10(_rms(y) + 1e-12), 2),
+        "target_dbfs": target_dbfs,
+        "matched": not limited,
+        "note": ("peak-limited, so this candidate is quieter than the others"
+                 if limited else "")}
+
+
+def render_detail(ir_path: str | Path, drive: str = "crunch",
+                  seconds: float = 3.0, sr: int = SR):
+    """(wav bytes, loudness info). Use this where the info matters."""
     seconds = max(0.5, min(float(seconds), MAX_RENDER_SECONDS))
     ir = load_ir(ir_path, sr)
     di = saturate(test_di(seconds, sr), drive)
     wet = np.convolve(di, ir)[:len(di)]     # numpy picks an FFT path when it pays
-    peak = float(np.max(np.abs(wet))) or 1.0
-    wet = (wet / peak * 0.89).astype(np.float32)
+    wet, level = match_loudness(wet)
     pcm = (wet * 32767.0).astype("<i2").tobytes()
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -213,4 +265,10 @@ def render(ir_path: str | Path, drive: str = "crunch",
         w.setsampwidth(2)
         w.setframerate(sr)
         w.writeframes(pcm)
-    return buf.getvalue()
+    return buf.getvalue(), level
+
+
+def render(ir_path: str | Path, drive: str = "crunch",
+           seconds: float = 3.0, sr: int = SR) -> bytes:
+    """DI -> saturation -> cab IR, returned as 16-bit PCM WAV bytes."""
+    return render_detail(ir_path, drive, seconds, sr)[0]

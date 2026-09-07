@@ -4100,7 +4100,7 @@ def api_ir_audition(path: str = "", drive: str = "crunch", seconds: float = 3.0)
                       ".syx cabs are auditioned on the rig."},
             status_code=400)
     try:
-        wav = ir_audition.render(p, drive=drive, seconds=seconds)
+        wav, level = ir_audition.render_detail(p, drive=drive, seconds=seconds)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     info = ir_audition.integrity(drive, seconds)
@@ -4111,6 +4111,11 @@ def api_ir_audition(path: str = "", drive: str = "crunch", seconds: float = 3.0)
         "X-Audition-Grade": info["grade"],
         "X-Audition-Label": info["label"],
         "X-Audition-Is-Comparison": "1" if info["is_comparison"] else "0",
+        # Loudness actually achieved. When a render had to be peak-limited it
+        # is quieter than its peers, and the UI must be able to say so rather
+        # than presenting a broken match as a fair one.
+        "X-Audition-Rms-Dbfs": str(level.get("rms_dbfs")),
+        "X-Audition-Level-Matched": "1" if level.get("matched") else "0",
         "Content-Disposition": f'inline; filename="audition-{p.stem[:40]}.wav"'})
 
 

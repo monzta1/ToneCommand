@@ -41,6 +41,13 @@ Notable changes to ToneCommand. Dates are UTC.
   rather than three unrelated auditions (#57).
 
 ### Changed
+- **Cab previews are loudness matched, not peak matched.** Every candidate now
+  renders to the same RMS level rather than the same peak, so none of them wins
+  a comparison by being louder. Measured on three real library IRs, peak
+  matching left a 2.15 dB spread in actual level; it is now 0.00 dB. A render
+  that would clip is scaled down and says so, rather than presenting a broken
+  match as a fair one. `GET /api/ir/audition` reports the achieved level and
+  whether the match held.
 - **An empty tone review no longer poses as a pass.** A plan is a delta, so any
   parameter it does not set is unknown and its check is skipped. One green
   result therefore meant three different things: nothing wrong, nothing

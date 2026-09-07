@@ -225,3 +225,73 @@ def test_the_same_di_is_used_for_every_candidate(library):
     a = ir_audition.test_di(3.0)
     b = ir_audition.test_di(3.0)
     assert np.array_equal(a, b)
+
+
+# --- loudness matching, not peak matching -------------------------------
+
+def test_candidates_are_matched_by_energy_not_peak(library):
+    """Peak-matching left a 2.15 dB RMS spread across three real library IRs,
+    and the louder of two candidates wins a listening test on volume alone.
+    That is the bias a controlled comparison exists to remove."""
+    # Both decaying, like a real cab, but tonally very different. A bare
+    # two-sample impulse is not a cab: its crest factor is so extreme that the
+    # peak limiter engages, which is correct behaviour but tests the limiter
+    # rather than the matching.
+    rng = np.random.default_rng(7)
+    n = 2048
+    dark = np.exp(-np.arange(n) / 30.0) * rng.standard_normal(n) * 0.3
+    fast = np.exp(-np.arange(n) / 8.0) * rng.standard_normal(n) * 0.3
+    levels = []
+    for name, ir in (("dark.wav", dark), ("brite.wav", fast)):
+        p = write_wav(library / "IRs" / name, ir)
+        _wav_bytes, info = ir_audition.render_detail(p, seconds=1.0)
+        levels.append(info["rms_dbfs"])
+    assert max(levels) - min(levels) < 0.2, f"not level matched: {levels}"
+
+
+def test_the_achieved_level_hits_the_target(library):
+    p = write_wav(library / "IRs" / "cab.wav",
+                  np.random.default_rng(8).standard_normal(1024) * 0.2)
+    _b, info = ir_audition.render_detail(p, seconds=1.0)
+    assert abs(info["rms_dbfs"] - ir_audition.TARGET_RMS_DBFS) < 0.1
+    assert info["matched"] is True
+
+
+def test_a_peak_limited_render_says_it_is_not_matched():
+    """Honesty over silence: a quieter-but-clean render is fine, pretending the
+    set is still level is not."""
+    spike = np.zeros(4096); spike[0] = 1.0        # enormous crest factor
+    out, info = ir_audition.match_loudness(spike)
+    assert info["matched"] is False
+    assert "quieter than the others" in info["note"]
+    assert np.abs(out).max() <= ir_audition.PEAK_CEILING + 1e-6
+
+
+def test_matching_never_clips(library):
+    for seed in (1, 2, 3):
+        ir = np.random.default_rng(seed).standard_normal(2048) * 0.4
+        p = write_wav(library / "IRs" / f"c{seed}.wav", ir)
+        out, _ = ir_audition.render_detail(p, drive="high-gain", seconds=1.0)
+        with wave.open(io.BytesIO(out)) as w:
+            x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+        assert np.abs(x).max() < 32768
+
+
+def test_silence_is_reported_rather_than_divided_by_zero():
+    out, info = ir_audition.match_loudness(np.zeros(512))
+    assert info["matched"] is False and info["rms_dbfs"] is None
+
+
+def test_the_contract_no_longer_claims_peak_matching():
+    assert "peak" not in ir_audition.COMPARISON_CONTRACT["same_level"].lower()
+    assert "RMS" in ir_audition.COMPARISON_CONTRACT["same_level"]
+
+
+def test_the_endpoint_reports_the_achieved_level(library):
+    ir = write_wav(library / "IRs" / "cab.wav",
+                   np.random.default_rng(9).standard_normal(1024) * 0.2)
+    r = TestClient(server.app).get("/api/ir/audition",
+                                   params={"path": str(ir), "seconds": 1.0})
+    assert r.headers["X-Audition-Level-Matched"] == "1"
+    assert abs(float(r.headers["X-Audition-Rms-Dbfs"])
+               - ir_audition.TARGET_RMS_DBFS) < 0.1

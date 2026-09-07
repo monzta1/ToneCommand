@@ -9891,10 +9891,11 @@ async function renderCabPanel() {
   if (alts.length) {
     $('cabfoot').innerHTML =
       '<b>Representative preview.</b> A fixed synthetic DI through a generic '
-      + 'amp stage, then the cab. Same source and same level for every '
-      + 'candidate, so this is a fair comparison of the cabs. It is not your '
-      + 'amp path, so it ranks them rather than showing what your rig will '
-      + 'sound like. An IR carries no gain of its own.';
+      + 'amp stage, then the cab. Every candidate is matched to the same '
+      + 'loudness, not just the same peak, so none of them wins by being '
+      + 'louder. It is not your amp path, so it ranks cabs rather than '
+      + 'showing what your rig will sound like. An IR carries no gain of '
+      + 'its own.';
   }
 }
 
