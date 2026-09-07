@@ -48,11 +48,18 @@ def check_url(url: str) -> str:
     """
     if not url:
         return ""
-    parsed = urlparse(url)
+    # urlparse itself raises on a malformed IPv6 bracket ("http://[bad/"), and
+    # so does .hostname. Callers only catch UnsafeServiceURL, so a raw
+    # ValueError escaping here turned a bad address into a 500 instead of a
+    # refusal. Everything below must fail as UnsafeServiceURL and nothing else.
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").strip("[]")
+    except ValueError as e:
+        raise UnsafeServiceURL(f"that is not a usable address: {e}") from None
     if parsed.scheme not in ("http", "https"):
         raise UnsafeServiceURL(
             f"the IR service address must start with http://, got {url!r}")
-    host = (parsed.hostname or "").strip("[]")
     if not host:
         raise UnsafeServiceURL(f"no host in {url!r}")
     if allow_remote():

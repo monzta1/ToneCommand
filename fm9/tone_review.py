@@ -204,10 +204,16 @@ def coverage(scenes: list[Scene]) -> dict:
 
     roles = [s.n for s in scenes if s.role]
     ran = sum(1 for name in checks if observed[name])
+    # A role on its own is not a check, it is the precondition for one. Counting
+    # it as coverage let a scene with a known role and no values at all report
+    # "verified", which is precisely the overstatement this function exists to
+    # prevent. At least one VALUE must have been observed.
+    value_checks = [n for n in checks if n != "role" and observed[n]]
     if not scenes:
         status = "not_applicable"
-    elif ran == 0 or not roles:
-        # Without a role, no role check can run at all, whatever else is known.
+    elif not roles or not value_checks:
+        # No role means no role check can run, whatever else is known; no value
+        # means there was nothing to judge that role against.
         status = "unknown"
     else:
         status = "verified"
@@ -223,6 +229,9 @@ def coverage(scenes: list[Scene]) -> dict:
         "why": ("no scenes in this plan" if not scenes else
                 "no scene role could be inferred, so no role check could run"
                 if not roles else
+                "the scene roles are known but no parameter value was, so "
+                "there was nothing to judge them against"
+                if not value_checks else
                 f"{ran} of {len(checks)} checks had the facts they needed"),
     }
 
