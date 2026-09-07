@@ -36,3 +36,8 @@ outbox.json
 # but it is account metadata and a build artefact, and neither belongs in git.
 .wrangler/
 tone_dir.json
+
+# Per-machine runtime state, not source: the IR service URL and the
+# names the owner gave their own user-cab slots.
+ir_service.json
+user_cabs.json
