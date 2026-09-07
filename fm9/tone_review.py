@@ -101,26 +101,39 @@ def review(scenes: list[Scene]) -> list[Finding]:
                 out.append(Finding(s.n, "8", "fail",
                     f"clean scene has no {' or '.join(m.lower() for m in missing)}; "
                     "a big/80s clean needs delay + reverb"))
-            # rule 8 / rule 4: cleans go up near 0, never cut quiet
-            if s.amp_level is not None:
-                if s.amp_level <= -4:
-                    out.append(Finding(s.n, "8", "fail",
-                        f"clean amp level {s.amp_level:g} dB is cut quiet; a clean "
-                        "amp makes little output, so its level goes up near 0"))
-                elif rhythm_level is not None and s.amp_level < rhythm_level - 2:
-                    out.append(Finding(s.n, "4", "warn",
-                        f"clean sits {rhythm_level - s.amp_level:.0f} dB below the "
-                        "rhythm; cleans should match the rhythm, not sit under it"))
+            # rule 8 / rule 4: a clean must not sit under its own rhythm.
+            #
+            # Judged RELATIONALLY, against this preset's own gain staging.
+            # An absolute floor here used to fail every professional clean
+            # (issue #65): AustinBuddy's sit at a median of -8.11 dB, which an
+            # "at or below -4 is cut quiet" rule rejects outright. The absolute
+            # value carries no information because DISTORT_LEVEL is an output
+            # trim, and a harder-driven scene reads quieter by it.
+            #
+            # The relation does carry information, and separates the two cases
+            # cleanly. The build that shipped wrong had a clean 6 dB BELOW its
+            # rhythm; the professional presets put the clean roughly 1.5 dB
+            # ABOVE theirs. Same absolute level, opposite verdicts.
+            if s.amp_level is not None and rhythm_level is not None \
+                    and s.amp_level < rhythm_level - 2:
+                out.append(Finding(s.n, "8", "fail",
+                    f"clean sits {rhythm_level - s.amp_level:.0f} dB below the "
+                    "rhythm; a clean amp makes little output, so its level "
+                    "belongs at or above the rhythm's, not under it"))
         elif s.role == "lead":
             # rule 10: audibly MORE saturated than the rhythm, not a hair more.
             # The rulebook's own example calls gain 7.8 over a 6.8 rhythm (+1.0)
             # too little for a lead, so the bar is a clear margin, ~+1.5.
             if s.amp_gain is not None and rhythm_gain is not None \
                     and s.amp_gain < rhythm_gain + 1.5:
-                out.append(Finding(s.n, "10", "fail",
+                # A warning, not a failure. The tendency is real but not a law:
+                # 5 of 13 professional presets miss this margin and two run the
+                # lead BELOW the rhythm outright (issue #65), so blocking on it
+                # rejects work that gigs.
+                out.append(Finding(s.n, "10", "warn",
                     f"lead gain {s.amp_gain:g} is not clearly above the rhythm "
-                    f"({rhythm_gain:g}); a lead must out-saturate the rhythm or it "
-                    "reads as clean/crunch"))
+                    f"({rhythm_gain:g}); usually a lead out-saturates the "
+                    "rhythm, though professional presets do vary"))
             # rule 4 hard cap: a lead more than ~4 dB over the rhythm
             if s.amp_level is not None and rhythm_level is not None \
                     and s.amp_level > rhythm_level + 4:

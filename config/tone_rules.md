@@ -345,6 +345,13 @@ Amp / gain:
   failure (2026-09-04): push the amp gain up and keep the boost ON.
 - Enough gain to SUSTAIN and bloom, but not so much it turns to fizz/compression
   and loses clarity. Sustain, not mush.
+- MEASURED CAVEAT (2026-09-07, 104 scenes from 13 AustinBuddy '25 presets): more
+  DRIVE is the usual way to get lead lift, not the only way. 5 of those 13
+  presets put the lead within a hair of the rhythm's gain and two ran the lead
+  BELOW it, getting the lift from level, mid-forward EQ and ambience instead.
+  So write leads with more drive by default, but a build that lifts the lead
+  another way is not automatically wrong. The pre-ship check warns here rather
+  than failing, because failing it rejects work that gigs.
 - PUSH THE MIDS. Mid-forward voicing gives the lead its vocal, throaty, singing
   quality that carries a solo over a band. Scooped leads disappear in a mix.
 

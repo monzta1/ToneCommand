@@ -34,16 +34,24 @@ def role_of(name: str):
 
 
 def professional_presets():
-    """Real scenes read off the hardware, grouped by preset."""
+    """Real scenes read off the hardware, grouped by preset.
+
+    A block that reported a mix is treated as present. Bypass state was not
+    captured in this read, so a block that is bypassed at a nonzero mix would
+    read here as present. That is the direction that under-reports findings,
+    which is the safe direction for a fixture used to prove the review does
+    NOT fire on professional work.
+    """
     rows = json.loads(FIXTURE.read_text())
     by = {}
     for r in rows:
+        mix = {k.upper(): r[k] for k in ("reverb", "delay", "chorus")
+               if r.get(k) is not None}
         by.setdefault(r["preset"], []).append(
             Scene(n=r["scene"], name=r["scene_name"],
                   role=role_of(r["scene_name"]),
                   amp_gain=r["drive"], amp_level=r["amp_level"],
-                  fx_mix={k.upper(): r[k] for k in ("reverb", "delay", "chorus")
-                          if r.get(k) is not None}))
+                  effects=set(mix), fx_mix=mix))
     return by
 
 
@@ -76,6 +84,40 @@ def test_professional_presets_raise_no_findings_from_the_numeric_policy(preset):
         assert "floor" not in f.message, f"{preset}: {f.message}"
         assert "below the" not in f.message or "rhythm" in f.message, \
             f"{preset}: {f.message}"
+
+
+@pytest.mark.parametrize("preset", list(professional_presets()))
+def test_professional_presets_raise_no_blocking_findings_at_all(preset):
+    """Issue #65. The same evidence that refuted the numeric policy also
+    refuted two hand-written absolute thresholds inside the review itself:
+    rule 8's 'a clean at or under -4 dB is cut quiet' and rule 10's lead
+    margin. They raised 8 FAILs across this sample. Rule 8's clean check is
+    relational now, and rule 10 warns instead of failing, because 5 of the 13
+    presets miss the +1.5 margin and two run the lead UNDER the rhythm.
+
+    A fail here means the review would block work that gigs.
+    """
+    bad = [f for f in tone_review.review(professional_presets()[preset])
+           if f.severity == "fail"]
+    assert not bad, f"{preset}: " + "; ".join(
+        f"rule {f.rule} scene {f.scene}: {f.message}" for f in bad)
+
+
+def test_the_clean_check_is_relational_not_absolute():
+    """A quiet clean is fine as long as it is not quiet RELATIVE to its own
+    rhythm. Both scenes below sit at professional-pack levels; only the second
+    pair is actually wrong."""
+    ok = [Scene(1, "Clean", "clean", amp_gain=2.5, amp_level=-8.0,
+                effects={"DELAY", "REVERB"}),
+          Scene(2, "Rhythm", "rhythm", amp_gain=6.5, amp_level=-9.5)]
+    assert not [f for f in tone_review.review(ok) if f.rule == "8"], \
+        "a clean above its rhythm must pass however low its absolute level"
+
+    under = [Scene(1, "Clean", "clean", amp_gain=2.5, amp_level=-8.0,
+                   effects={"DELAY", "REVERB"}),
+             Scene(2, "Rhythm", "rhythm", amp_gain=6.5, amp_level=-2.0)]
+    assert [f for f in tone_review.review(under) if f.rule == "8"], \
+        "a clean 6 dB under its rhythm must still be caught"
 
 
 def test_the_pack_really_does_sit_below_the_old_floor():

@@ -30,10 +30,19 @@ def test_it_catches_the_sykes_failure():
     f = tr.review(scenes)
     rules = _by_rule(f)
     assert (1, "8") in rules, "did not flag the dry clean (no delay)"
-    assert (1, "8") in rules and any(f_.scene == 1 and "cut quiet" in f_.message for f_ in f), \
-        "did not flag the clean cut quiet"
+    # The clean is caught RELATIONALLY now, not by an absolute floor. It sits
+    # 6 dB under its own rhythm, which is the thing that was actually wrong.
+    # The old "at or below -4 dB is cut quiet" test failed every professional
+    # clean as well (issue #65): AustinBuddy's sit at a median of -8.11 dB, and
+    # ABOVE their own rhythms, so the absolute value carried no information.
+    assert any(f_.scene == 1 and "below the rhythm" in f_.message for f_ in f), \
+        "did not flag the clean sitting under its own rhythm"
     assert (5, "10") in rules, "did not flag the under-saturated lead"
-    assert all(x.severity == "fail" for x in f if x.rule in ("8", "10"))
+    assert all(x.severity == "fail" for x in f if x.rule == "8")
+    # Rule 10 warns rather than fails: 5 of 13 professional presets miss the
+    # +1.5 margin and two run the lead below the rhythm, so blocking on it
+    # rejects work that gigs.
+    assert all(x.severity == "warn" for x in f if x.rule == "10")
 
 
 def test_a_good_build_passes_clean():
