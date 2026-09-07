@@ -162,3 +162,27 @@ def test_a_plan_that_sets_a_boost_records_it():
          "value": 6.0},
     ])
     assert scenes[0].boost_gain == 6.0
+
+
+def test_a_scene_with_no_role_is_not_judged_by_the_floors():
+    """A scene whose role cannot be inferred might be a deliberate quiet
+    interlude. The suite already pins "no role means no role-specific
+    finding", and the numeric floors must respect that rather than override
+    it. The role-independent backstop stays the softer -12 dB warning.
+
+    Caught by CI: the first version of the floor fired on every scene and
+    broke test_tone_review.py::test_unknown_role_is_skipped_not_guessed.
+    """
+    assert tone_review.review(
+        [Scene(4, "Scene 4", None, amp_gain=2.0, amp_level=-8.0)]) == []
+
+
+def test_the_very_low_backstop_still_applies_without_a_role():
+    """-12 dB is flagged whatever the scene is, but as a warning."""
+    found = tone_review.review([Scene(4, "Scene 4", None, amp_level=-14.0)])
+    assert found and all(f.severity == "warn" for f in found)
+
+
+def test_a_known_role_is_still_held_to_the_floor():
+    found = tone_review.review([Scene(4, "Rhythm", "rhythm", amp_level=-8.0)])
+    assert any("below the -6 dB floor" in f.message for f in found)

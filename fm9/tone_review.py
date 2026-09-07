@@ -135,7 +135,12 @@ def review(scenes: list[Scene]) -> list[Finding]:
     if pol:
         floor = (pol.get("all_roles") or {}).get("amp_level_min")
         for s_ in scenes:
-            if floor is not None and s_.amp_level is not None \
+            # Only judge a scene whose ROLE is known. A scene we cannot name
+            # might be a deliberate quiet interlude, and "no role means no
+            # role-specific finding" is a principle the suite already pins.
+            # The role-independent backstop stays the softer -12 dB warning
+            # further down.
+            if floor is not None and s_.role and s_.amp_level is not None \
                     and s_.amp_level < floor:
                 out.append(Finding(s_.n, "4", "fail",
                     f"amp level {s_.amp_level:g} dB is below the {floor:g} dB "
