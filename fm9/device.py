@@ -1234,7 +1234,7 @@ class FM9:
             if isinstance(after, (int, float)) and abs(after - target) <= tol:
                 ok = True
                 break
-        return SetResult(ok, "verified by read-back" if ok else f"read-back mismatch: {after}",
+        return SetResult(ok, "read back on the unit" if ok else f"read-back mismatch: {after}",
                          before, after)
 
     def set_params_batch(self, items: list) -> list:
@@ -1297,7 +1297,7 @@ class FM9:
             after = decode(after_raw, spec)
             before = befores.get(id(spec))
             if isinstance(after, (int, float)) and abs(after - target) <= tol:
-                results.append(SetResult(True, "verified by read-back (batched)",
+                results.append(SetResult(True, "read back on the unit (batched)",
                                          before, after))
             else:
                 # Did not land in the batch read: retry it on the full path,
@@ -1353,7 +1353,7 @@ class FM9:
                 time.sleep(0.15)
                 after = self.get_param_wire(spec)
                 if after == wire:
-                    return SetResult(True, f"verified by read-back ({how})",
+                    return SetResult(True, f"read back on the unit ({how})",
                                      before, after)
         return SetResult(False, f"read-back mismatch: wanted {wire}, got {after}",
                          before, after)

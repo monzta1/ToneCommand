@@ -4,7 +4,65 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Security
+- **The IR bridge could be pointed at any address.** `fm9/ir_service.py` fetched
+  whatever URL it was given, from inside the user's network, and the response
+  was fed into the planner's prompt. That is both a server-side request forgery
+  primitive and a way for a hostile endpoint to put text in front of the model.
+  Loopback only now, validated when saved AND again at use, because the config
+  file and the environment variable can both be edited outside the UI. Redirects
+  are refused rather than followed off-host, and recommendation text is fenced,
+  newline-stripped, bracket-neutralised and length-capped so a crafted filename
+  cannot forge an instruction line. `TONECOMMAND_IR_ALLOW_REMOTE=1` is the
+  deliberate escape hatch (#53).
+
 ### Added
+- **The cab search can hear.** IRCommand now measures every cab IR once,
+  offline, so `darker`, `brighter`, `more body` and `tighter` are real
+  directions rather than words hunted in filenames, and can be answered
+  relative to the cab you are on. The review shows match quality in words, the
+  measured brightness, and how far a candidate sits from your current cab
+  (#61, #63).
+- **Blend advisor.** Which of your own IRs combine well with one another, and
+  the sub-millisecond alignment each blend needs. On a real library, blending a
+  Soldano capture with a V30 4x12 gives +2.19 dB with nothing cancelling at
+  +0.271 ms, where the same pair unaligned reads -3.95 dB with 44.7% of the
+  band cancelling. Take the shortlist into Cab-Lab, apply the shift, install
+  the result as one cab (#62).
+- **Previews say how they were made.** Every rendered candidate carries a
+  fidelity grade. This renderer uses a fixed synthetic DI and a generic
+  saturation stage, so it says `Representative preview`, never "heard in your
+  rig", and the grade travels with the audio so the UI cannot overstate it.
+  Fractal `.syx` and factory cabs read `ON RIG ONLY`, since their IR body
+  cannot be rendered at all (#59).
+- **Audition integrity is a contract, not a convention.** Same source, same
+  drive, same level, same length, and a seeded DI so repeat renders are
+  identical. That is what makes a set of previews a fair comparison of cabs
+  rather than three unrelated auditions (#57).
+
+### Changed
+- **An empty tone review no longer poses as a pass.** A plan is a delta, so any
+  parameter it does not set is unknown and its check is skipped. One green
+  result therefore meant three different things: nothing wrong, nothing
+  checkable, or no scene role inferred. Reviews now report coverage, and the UI
+  says `no issues in the N checks I could run`, or says plainly that nothing
+  could be checked (#54).
+- **Review and Send now refer to the same plan.** Editing a value in Review
+  used to mutate the browser's own copy after the server had validated it, so
+  Confirm could show guidance for a plan that no longer existed. An edit is now
+  a new revision: it re-validates server-side, returns fresh findings, and mints
+  a new digest. Send names the digest it believes it is sending and is refused
+  if it does not match what the server approved (#55).
+- **Read-back no longer claims more than it proves.** The device layer said
+  `verified by read-back`, which reads as confirmation of sound. It now says
+  `read back on the unit`. A new proof vocabulary keeps sent, read back, sound
+  checked, closer to target, your pick and kept strictly separate, and nothing
+  can be called closer to target without a measurement. `Better` belongs to the
+  player and is never asserted by the system (#58).
+- **A guided correction may not send without a recovery snapshot.** A failed
+  snapshot still lets a manual edit through, since the player asked for it and
+  can hear the result. A correction the system proposed from a measurement is
+  refused instead (#60).
 - **Hear the cab before you commit it.** REVIEW now shows the cab the build
   lands on, plus alternatives from your own library, each with a PLAY button and
   a drive selector (clean / crunch / lead / high-gain). Previews render in the

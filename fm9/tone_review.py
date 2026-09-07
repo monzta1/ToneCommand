@@ -173,6 +173,60 @@ def summary_from_plan(actions: list[dict], reg=None) -> list[Scene]:
     return [scenes[k] for k in sorted(scenes)]
 
 
+def coverage(scenes: list[Scene]) -> dict:
+    """What could actually be checked, so an empty result cannot pose as a pass.
+
+    Issue #54: a plan is a delta, so any parameter it does not set is unknown
+    and its check is skipped. That made one green result mean three different
+    things at once: nothing was wrong, nothing could be checked, or the scene
+    roles could not be inferred. The player could not tell which, and the
+    dangerous one looked exactly like the safe one.
+
+    Status is the honest summary of the whole review:
+      verified        at least one check ran and had the facts it needed
+      unknown         nothing could be checked
+      not_applicable  there are no scenes to check
+    """
+    checks = {
+        "role": lambda s: s.role is not None,
+        "gain": lambda s: s.amp_gain is not None,
+        "level": lambda s: s.amp_level is not None,
+        "scene_level": lambda s: s.scene_level is not None,
+        "effects": lambda s: bool(s.effects),
+    }
+    observed, missing = {}, {}
+    for name, has in checks.items():
+        seen = [s.n for s in scenes if has(s)]
+        observed[name] = seen
+        absent = [s.n for s in scenes if not has(s)]
+        if absent:
+            missing[name] = absent
+
+    roles = [s.n for s in scenes if s.role]
+    ran = sum(1 for name in checks if observed[name])
+    if not scenes:
+        status = "not_applicable"
+    elif ran == 0 or not roles:
+        # Without a role, no role check can run at all, whatever else is known.
+        status = "unknown"
+    else:
+        status = "verified"
+    return {
+        "status": status,
+        "scenes": [s.n for s in scenes],
+        "scenes_checked": roles,
+        "roles_unknown": [s.n for s in scenes if not s.role],
+        "checks_run": ran,
+        "checks_possible": len(checks),
+        "observed": observed,
+        "missing": missing,
+        "why": ("no scenes in this plan" if not scenes else
+                "no scene role could be inferred, so no role check could run"
+                if not roles else
+                f"{ran} of {len(checks)} checks had the facts they needed"),
+    }
+
+
 def findings_as_dicts(findings: list[Finding]) -> list[dict]:
     return [{"scene": f.scene, "rule": f.rule, "severity": f.severity,
              "message": f.message} for f in findings]

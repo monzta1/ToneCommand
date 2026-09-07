@@ -5876,9 +5876,21 @@ async function scanPreset() {
     if (!d) throw new Error('the scan ended before it finished');
     if (d.error) throw new Error(d.error);
     renderHealth(d);
+    // An empty findings list is not automatically good news: it can also mean
+    // nothing could be checked. Say which, rather than showing a pass that was
+    // never earned (#54).
     const bad = d.findings.length;
-    log(bad ? `scan: ${bad} finding${bad > 1 ? 's' : ''} on this preset`
-            : 'scan: every scene alive, nothing flagged', bad ? 'warn' : 'ok');
+    const cov = d.tone_coverage || d.coverage;
+    if (bad) {
+      log(`scan: ${bad} finding${bad > 1 ? 's' : ''} on this preset`, 'warn');
+    } else if (cov && cov.status !== 'verified') {
+      log(`scan: nothing could be checked (${cov.why || 'no coverage'})`, 'warn');
+    } else if (cov && cov.checks_run != null) {
+      log(`scan: no issues in the ${cov.checks_run} check`
+          + `${cov.checks_run === 1 ? '' : 's'} I could run`, 'ok');
+    } else {
+      log('scan: every scene alive, nothing flagged', 'ok');
+    }
   } catch (e) {
     $('hout').innerHTML = '';
     log(`scan failed: ${e.message}`, 'err');
@@ -7283,6 +7295,7 @@ $('plancards').addEventListener('change', e => {
     v = Math.max(meta.min, Math.min(meta.max, v));
   a.value = v;
   renderPlanCards(currentPlan, reviewFilter);
+  revisePlan();
 });
 $('plancards').addEventListener('click', e => {
   const rb = e.target.closest('.editflag[data-reset]');
@@ -7291,7 +7304,43 @@ $('plancards').addEventListener('click', e => {
   if (!a || !PLANNED.has(a)) return;
   a.value = PLANNED.get(a);
   renderPlanCards(currentPlan, reviewFilter);
+  revisePlan();
 });
+
+// An edit makes a NEW plan, not a quietly altered old one (#55). The server
+// re-validates, returns fresh findings and a fresh digest, and until it does
+// the plan carries no digest so Confirm cannot arm against stale evidence.
+let _reviseTimer = null;
+function revisePlan() {
+  if (!currentPlan) return;
+  currentPlan.plan_digest = null;          // the reviewed revision is now void
+  $('toconfirm').disabled = true;
+  $('toconfirm').title = 'revalidating the edited plan...';
+  clearTimeout(_reviseTimer);
+  _reviseTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/plan/revise', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({actions: currentPlan.actions}),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        $('toconfirm').title = 'the edited plan did not validate';
+        log('edit refused: the changed value did not validate', 'warn');
+        return;
+      }
+      currentPlan.plan_digest = d.plan_digest;
+      if (d.tone_review) currentPlan.tone_review = d.tone_review;
+      if (d.tone_coverage) currentPlan.tone_coverage = d.tone_coverage;
+      $('toconfirm').disabled = hasBlockers();
+      $('toconfirm').title = hasBlockers()
+        ? 'blocked: fix or discard the failing changes first' : '';
+      renderReviewStage();
+    } catch (e) {
+      $('toconfirm').title = 'could not revalidate the edited plan';
+    }
+  }, 250);
+}
 
 function plainActionIssue(message, blocked) {
   const m = String(message || '');
@@ -9136,6 +9185,11 @@ async function apply() {
       body: JSON.stringify({
         actions: currentPlan.actions,
         expected_preset: currentPlan.device ? currentPlan.device.preset.number : null,
+        // Name the revision this was reviewed as (#55). If the plan was edited
+        // after review without re-validating, the digest will not match what
+        // the server approved and the send is refused rather than silently
+        // transmitting something nobody reviewed.
+        plan_digest: currentPlan.plan_digest || null,
       }),
     });
     if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);

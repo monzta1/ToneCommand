@@ -701,9 +701,73 @@ def resolve_type_ordinal(family: str, name: str) -> tuple[int, str] | None:
     return (best[1], best[2]) if best[0] > 0 else None
 
 
+#: Plans whose changes the SYSTEM proposed from a measurement, rather than
+#: changes the player dialled in deliberately. These are held to a stricter
+#: recovery standard: see GUIDED_ORIGINS use below (#60).
+GUIDED_ORIGINS = frozenset({"sound_check_correction", "guided_correction"})
+
+
 class ApplyBody(BaseModel):
     actions: list[Action]
     expected_preset: int | None = None
+    #: Who proposed this. Absent or "player" means a deliberate manual edit.
+    origin: str | None = None
+    #: The revision this was reviewed as (#55). When present it must match the
+    #: actions being sent AND name a revision the server actually validated.
+    plan_digest: str | None = None
+
+
+# --- Immutable plan revisions (#55) -------------------------------------
+#
+# Review used to let the browser edit numeric values in place, mutating its own
+# copy of the actions AFTER the server had produced plan-time validation and
+# tone findings. Range validation still ran at apply, so an out-of-range number
+# could not land, but Confirm could show guidance computed against a plan that
+# no longer existed. Review and Send have to refer to the same object.
+#
+# The server therefore records the digest of every action set it validates. An
+# edited plan is a NEW revision, obtained by re-validating, and Send names the
+# digest it believes it is sending. A browser that alters an action changes the
+# digest, which then matches nothing the server approved.
+
+_plan_revisions: dict[str, dict] = {}
+_MAX_REVISIONS = 64
+
+
+def plan_digest(actions) -> str:
+    """A stable fingerprint of exactly what will be transmitted."""
+    import hashlib
+    canon = []
+    for a in actions:
+        d = a.model_dump() if hasattr(a, "model_dump") else dict(a)
+        canon.append({k: d.get(k) for k in sorted(d) if d.get(k) is not None})
+    blob = json.dumps(canon, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def register_revision(actions, note: str = "") -> str:
+    """Record an action set the server has validated, and return its digest."""
+    dg = plan_digest(actions)
+    _plan_revisions[dg] = {"at": time.time(), "n": len(actions), "note": note}
+    if len(_plan_revisions) > _MAX_REVISIONS:
+        for k in sorted(_plan_revisions, key=lambda k: _plan_revisions[k]["at"]
+                        )[:len(_plan_revisions) - _MAX_REVISIONS]:
+            _plan_revisions.pop(k, None)
+    return dg
+
+
+def check_revision(body: ApplyBody):
+    """None when this send may proceed, else the reason it may not."""
+    if not body.plan_digest:
+        return None                      # legacy caller; nothing to check
+    actual = plan_digest(body.actions)
+    if actual != body.plan_digest:
+        return ("these changes are not the ones that were reviewed: the plan "
+                "was edited after review. Re-run the review and confirm again.")
+    if actual not in _plan_revisions:
+        return ("this plan was never validated by the server. Re-run the "
+                "review and confirm again.")
+    return None
 
 
 @app.get("/")
@@ -1366,6 +1430,14 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             result = _plan_counting(body.prompt, context, on_count, cancel)
         finally:
             _settings_lock.release()
+        # This exact action set is what Review shows and Confirm arms against.
+        # Recording it lets Send prove it is transmitting the reviewed plan.
+        try:
+            result["plan_digest"] = register_revision(
+                [Action(**a) if isinstance(a, dict) else a
+                 for a in (result.get("actions") or [])], note="plan")
+        except Exception:
+            result["plan_digest"] = None
         result["device"] = ({"preset": snap["preset"], "scene": snap["scene"]}
                             if snap else {"preset": None, "scene": None})
         # Say so loudly. A plan built against a remembered reading is not the
@@ -1442,8 +1514,13 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             summary = tone_review.summary_from_plan(result.get("actions", []))
             result["tone_review"] = tone_review.findings_as_dicts(
                 tone_review.review(summary))
+            # An empty findings list is not a pass on its own: it can also mean
+            # nothing could be checked. Coverage says which (#54).
+            result["tone_coverage"] = tone_review.coverage(summary)
         except Exception:
             result["tone_review"] = []
+            result["tone_coverage"] = {"status": "unknown", "checks_run": 0,
+                                       "why": "the tone review did not run"}
         return result
     except planner.PlanCancelled:
         return {"error": "stopped"}
@@ -4313,6 +4390,14 @@ def _set_param_spec(a: Action):
 
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
+    # Review and Send must refer to the same object (#55). A digest that does
+    # not match the actions, or names a revision the server never validated,
+    # means the plan changed after it was reviewed.
+    stale = check_revision(body)
+    if stale:
+        return {"results": [{"action": {"kind": "revision"}, "ok": False,
+                             "detail": stale}],
+                "health": [], "refused": "stale_plan"}
     health_findings: list = []
     if _gig_mode["on"]:
         blocked = [a.kind for a in body.actions if a.kind not in GIG_SAFE_KINDS]
@@ -4349,10 +4434,23 @@ def _apply_for(body: ApplyBody, on_step=None):
                 try:
                     _take("undo")
                 except Exception as e:
-                    # A snapshot that fails must not block the edit. Say so,
-                    # rather than leaving an UNDO button that quietly refers
-                    # to some older state than the user assumes.
+                    # A snapshot that fails must not block a MANUAL edit. The
+                    # player asked for it and can hear the result, so the
+                    # honest move is to say undo is unavailable and continue.
+                    #
+                    # A GUIDED correction is different (#60). There the system
+                    # proposed the change and a measurement is the only
+                    # justification, so an unrecoverable write is not a trade
+                    # anyone agreed to. Refuse instead.
                     _snaps["undo"] = None
+                    if (body.origin or "") in GUIDED_ORIGINS:
+                        results.append({
+                            "action": {"kind": "snapshot"}, "ok": False,
+                            "detail": f"refused: a guided correction may not "
+                                      f"send without a recovery snapshot "
+                                      f"({e})"})
+                        return {"results": results, "health": [],
+                                "refused": "no_recovery_snapshot"}
                     results.append({"action": {"kind": "snapshot"}, "ok": False,
                                     "detail": f"could not snapshot for undo: {e}"})
             def step(ok: bool, a: Action) -> None:
@@ -4539,3 +4637,38 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+@app.post("/api/plan/revise")
+def api_plan_revise(body: ApplyBody):
+    """Re-validate an edited plan and mint a new revision (#55).
+
+    Review lets numbers be edited. Rather than letting the browser mutate the
+    plan it was shown, an edit comes back here: the actions are validated
+    exactly as they were at plan time, a fresh digest is recorded, and the
+    previous confirmation is implicitly void because Send names a digest.
+
+    Returns the errors per action when anything fails validation, so the review
+    can show them against the row the player just changed.
+    """
+    errors = []
+    for i, a in enumerate(body.actions):
+        errs, _warnings = validate_action(a)
+        if errs:
+            errors.append({"index": i, "errors": errs})
+    if errors:
+        return JSONResponse({"ok": False, "errors": errors}, status_code=400)
+    digest = register_revision(body.actions, note="revised")
+    out = {"ok": True, "plan_digest": digest, "actions": len(body.actions)}
+    try:
+        from fm9 import tone_review
+        summary = tone_review.summary_from_plan(
+            [a.model_dump() for a in body.actions])
+        out["tone_review"] = tone_review.findings_as_dicts(
+            tone_review.review(summary))
+        out["tone_coverage"] = tone_review.coverage(summary)
+    except Exception:
+        out["tone_review"] = []
+        out["tone_coverage"] = {"status": "unknown", "checks_run": 0,
+                                "why": "the tone review did not run"}
+    return out
