@@ -383,6 +383,15 @@ def param_reference() -> str:
     return "\n".join(lines)
 
 
+#: The cab bank holding the player's own IRs, per FM9_CAB_BANK_NAMES
+#: (0 FACTORY 1, 1 FACTORY 2, 2 USER, 3 LEGACY, 4 SCRATCHPAD).
+USER_CAB_BANK = 2
+
+#: Highest user-cab ordinal accepted for a bank the catalogue cannot enumerate.
+#: The install path addresses user cabs as flat indices 0-1023 (two banks of
+#: 512, per fm9/device.py), so that is the range a USER selection can name.
+MAX_USER_CAB = 1023
+
 PARAM_REFERENCE = param_reference()
 
 
@@ -1516,9 +1525,21 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
     elif a.kind == "set_cab":
         bank = 0 if a.bank is None else int(a.bank)
         roster = reg.cab_rosters.get(str(bank))
-        if roster is None:
+        bank_name = reg.cab_bank_names.get(str(bank))
+        if roster is None and bank_name is None:
             errors.append(f"no cab bank {bank}; banks are "
-                          f"{sorted(reg.cab_rosters, key=int)}")
+                          f"{sorted(reg.cab_bank_names, key=int)}")
+        elif roster is None:
+            # A bank the device really has but no catalogue can enumerate.
+            # USER and SCRATCHPAD hold the player's OWN IRs, so there is no
+            # static roster to check a name against, and refusing them meant
+            # no user IR could ever be selected: the exact cabs someone
+            # installs on purpose. Range-check instead, and let set_cab's
+            # read-back be the proof, as it already is for factory cabs.
+            if a.value is None or not (0 <= int(a.value) <= MAX_USER_CAB):
+                errors.append(
+                    f"cab ordinal for the {bank_name} bank must be "
+                    f"0..{MAX_USER_CAB}, got {a.value}")
         elif a.value is None or str(int(a.value)) not in roster:
             errors.append(f"cab {a.value} is not in bank {bank} "
                           f"({len(roster)} entries)")
@@ -2198,6 +2219,17 @@ def api_install_cab(body: dict):
     ok = bool(got) and got[1] == sent
     if ok:
         log.info("installed IR %r to %s", cf.label, where)
+        # Remember what this slot now holds. Nothing else can: USER cabs are
+        # absent from every catalogue, so without this the UI shows a bare
+        # ordinal for an IR the player just deliberately installed. The
+        # selection side addresses user cabs as USER_CAB_BANK plus the flat
+        # index, which is what install_user_cab_at computes from bank/number.
+        try:
+            from fm9 import user_cabs
+            user_cabs.set_name(USER_CAB_BANK,
+                               (bank - 1) * 512 + (number - 1), cf.label)
+        except OSError:
+            pass                       # a name is a courtesy, never the point
     return {"ok": ok, "installed": cf.label, "bank": bank, "number": number,
             "detail": (f"{where} reads back byte-identical: verified"
                        if ok else
@@ -3843,6 +3875,39 @@ def api_ir_recommend(need: str = "", target: str = "fm9", k: int = 3):
     if not ir_service.enabled():
         return {"enabled": False, "results": []}
     return {"enabled": True, "results": ir_service.recommend(need, target, k) or []}
+
+
+@app.get("/api/user-cabs")
+def api_user_cabs():
+    """Names the player has given their own user-cab slots.
+
+    Factory cabs are catalogued; USER-bank cabs are not, so without this the
+    UI can only show an ordinal for an IR the player installed themselves.
+    """
+    from fm9 import user_cabs
+    return {"bank": USER_CAB_BANK, "names": user_cabs.all_names()}
+
+
+@app.post("/api/user-cabs")
+def api_user_cabs_set(body: dict):
+    """Name a user-cab slot, or clear it with an empty name. Local only: this
+    labels what the player installed, it never writes to the FM9."""
+    from fm9 import user_cabs
+    try:
+        ordinal = int(body.get("ordinal"))
+        bank = int(body.get("bank", USER_CAB_BANK))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "bank and ordinal must be numbers"},
+                            status_code=400)
+    if not (0 <= ordinal <= MAX_USER_CAB):
+        return JSONResponse(
+            {"error": f"ordinal must be 0..{MAX_USER_CAB}"}, status_code=400)
+    try:
+        names = user_cabs.set_name(bank, ordinal, str(body.get("name") or ""))
+    except OSError as e:
+        return JSONResponse({"error": f"could not save: {e}"}, status_code=500)
+    return {"ok": True, "names": names,
+            "label": reg.cab_description(ordinal, bank)}
 
 
 @app.get("/api/ir/audition")

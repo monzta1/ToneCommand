@@ -176,7 +176,13 @@ class Registry:
         return self.cab(ordinal, bank).get("model")
 
     def cab_description(self, ordinal: int | str, bank: int | str = LEGACY_CAB_BANK) -> str:
-        name = self.cab_rosters.get(str(bank), {}).get(str(ordinal), str(ordinal))
+        name = self.cab_rosters.get(str(bank), {}).get(str(ordinal))
+        if name is None:
+            # USER-bank slots hold the player's own IRs, so no catalogue can
+            # name them and this used to print a bare ordinal. Their own map
+            # gets the chance before we give up and show the number.
+            from . import user_cabs
+            name = user_cabs.name(bank, ordinal) or str(ordinal)
         model = self.cab_model(ordinal, bank)
         return f"{name} = {model}" if model else name
 

@@ -77,11 +77,19 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
 - What DOES differ between IRs is voicing, not saturation: mic choice and
   placement, the maker's baked-in low/high cuts, and the level the speaker was
   driven at (cone breakup and thermal compression are real, and still linear).
-- Therefore: use ONE cab for the whole preset by default. Scenes differ by gain,
-  drive, EQ and level, all UPSTREAM of the cab. Never assign a different cab per
-  scene - a real rig has one cabinet, one mic, one position, and swapping cabs
-  between scenes sounds like spliced-together recordings, which destroys the
-  mic'd-cab realism rule 13 is chasing.
+- Therefore: ONE cab PER AMP VOICE, not one cab per scene. Scenes that share an
+  amp model share its cab, because they differ only by gain, drive, EQ and
+  level, all UPSTREAM of the cab. A real rig has one cabinet, one mic, one
+  position, and swapping cabs between scenes on the same amp sounds like
+  spliced-together recordings, which destroys the mic'd-cab realism rule 13
+  is chasing.
+- BUT a preset that legitimately hosts TWO AMP MODELS is two rigs, and each amp
+  keeps its own matching cab. A Soldano cab under an EVH 5150 amp is a mismatch,
+  not a consolidation. Before calling a multi-cab preset wrong, READ THE AMP
+  MODEL ON EVERY SCENE: cab selection is per CHANNEL, scenes map to different
+  channels, and a preset with a Soldano voice and a 5153 voice SHOULD have a
+  Soldano cab and a 5153 cab. Judging this from one scene is how you reach the
+  wrong answer.
 - The ONE defensible exception follows from rule 3 itself: cleans are
   cab-dominated, so a CLEAN scene may get its own brighter / open-back channel
   when a high-gain IR's baked-in high-cut leaves it dull and boxy. That is at
