@@ -3435,6 +3435,7 @@
           </div>
           <div id="cabchosen"></div>
           <div class="cabalts" id="cabalts"></div>
+          <div class="cabalts" id="cabblend"></div>
           <div class="cabfoot" id="cabfoot"></div>
         </div>
         <div class="stagefoot">
@@ -9719,18 +9720,68 @@ async function playCab(btn, path) {
   }
 }
 
+// How confident the match is, in words. `match` is absolute: a fraction of
+// what the request could have scored. The older `score` was relative to the
+// best result in the set, so it always read 1.0 at the top even when nothing
+// really fitted, and could never say "your library has nothing like this".
+function matchWord(m) {
+  if (m == null) return '';
+  if (m >= 0.8) return 'strong match';
+  if (m >= 0.5) return 'good match';
+  if (m >= 0.25) return 'partial match';
+  return 'weak match';
+}
+
 function cabRow(r, chosen) {
   const why = (r.why || []).join(', ');
   const playable = /\.wav$/i.test(r.path || '');
+  const me = r.measured || null;
+  const bits = [];
+  if (r.match != null) bits.push(`${matchWord(r.match)} ${Math.round(r.match * 100)}%`);
+  if (me && me.brightness != null) bits.push(`${Math.round(me.brightness)} Hz`);
+  if (r.distance_from_reference != null) {
+    bits.push(`${r.distance_from_reference} dB from current`);
+  }
   return `<div class="cabrow${chosen ? ' chosen' : ''}">
     <div class="cabname">${chosen ? '&#9679; ' : ''}${esc(r.name || '')}
-      ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}</div>
+      ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}
+      ${bits.length ? `<span class="cabwhy">${esc(bits.join(' &middot; '))}</span>` : ''}</div>
     <div class="cabtag">${esc(r.pack || '')}</div>
     ${playable
-      ? `<button class="cabplay" data-path="${esc(r.path)}">PLAY</button>`
+      ? `<button class="cabplay" data-path="${esc(r.path)}"
+                 title="Representative preview: a synthetic DI through a generic
+                 amp stage, then this cab. Not your amp path.">PREVIEW</button>`
       : `<span class="cabtag" title="Fractal .syx and factory cabs are an
-          encoded device format; audition them on the rig">ON RIG ONLY</span>`}
+          encoded device format that cannot be rendered; audition them on the
+          rig">ON RIG ONLY</span>`}
   </div>`;
+}
+
+// Blend partners: which owned IRs combine with this one, and by how much to
+// align. A sub-millisecond offset decides whether a blend gains presence or
+// cancels it, which is why the shift is shown rather than hidden.
+async function renderBlend(path) {
+  const box = $('cabblend');
+  if (!box) return;
+  box.innerHTML = '<div class="cabfoot">Looking for blend partners...</div>';
+  try {
+    const r = await fetch(`/api/ir/blend?path=${encodeURIComponent(path)}&k=4`);
+    const d = await r.json();
+    if (!d.enabled || !(d.results || []).length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="cabfoot">BLENDS WELL WITH &middot; mix these in '
+      + 'Cab-Lab, applying the alignment shift, then install the result as one '
+      + 'user cab</div>'
+      + d.results.map(b => `<div class="cabrow">
+          <div class="cabname">${esc(b.name)}
+            <span class="cabwhy">${b.gain_db > 0 ? '+' : ''}${b.gain_db} dB,
+            ${b.cancelling_pct}% cancelling</span></div>
+          <div class="cabtag">align ${b.align_ms > 0 ? '+' : ''}${b.align_ms} ms</div>
+          <button class="cabplay" data-path="${esc(b.path)}">PREVIEW</button>
+        </div>`).join('');
+    for (const btn of box.querySelectorAll('.cabplay[data-path]')) {
+      btn.onclick = () => playCab(btn, btn.dataset.path);
+    }
+  } catch (e) { box.innerHTML = ''; }
 }
 
 async function renderCabPanel() {
@@ -9781,10 +9832,15 @@ async function renderCabPanel() {
   for (const b of panel.querySelectorAll('.cabdrive')) {
     b.onclick = () => { cabDrive = b.dataset.drive; stopCabAudio(); renderCabPanel(); };
   }
+  const firstWav = (alts.find(a => /\.wav$/i.test(a.path || '')) || {}).path;
+  if (firstWav) renderBlend(firstWav); else if ($('cabblend')) $('cabblend').innerHTML = '';
   if (alts.length) {
-    $('cabfoot').textContent =
-      'Previews are a synthetic DI through the amp, then the cab, so what you '
-      + 'hear is the cab only. An IR carries no gain of its own.';
+    $('cabfoot').innerHTML =
+      '<b>Representative preview.</b> A fixed synthetic DI through a generic '
+      + 'amp stage, then the cab. Same source and same level for every '
+      + 'candidate, so this is a fair comparison of the cabs. It is not your '
+      + 'amp path, so it ranks them rather than showing what your rig will '
+      + 'sound like. An IR carries no gain of its own.';
   }
 }
 

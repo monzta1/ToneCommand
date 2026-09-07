@@ -42,9 +42,9 @@ def test_saving_a_url_turns_it_on_and_persists():
 
 
 def test_env_var_pins_above_the_saved_url(monkeypatch):
-    ir_service.set_url("http://saved:1")
-    monkeypatch.setenv("TONECOMMAND_IR_SERVICE", "http://pinned:2")
-    assert ir_service.get_url() == "http://pinned:2"
+    ir_service.set_url("http://127.0.0.1:1")
+    monkeypatch.setenv("TONECOMMAND_IR_SERVICE", "http://127.0.0.1:2")
+    assert ir_service.get_url() == "http://127.0.0.1:2"
     assert ir_service.status()["pinned"] is True
 
 
@@ -55,8 +55,8 @@ def test_config_endpoint_sets_the_url():
 
 
 def test_config_endpoint_refused_when_env_pinned(monkeypatch):
-    monkeypatch.setenv("TONECOMMAND_IR_SERVICE", "http://pinned:2")
-    r = TestClient(server.app).post("/api/ir/config", json={"url": "http://x:1"})
+    monkeypatch.setenv("TONECOMMAND_IR_SERVICE", "http://127.0.0.1:2")
+    r = TestClient(server.app).post("/api/ir/config", json={"url": "http://127.0.0.1:1"})
     assert r.status_code == 409
 
 

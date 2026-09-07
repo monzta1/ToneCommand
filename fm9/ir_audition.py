@@ -32,6 +32,55 @@ SR = 48000
 MAX_IR_SECONDS = 2.0        # past this it is not a cab IR (see IRCommand)
 MAX_RENDER_SECONDS = 8.0
 
+#: How a candidate was rendered, worst to best. Issue #59: the UI must say
+#: which of these it is, because "heard in your rig" and "a generic amp stage
+#: through this cab" are very different claims and only one of them is true
+#: here. Anything that overstates its grade is how a tool starts lying.
+FIDELITY = {
+    "target_in_chain": "Heard in your rig",
+    "captured_pre_cab": "Heard from your amp path",
+    "representative_amp": "Representative preview",
+    "metadata_only": "Not auditioned",
+}
+
+#: What this renderer can honestly claim. It uses a fixed synthetic DI and a
+#: generic saturation stage, so it is representative: good for ranking
+#: candidates against each other, not a prediction of the player's rig.
+#: Raising this requires capturing the real pre-cab amp output, which is
+#: gated on the hardware spike in issue #56.
+RENDER_GRADE = "representative_amp"
+
+#: The conditions that make a set of previews a fair COMPARISON rather than a
+#: collection of unrelated auditions. Every one of these is true of this
+#: renderer by construction, which is why it may claim them.
+COMPARISON_CONTRACT = {
+    "same_source": "the identical synthetic DI for every candidate",
+    "same_drive": "the same saturation stage and setting",
+    "same_level": "every render normalised to the same peak",
+    "same_length": "the same region of the same phrase",
+    "deterministic": "the DI is seeded, so repeat renders are identical",
+}
+
+
+def integrity(drive: str, seconds: float) -> dict:
+    """What may honestly be claimed about a set of renders at these settings.
+
+    A comparison is only a comparison when one variable moves. Everything here
+    holds the source, the drive and the level fixed, so the cab is the only
+    difference. If a caller ever varies drive or length between candidates,
+    this is where that stops being true and the label has to change.
+    """
+    return {
+        "grade": RENDER_GRADE,
+        "label": FIDELITY[RENDER_GRADE],
+        "is_comparison": True,
+        "holds": dict(COMPARISON_CONTRACT),
+        "drive": drive,
+        "seconds": seconds,
+        "caveat": "Not your amp path: a generic saturation stage stands in for "
+                  "the amp, so this ranks cabs rather than predicting your rig.",
+    }
+
 # Saturation presets. The number is pre-gain into a tanh; higher = more
 # compressed and more harmonics, i.e. further up the amp's gain structure.
 DRIVES = {"clean": 1.2, "crunch": 8.0, "lead": 30.0, "high-gain": 60.0}

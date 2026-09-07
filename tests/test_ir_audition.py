@@ -178,3 +178,47 @@ def test_audition_endpoint_serves_wav(library):
     assert r.headers["content-type"] == "audio/wav"
     with wave.open(io.BytesIO(r.content)) as w:
         assert w.getnframes() > 0
+
+
+# --- #59 fidelity grades, #57 audition integrity ------------------------
+
+def test_the_renderer_does_not_overstate_its_grade():
+    """It uses a synthetic DI and a generic saturation stage, so the strongest
+    honest claim is 'representative', never 'heard in your rig'."""
+    assert ir_audition.RENDER_GRADE == "representative_amp"
+    assert ir_audition.integrity("lead", 3.0)["label"] == "Representative preview"
+
+
+def test_every_grade_has_player_facing_copy():
+    for grade, copy in ir_audition.FIDELITY.items():
+        assert copy and copy[0].isupper(), grade
+
+
+def test_integrity_states_what_is_held_constant():
+    got = ir_audition.integrity("crunch", 3.0)
+    assert got["is_comparison"] is True
+    for key in ("same_source", "same_drive", "same_level", "same_length"):
+        assert key in got["holds"], key
+    assert "not your amp path" in got["caveat"].lower()
+
+
+def test_the_grade_travels_with_the_audio(library):
+    ir = write_wav(library / "IRs" / "cab.wav",
+                   np.random.default_rng(3).standard_normal(1024) * 0.2)
+    r = TestClient(server.app).get("/api/ir/audition",
+                                   params={"path": str(ir), "seconds": 1.0})
+    assert r.headers["X-Audition-Grade"] == "representative_amp"
+    assert r.headers["X-Audition-Label"] == "Representative preview"
+
+
+def test_the_integrity_endpoint_answers_without_rendering():
+    d = TestClient(server.app).get("/api/ir/audition/integrity").json()
+    assert d["grade"] == "representative_amp" and d["is_comparison"] is True
+
+
+def test_the_same_di_is_used_for_every_candidate(library):
+    """The core of #57: if the source moved between candidates, the comparison
+    would be measuring the source, not the cab."""
+    a = ir_audition.test_di(3.0)
+    b = ir_audition.test_di(3.0)
+    assert np.array_equal(a, b)

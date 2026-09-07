@@ -1,6 +1,7 @@
 # ToneCommand desktop control surface — implementation specification
 
 Status: design specification only  
+Experience north star: `NEXT-LEVEL-PRODUCT-DESIGN.md`  
 Target: ToneCommand for Fractal FM9, desktop browser  
 Reference viewport: 1440 × 900 CSS px  
 Minimum supported desktop viewport: 1180 × 720 CSS px  
