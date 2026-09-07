@@ -3112,8 +3112,16 @@
   }
   #drawer[data-draw="settings"] #drawer-settings {
     display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
-    grid-template-rows: auto auto; gap: 16px; padding: 18px;
-    overflow-y: auto;
+    gap: 16px; padding: 18px; overflow-y: auto;
+    /* Panels size to their own content, so a collapsed one is just its header,
+       never stretched to match a taller neighbour in the same row. */
+    align-items: start;
+  }
+  /* The AI planner panel spans the full width and owns its own row, so folding
+     it collapses to a thin bar and everything below reflows up, with no empty
+     box left behind. */
+  #drawer[data-draw="settings"] #drawer-settings #aimodal {
+    grid-column: 1 / -1;
   }
   #drawer-settings > .console {
     margin: 0; padding: 20px 22px; border-radius: 6px;
@@ -3638,7 +3646,7 @@
     </div>
 
     <div class="drawpane" id="drawer-settings" hidden>
-      <div class="console" data-nofold data-label="WHO PLANS YOUR TONES" id="aimodal">
+      <div class="console" data-label="WHO PLANS YOUR TONES" id="aimodal">
         <div class="airow">
           <!-- One question, answered by picking a name. The plumbing that
                used to lead this panel (backend, address, model id) lives
@@ -5127,6 +5135,17 @@ function setFold(c, fold, quiet) {
 }
 
 buildPanelHeaders();
+
+// The AI planner panel is the tallest thing in Settings and is set once, so it
+// starts collapsed the first time, keeping Settings scannable. After that the
+// player's own expand/collapse is remembered like every other panel.
+try {
+  if (!localStorage.getItem('tc-ai-folded-init')) {
+    const ai = document.getElementById('aimodal');
+    if (ai) setFold(ai, true, true);
+    localStorage.setItem('tc-ai-folded-init', '1');
+  }
+} catch (e) {}
 
 // --- text size -----------------------------------------------------------
 // How big text needs to be is a fact about the reader and their screen, so it
@@ -8805,10 +8824,37 @@ function renderAiWho(p) {
   // banner across the hero. Clicking it still opens AI settings.
   el.innerHTML = p.problem
     ? `${esc(p.problem)}<span class="chg">settings</span>`
-    : `using <b>${esc(p.model || p.service)}</b>`;
+    : `using <b>${esc(friendlyModel(p.model, true) || p.service)}</b>`;
   el.title = p.problem ? p.problem
     : `Planner: ${p.service}${p.model ? ' · ' + p.model : ''}. Click to change.`;
   el.onclick = () => aiModal(true);
+}
+
+// Friendly display names for models. Opaque codenames (terra, sol, luna) read
+// as just the codename; every other id is cleaned into words. The real id is
+// always kept as the option value and its tooltip, so nothing is lost.
+const MODEL_CODENAMES = { terra: 'Terra', sol: 'Sol', luna: 'Luna' };
+const MODEL_PROVIDERS = { gpt: 'ChatGPT', chatgpt: 'ChatGPT', o1: 'ChatGPT',
+  o3: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', grok: 'Grok',
+  deepseek: 'DeepSeek', kimi: 'Kimi', qwen: 'Qwen', mistral: 'Mistral' };
+// withProvider: prefix a codename with the provider, for standalone spots like
+// the "using <model>" tag where nothing else names the service. In the dropdown
+// the provider is already on the service card, so the short codename is enough.
+function friendlyModel(id, withProvider) {
+  const s = String(id || '').trim();
+  if (!s) return s;
+  const last = (s.split(/[-_./]/).pop() || '').toLowerCase();
+  if (MODEL_CODENAMES[last]) {
+    const name = MODEL_CODENAMES[last];
+    if (!withProvider) return name;
+    const low = s.toLowerCase();
+    for (const k in MODEL_PROVIDERS)
+      if (low.startsWith(k)) return `${MODEL_PROVIDERS[k]} ${name}`;
+    return name;
+  }
+  return s.replace(/[-_]+/g, ' ')
+          .replace(/\b([a-z])(\w*)/gi, (_, a, b) => a.toUpperCase() + b)
+          .replace(/\bGpt\b/g, 'GPT').replace(/\bAi\b/g, 'AI');
 }
 
 // Pick or type: the list is a convenience, never a constraint.
@@ -8855,7 +8901,8 @@ async function loadAiModels(backend) {
     for (const m of opts) {
       const o = document.createElement('option');
       o.value = m;
-      o.textContent = m;
+      o.textContent = friendlyModel(m);
+      o.title = m;                        // the real id, on hover
       sel.appendChild(o);
     }
     // Never leave it blank: with no model the planner sends "local", which a
@@ -8871,7 +8918,7 @@ async function loadAiModels(backend) {
     const typed = $('aibaseurl').value.trim();
     const unsaved = typed && typed !== aiSavedBaseUrl;
     $('aisrc').textContent = models.length
-      ? (filled ? `Filled in ${models[0]}, one of ${models.length} this `
+      ? (filled ? `Filled in ${friendlyModel(models[0])}, one of ${models.length} this `
                 + `service offers. Change it if you want another.`
                 : (d.source ? `Models from ${d.source}.` : ''))
       : (unsaved ? 'No model list yet. Add a key and save, and this box will '
