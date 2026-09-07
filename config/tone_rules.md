@@ -66,6 +66,32 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
 - The cab / IR is the heavy lifter. Use the right IR for the role. The FM9 loads
   any user IR (OwnHammer, York, captured tone-match IRs), not just factory cabs.
 
+### 3a. An IR CANNOT contain distortion - one cab, not one per scene
+- An impulse response is a LINEAR, time-invariant snapshot: frequency response
+  plus reflections, applied by convolution as a fixed filter. Distortion is
+  NONLINEAR, so it mathematically cannot be stored in an IR. There is no such
+  thing as a "driven IR" or a "clean-amp IR" that carries its own gain.
+- Capturing a sweep through a distorting amp does not bake in grit; it CORRUPTS
+  the measurement, because deconvolution assumes linearity. That is a worse IR,
+  not a gainier one. Never justify an IR choice by the gain it was captured at.
+- What DOES differ between IRs is voicing, not saturation: mic choice and
+  placement, the maker's baked-in low/high cuts, and the level the speaker was
+  driven at (cone breakup and thermal compression are real, and still linear).
+- Therefore: use ONE cab for the whole preset by default. Scenes differ by gain,
+  drive, EQ and level, all UPSTREAM of the cab. Never assign a different cab per
+  scene - a real rig has one cabinet, one mic, one position, and swapping cabs
+  between scenes sounds like spliced-together recordings, which destroys the
+  mic'd-cab realism rule 13 is chasing.
+- The ONE defensible exception follows from rule 3 itself: cleans are
+  cab-dominated, so a CLEAN scene may get its own brighter / open-back channel
+  when a high-gain IR's baked-in high-cut leaves it dull and boxy. That is at
+  most two cabs (one gain-voiced, one clean-voiced), never seven.
+- Reach for the cab block's low-cut / high-cut and the EQ block BEFORE reaching
+  for a second cab channel. One cab keeps "the same cabinet in the same room".
+- Tone-match / "album" IRs carry someone else's finished MIX curve, tailored to
+  one gain level. They fight your amp's voicing and stack badly with per-scene
+  EQ. Treat them as an all-or-nothing whole-tone choice, not a per-scene tool.
+
 ## 4. Levels: never ship an inaudible or unbalanced scene
 - No scene may be so quiet the player can barely hear it. This is the single
   worst failure: a build that is inaudible is unusable.

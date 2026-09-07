@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import (FileResponse, JSONResponse,
+from fastapi.responses import (FileResponse, JSONResponse, Response,
                                StreamingResponse)
 from pydantic import BaseModel
 
@@ -353,6 +353,25 @@ def param_reference() -> str:
                      "name`:")
         for b, o, nm in cabs:
             lines.append(f"bank {b} cab {o} = {nm}")
+    lines.append(
+        "\nTALKING ABOUT THE CAB. Say which cab you chose and WHY, in plain "
+        "language, and name it once per build rather than per scene. Ground it "
+        "in the amp and the era ('a V30 4x12, because that is what an SLO was "
+        "built to drive'), not in adjectives alone.")
+    lines.append(
+        "An IR is a LINEAR snapshot: frequency response and reflections, and "
+        "nothing else. It CANNOT contain distortion, so there is no clean IR or "
+        "driven IR, and you must never justify a cab by the gain it was "
+        "captured at. What differs between IRs is mic choice and placement, the "
+        "maker's baked-in cuts, and how hard the speaker was pushed.")
+    lines.append(
+        "Therefore use ONE cab for the whole preset. Scenes differ by gain, "
+        "drive, EQ and level, all upstream of the cab, and a real rig has one "
+        "cabinet with one mic in one position. The only exception is a CLEAN "
+        "scene, which is cab-dominated and may take its own brighter channel "
+        "when a high-gain IR's baked-in high-cut leaves it dull. That is at "
+        "most two cabs, never one per scene. If you do use two, say which "
+        "scenes get which, and why the clean needed its own.")
     if reg.dynacabs:
         lines.append("\nDynaCab cabinets and the real cabs they capture "
                      "(reference only: DynaCab is multi-dimensional, so name or "
@@ -365,6 +384,34 @@ def param_reference() -> str:
 
 
 PARAM_REFERENCE = param_reference()
+
+
+def ir_context(prompt: str) -> str:
+    """Cab IRs from the user's own library that suit this request, as context.
+
+    Lets the planner say what it actually found and which cab it will use,
+    instead of talking about cabs in the abstract. Entirely optional: when
+    IRCommand is unset or unreachable this returns "" and the planner behaves
+    exactly as before, with the factory roster only.
+    """
+    from fm9 import ir_service
+    if not ir_service.enabled():
+        return ""
+    try:
+        hits = ir_service.recommend(prompt or "", "fm9", 5) or []
+    except Exception:
+        return ""
+    if not hits:
+        return ""
+    lines = ["\nCAB IRs IN THE PLAYER'S OWN LIBRARY that suit this request "
+             "(from IRCommand, best first). Name the one you would use and "
+             "why. A .wav can be auditioned in the review; a .syx is installed "
+             "to a user-cab slot; either way SELECT the cab with set_cab:"]
+    for h in hits:
+        why = ", ".join(h.get("why") or [])
+        lines.append(f"- {h.get('name')} (pack: {h.get('pack')}"
+                     + (f"; {why}" if why else "") + ")")
+    return "\n".join(lines) + "\n"
 
 
 def shared_scenes(fm9: FM9) -> dict:
@@ -1286,6 +1333,7 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     # so it is told exactly what it has rather than being handed an
     # empty-looking state and left to assume.
     context = state_text(snap) if snap else rigprofile.as_blank_text()
+    context += ir_context(body.prompt)
     try:
         if not _hold_settings(cancel, on_status):
             return {"error": "stopped"}
@@ -3795,6 +3843,36 @@ def api_ir_recommend(need: str = "", target: str = "fm9", k: int = 3):
     if not ir_service.enabled():
         return {"enabled": False, "results": []}
     return {"enabled": True, "results": ir_service.recommend(need, target, k) or []}
+
+
+@app.get("/api/ir/audition")
+def api_ir_audition(path: str = "", drive: str = "crunch", seconds: float = 3.0):
+    """Render a cab IR audible: a synthetic DI, saturated, then convolved with
+    the IR, returned as WAV so the review can A/B a handful of cabs without the
+    rig powered on.
+
+    Saturation runs BEFORE the cab because an IR cannot contain distortion
+    (tone_rules 3a); auditioning a high-gain cab with a clean source would
+    misrepresent what its baked-in high-cut is doing.
+
+    Fractal .syx cabs are refused here: their IR body is an undecoded device
+    format. Those are auditioned on the rig instead.
+    """
+    from fm9 import ir_audition, ir_service
+    p = ir_service.safe_ir_path(path)
+    if p is None:
+        return JSONResponse(
+            {"error": "no such IR, or it is outside the IR library. Only WAV "
+                      "files inside the library can be auditioned; Fractal "
+                      ".syx cabs are auditioned on the rig."},
+            status_code=400)
+    try:
+        wav = ir_audition.render(p, drive=drive, seconds=seconds)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return Response(content=wav, media_type="audio/wav", headers={
+        "Cache-Control": "no-store",
+        "Content-Disposition": f'inline; filename="audition-{p.stem[:40]}.wav"'})
 
 
 @app.post("/api/ir/config")

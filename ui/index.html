@@ -1935,6 +1935,26 @@
   .spacer { flex: 1; }
   .tablefoot { color: var(--muted); font-size: var(--fs-hint);
     letter-spacing: 0.06em; }
+  /* CAB / IR panel in REVIEW: what cab this build lands on, and a few you
+     can hear before committing. */
+  .cabpanel { flex: 0 0 auto; margin-top: 14px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 8px; }
+  .cabhead { display: flex; align-items: baseline; gap: 12px; }
+  .cabhead h3 { margin: 0; font-size: var(--fs-hint); letter-spacing: 0.1em;
+    color: var(--muted); }
+  .cabnote { color: var(--muted); font-size: var(--fs-hint); }
+  .cabrow { display: grid; grid-template-columns: minmax(0,1fr) auto auto;
+    gap: 10px; align-items: center; padding: 7px 0;
+    border-bottom: 1px solid var(--line); }
+  .cabrow:last-child { border-bottom: 0; }
+  .cabrow.chosen { font-weight: 600; }
+  .cabname { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  .cabwhy { color: var(--muted); font-size: var(--fs-hint); font-weight: 400; }
+  .cabtag { color: var(--muted); font-size: var(--fs-hint); white-space: nowrap; }
+  .cabplay { white-space: nowrap; }
+  .cabalts { margin-top: 6px; }
+  .cabfoot { color: var(--muted); font-size: var(--fs-hint); margin-top: 8px; }
   .intentlist { display: grid; gap: 8px; margin-top: 16px; }
   .intentrow { display: grid; grid-template-columns: 180px minmax(0,1fr) 72px;
     gap: 14px; align-items: center; min-height: 54px; padding: 9px 12px;
@@ -3406,6 +3426,17 @@
           <span>BEFORE</span><span title="Numeric values can be edited">AFTER / EDIT</span><span>IMPACT</span>
         </div>
         <div id="plancards" class="changetable"></div>
+        <!-- The cab this build lands on, plus a few alternatives you can hear
+             before committing. Hidden unless the plan actually touches a cab. -->
+        <div id="cabpanel" class="cabpanel" hidden>
+          <div class="cabhead">
+            <h3>CAB / IR</h3>
+            <span class="cabnote" id="cabnote"></span>
+          </div>
+          <div id="cabchosen"></div>
+          <div class="cabalts" id="cabalts"></div>
+          <div class="cabfoot" id="cabfoot"></div>
+        </div>
         <div class="stagefoot">
           <button class="danger" id="discard2">DISCARD</button>
           <span class="tablefoot" id="reviewcount"></span>
@@ -9624,6 +9655,7 @@ function renderReviewStage() {
     b.onclick = () => { reviewFilter = b.dataset.filter; renderReviewStage(); };
   }
   renderPlanCards(currentPlan, reviewFilter);
+  renderCabPanel();
   const scenes = affectedScenes.size;
   $('reviewcount').textContent =
     `${acts.length} CHANGES` + (scenes ? ` · ${scenes + 1} SCENES` : '')
@@ -9631,6 +9663,129 @@ function renderReviewStage() {
   $('toconfirm').disabled = hasBlockers();
   $('toconfirm').title = hasBlockers()
     ? 'blocked: fix or discard the failing changes first' : '';
+}
+
+// --- CAB / IR panel: what cab this lands on, and hearing the alternatives ---
+//
+// Two audition routes, because they cover different things. WAV IRs render in
+// the browser (a synthetic DI, saturated, convolved with the IR) so a handful
+// can be A/B'd with the rig off. Fractal .syx cabs and factory cabs cannot be
+// rendered - their IR body is an undecoded device format - so those say so and
+// are auditioned on the rig instead.
+
+let cabAudio = null;          // the one <audio> in flight, so plays never stack
+let cabDrive = 'lead';
+
+function cabActions(plan) {
+  return (plan.actions || []).filter(
+    a => a.kind === 'set_cab'
+      || (a.block && /cab|cabinet/i.test(a.block))
+      || /^CABINET/i.test(a.param || ''));
+}
+
+function stopCabAudio() {
+  if (cabAudio) { cabAudio.pause(); cabAudio = null; }
+  for (const b of document.querySelectorAll('.cabplay[data-playing]')) {
+    b.removeAttribute('data-playing');
+    b.textContent = b.dataset.label || 'PLAY';
+  }
+}
+
+async function playCab(btn, path) {
+  const wasPlaying = btn.hasAttribute('data-playing');
+  stopCabAudio();
+  if (wasPlaying) return;                 // second click = stop
+  btn.dataset.label = btn.textContent;
+  btn.textContent = 'LOADING';
+  const url = `/api/ir/audition?path=${encodeURIComponent(path)}`
+            + `&drive=${encodeURIComponent(cabDrive)}&seconds=3`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      const msg = await r.json().catch(() => ({}));
+      btn.textContent = 'CANNOT PLAY';
+      $('cabfoot').textContent = msg.error || 'That cab could not be rendered.';
+      return;
+    }
+    const blob = await r.blob();
+    cabAudio = new Audio(URL.createObjectURL(blob));
+    btn.setAttribute('data-playing', '1');
+    btn.textContent = 'STOP';
+    cabAudio.onended = () => stopCabAudio();
+    await cabAudio.play();
+  } catch (e) {
+    btn.textContent = btn.dataset.label || 'PLAY';
+    $('cabfoot').textContent = 'Audition failed: ' + e;
+  }
+}
+
+function cabRow(r, chosen) {
+  const why = (r.why || []).join(', ');
+  const playable = /\.wav$/i.test(r.path || '');
+  return `<div class="cabrow${chosen ? ' chosen' : ''}">
+    <div class="cabname">${chosen ? '&#9679; ' : ''}${esc(r.name || '')}
+      ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}</div>
+    <div class="cabtag">${esc(r.pack || '')}</div>
+    ${playable
+      ? `<button class="cabplay" data-path="${esc(r.path)}">PLAY</button>`
+      : `<span class="cabtag" title="Fractal .syx and factory cabs are an
+          encoded device format; audition them on the rig">ON RIG ONLY</span>`}
+  </div>`;
+}
+
+async function renderCabPanel() {
+  const panel = $('cabpanel');
+  const acts = cabActions(currentPlan || {});
+  stopCabAudio();
+  if (!acts.length) { panel.hidden = true; return; }
+  panel.hidden = false;
+  $('cabnote').textContent = '';
+  $('cabfoot').textContent = '';
+
+  // What the plan itself selects, straight from the actions.
+  $('cabchosen').innerHTML = acts.map(a => {
+    const label = a.cab_name || a.label
+      || (a.kind === 'set_cab' ? `bank ${a.bank} · ordinal ${a.value}`
+                               : `${a.param || 'cab'} = ${a.value}`);
+    const scene = a.scene != null ? ` · scene ${a.scene}` : '';
+    return `<div class="cabrow chosen"><div class="cabname">&#9679; ${esc(String(label))}
+      <span class="cabwhy">${esc((a.why || a.reason || '') + scene)}</span></div>
+      <div class="cabtag">THIS BUILD</div><span class="cabtag">ON RIG ONLY</span></div>`;
+  }).join('');
+
+  // Alternatives worth hearing, from IRCommand. Off by default: when the IR
+  // service is unset this whole section simply stays quiet.
+  const need = (currentPlan && (currentPlan.cab_need || currentPlan.intent)) || '';
+  let alts = [];
+  try {
+    const r = await fetch(`/api/ir/recommend?need=${encodeURIComponent(need)}&k=6`);
+    const d = await r.json();
+    if (!d.enabled) {
+      $('cabnote').textContent = 'IRCommand is off, so no alternatives to compare.';
+    } else {
+      alts = d.results || [];
+    }
+  } catch (e) { /* never let the IR step break the review */ }
+
+  $('cabalts').innerHTML = alts.length
+    ? `<div class="cabfoot">ALTERNATIVES &middot; drive:
+         ${['clean', 'crunch', 'lead', 'high-gain'].map(d =>
+           `<button class="cabplay cabdrive${d === cabDrive ? ' on' : ''}"
+                    data-drive="${d}">${d}</button>`).join(' ')}</div>`
+      + alts.map(r => cabRow(r, false)).join('')
+    : '';
+
+  for (const b of panel.querySelectorAll('.cabplay[data-path]')) {
+    b.onclick = () => playCab(b, b.dataset.path);
+  }
+  for (const b of panel.querySelectorAll('.cabdrive')) {
+    b.onclick = () => { cabDrive = b.dataset.drive; stopCabAudio(); renderCabPanel(); };
+  }
+  if (alts.length) {
+    $('cabfoot').textContent =
+      'Previews are a synthetic DI through the amp, then the cab, so what you '
+      + 'hear is the cab only. An IR carries no gain of its own.';
+  }
 }
 
 // --- CONFIRM stage: arm, then send ----------------------------------------

@@ -88,6 +88,33 @@ def status() -> dict:
             "cabs": (h or {}).get("cabs")}
 
 
+def library_root() -> Path:
+    """Root directory the audition endpoint may read IR files from."""
+    env = (os.environ.get("TONECOMMAND_IR_LIBRARY") or "").strip()
+    return (Path(env) if env else Path.home() / "Documents" / "IR-Library").expanduser()
+
+
+def safe_ir_path(path: str):
+    """Resolve a requested IR path, or None if it is not a real WAV inside the
+    IR library.
+
+    This is a security boundary, not a convenience check: the audition endpoint
+    reads a file off disk and streams it back, so without this the endpoint
+    would be an arbitrary-file-read. Symlinks are resolved before the
+    containment test so a link inside the library cannot point out of it.
+    """
+    if not path:
+        return None
+    try:
+        p = Path(path).expanduser().resolve(strict=True)
+        root = library_root().resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not p.is_file() or p.suffix.lower() != ".wav":
+        return None
+    return p if root in p.parents else None
+
+
 def recommend(need: str, target: str = "fm9", k: int = 3):
     """Best-matching IRs for a need, or None when off / unreachable / empty.
     Each result carries at least name, path, tags and score."""

@@ -5,6 +5,31 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- **Hear the cab before you commit it.** REVIEW now shows the cab the build
+  lands on, plus alternatives from your own library, each with a PLAY button and
+  a drive selector (clean / crunch / lead / high-gain). Previews render in the
+  browser from a synthetic DI: `GET /api/ir/audition`. The chain is DI ->
+  saturation -> cab, deliberately in that order, because an IR cannot contain
+  distortion and auditioning a high-gain cab with a clean source misrepresents
+  it. Only WAV IRs render; Fractal `.syx` and factory cabs say ON RIG ONLY,
+  since their IR body is an encoded device format this codebase does not decode.
+  Reading is fenced to the IR library by `ir_service.safe_ir_path` (symlinks
+  resolved before the containment test), so the endpoint cannot be turned into
+  an arbitrary file read (owner, 2026-09-07).
+- **The planner now talks about the cab it picked.** When IRCommand is on, the
+  best matches from your own library are passed into the planner's context, so a
+  build says which IR it found and why it suits the amp and era instead of
+  discussing cabs in the abstract. Silent no-op when IRCommand is unset, and a
+  failing lookup can never take a build down.
+
+### Changed
+- **tone_rules 3a: an IR cannot contain distortion.** New rule spelling out that
+  an impulse response is a linear snapshot, so there is no "driven IR" or "clean
+  IR", and a cab must never be justified by the gain it was captured at. Builds
+  now use ONE cab for the whole preset, since scenes differ by gain, drive, EQ
+  and level, all upstream of the cab. The single exception is a clean scene,
+  which is cab-dominated and may take its own brighter channel: at most two
+  cabs, never one per scene.
 - **Optional IRCommand cab-recommendation bridge, off by default.** A new
   Settings > IR SERVICE field points ToneCommand at a local IRCommand service
   (a separate local tool that catalogues and matches your own IR library). Empty
