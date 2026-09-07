@@ -15,7 +15,25 @@ without an FM9.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
+
+#: Numeric floors per role, so "generous mix" is arithmetic rather than taste.
+#: See config/tone_targets.json for why each number is what it is.
+TARGETS_PATH = Path(__file__).resolve().parent.parent / "config" / "tone_targets.json"
+
+
+def targets() -> dict:
+    """The numeric policy, or an empty one if it is missing or unreadable.
+
+    Absent targets mean the depth checks simply do not run, exactly as before
+    they existed. A missing policy file must never take a build down.
+    """
+    try:
+        return json.loads(TARGETS_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
 
 
 @dataclass
@@ -29,6 +47,12 @@ class Scene:
     scene_level: float | None = None   # OUTPUT_SCENEn
     effects: set[str] = field(default_factory=set)  # engaged families: DELAY, REVERB, ...
     boosted: bool = False              # a drive/boost engaged in front
+    #: family -> mix/depth percent, when the plan sets one. Engagement alone was
+    #: never enough: issue #50 shipped a "lush" clean with reverb at 12 percent,
+    #: which passed an is-it-on check and was nearly dry.
+    fx_mix: dict = field(default_factory=dict)
+    boost_gain: float | None = None    # FUZZ_DRIVE, to catch a boost dialled
+                                       # BELOW the rhythm it is meant to push
 
 
 @dataclass
@@ -66,6 +90,7 @@ def review(scenes: list[Scene]) -> list[Finding]:
 
     rhythm_gain = avg([s.amp_gain for s in scenes if s.role == "rhythm"])
     rhythm_level = avg([s.amp_level for s in scenes if s.role == "rhythm"])
+    rhythm_boost = avg([s.boost_gain for s in scenes if s.role == "rhythm"])
 
     for s in scenes:
         fx = s.effects or set()
@@ -102,6 +127,41 @@ def review(scenes: list[Scene]) -> list[Finding]:
                 out.append(Finding(s.n, "4", "warn",
                     f"lead sits {s.amp_level - rhythm_level:.0f} dB over the rhythm; "
                     "the cap is about +4, trim its level"))
+
+    # --- numeric policy (issue #50) ---------------------------------------
+    # The prose rules are qualitative, so a build could satisfy every adjective
+    # and still arrive timid. These compare against config/tone_targets.json.
+    pol = targets()
+    if pol:
+        floor = (pol.get("all_roles") or {}).get("amp_level_min")
+        for s_ in scenes:
+            if floor is not None and s_.amp_level is not None \
+                    and s_.amp_level < floor:
+                out.append(Finding(s_.n, "4", "fail",
+                    f"amp level {s_.amp_level:g} dB is below the {floor:g} dB "
+                    "floor; a distorted amp turned down reads thin, not "
+                    "aggressive"))
+            spec = (pol.get("roles") or {}).get(s_.role or "") or {}
+            for fam, low in (spec.get("mix_min") or {}).items():
+                got = s_.fx_mix.get(fam)
+                if got is not None and got < low:
+                    out.append(Finding(s_.n, "11", "fail",
+                        f"{fam.lower()} mix {got:g}% is below the {low:g}% "
+                        f"floor for a {s_.role}; engaged is not the same as "
+                        "audible"))
+            for fam, high in (spec.get("mix_max") or {}).items():
+                got = s_.fx_mix.get(fam)
+                if got is not None and got > high:
+                    out.append(Finding(s_.n, "11", "warn",
+                        f"{fam.lower()} mix {got:g}% is above the {high:g}% "
+                        f"ceiling for a {s_.role}; it softens the tightness"))
+            if spec.get("boost_must_not_sit_below_rhythm") \
+                    and s_.boost_gain is not None and rhythm_boost is not None \
+                    and s_.boost_gain < rhythm_boost:
+                out.append(Finding(s_.n, "11", "fail",
+                    f"the lead boost ({s_.boost_gain:g}) is dialled below the "
+                    f"rhythm's ({rhythm_boost:g}); that is a clean volume push, "
+                    "not an overdrive pushing the amp"))
 
     # whole-build: nothing inaudibly quiet (rule 4)
     for s in scenes:
@@ -153,6 +213,14 @@ def summary_from_plan(actions: list[dict], reg=None) -> list[Scene]:
                 scn(cur).amp_gain = val
             elif p == "DISTORT_LEVEL":
                 scn(cur).amp_level = val
+            elif p == "FUZZ_DRIVE":
+                scn(cur).boost_gain = val
+            elif p.endswith("_MIX") or p.endswith("_DEPTH"):
+                fam = p.rsplit("_", 1)[0]
+                # Depth is what makes an effect audible. A plan that engages
+                # reverb and leaves it at 12 percent has not made a lush clean.
+                if val is not None:
+                    scn(cur).fx_mix[fam] = val
             elif p.startswith("OUTPUT_SCENE"):
                 tail = p.replace("OUTPUT_SCENE", "")
                 if tail.isdigit():

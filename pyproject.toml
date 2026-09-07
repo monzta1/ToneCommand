@@ -28,6 +28,15 @@ video = [
     "faster-whisper>=1.2",
 ]
 
+# Hearing a cab IR before choosing it. Optional on purpose, same as video:
+# without numpy the app runs exactly as before, the review still lists and
+# ranks cabs, and only the PREVIEW button is unavailable, saying so plainly
+# rather than failing. numpy is needed because the preview convolves a DI with
+# the impulse response.
+audition = [
+    "numpy>=1.24",
+]
+
 dev = [
     "pytest>=8",
     # The suite is dominated by the simulator's settle window, which is
@@ -38,6 +47,7 @@ dev = [
     # level state these tests monkeypatch is more isolated, not less.
     "pytest-xdist>=3",
     "httpx>=0.27",
+    "numpy>=1.24",
 ]
 
 [project.urls]

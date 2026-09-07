@@ -5,8 +5,11 @@ import io
 import struct
 import wave
 
-import numpy as np
 import pytest
+
+# numpy is an OPTIONAL extra (the audition preview). Skip rather than
+# error where it is absent, so a core install still reports a clean suite.
+np = pytest.importorskip("numpy")
 from fastapi.testclient import TestClient
 
 import server

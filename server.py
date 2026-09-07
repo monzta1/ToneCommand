@@ -307,6 +307,48 @@ def curated_cab_roster() -> list[tuple[int, int, str]]:
     return out
 
 
+def _tone_target_lines() -> list:
+    """The numeric floors, given to the planner so it BUILDS to them.
+
+    tone_rules.md says a clean gets a "generous mix". A model can satisfy that
+    adjective with 12 percent and be wrong, which is exactly what shipped
+    (issue #50). Catching it afterwards in the review is useful; not producing
+    it in the first place is better.
+    """
+    from fm9 import tone_review
+    pol = tone_review.targets()
+    if not pol:
+        return []
+    out = ["\nNUMERIC TONE FLOORS. These are what the words in the rulebook "
+           "mean. 'Generous mix' and 'audibly more saturated' are not "
+           "checkable; these are. A build that misses one is refused by the "
+           "pre-ship review, so hit them the first time."]
+    lvl = (pol.get("all_roles") or {}).get("amp_level_min")
+    if lvl is not None:
+        out.append(f"- EVERY scene: amp level at or above {lvl:g} dB. A "
+                   "distorted amp turned down reads thin, not aggressive.")
+    for role, spec in (pol.get("roles") or {}).items():
+        bits = []
+        if spec.get("amp_level_min") is not None:
+            bits.append(f"amp level >= {spec['amp_level_min']:g} dB")
+        for fam, v in (spec.get("mix_min") or {}).items():
+            bits.append(f"{fam.lower()} mix >= {v:g}%")
+        for fam, v in (spec.get("mix_max") or {}).items():
+            bits.append(f"{fam.lower()} mix <= {v:g}%")
+        if spec.get("gain_margin_over_rhythm") is not None:
+            bits.append(f"gain at least +{spec['gain_margin_over_rhythm']:g} "
+                        "over the rhythm")
+        if spec.get("boost_must_not_sit_below_rhythm"):
+            bits.append("the boost must NOT be dialled below the rhythm's, "
+                        "or it is a clean volume push rather than an overdrive")
+        if spec.get("requires_engaged"):
+            bits.append("must engage " + " and ".join(
+                x.lower() for x in spec["requires_engaged"]))
+        if bits:
+            out.append(f"- {role.upper()}: " + "; ".join(bits) + ".")
+    return out
+
+
 def param_reference() -> str:
     """Static text listing controllable params, for the planner (cacheable)."""
     lines = []
@@ -353,6 +395,7 @@ def param_reference() -> str:
                      "name`:")
         for b, o, nm in cabs:
             lines.append(f"bank {b} cab {o} = {nm}")
+    lines.extend(_tone_target_lines())
     lines.append(
         "\nTALKING ABOUT THE CAB. Say which cab you chose and WHY, in plain "
         "language, and name it once per build rather than per scene. Ground it "
@@ -4038,7 +4081,17 @@ def api_ir_audition(path: str = "", drive: str = "crunch", seconds: float = 3.0)
     Fractal .syx cabs are refused here: their IR body is an undecoded device
     format. Those are auditioned on the rig instead.
     """
-    from fm9 import ir_audition, ir_service
+    from fm9 import ir_service
+    try:
+        from fm9 import ir_audition
+    except ImportError:
+        # numpy is an optional extra. Without it the review still lists and
+        # ranks cabs; only the preview is unavailable, and it says so rather
+        # than failing (matching how the video extra behaves).
+        return JSONResponse(
+            {"error": "previews need the optional audition extra: "
+                      "pip install 'tonecommand[audition]'"},
+            status_code=503)
     p = ir_service.safe_ir_path(path)
     if p is None:
         return JSONResponse(
@@ -4068,7 +4121,13 @@ def api_ir_audition_integrity(drive: str = "crunch", seconds: float = 3.0):
     Lets the review label the listening set correctly before any audio plays: a
     fair comparison when one variable moves, a preview when it does not.
     """
-    from fm9 import ir_audition
+    try:
+        from fm9 import ir_audition
+    except ImportError:
+        return {"grade": "metadata_only", "label": "Not auditioned",
+                "is_comparison": False, "holds": {},
+                "caveat": "previews need the optional audition extra: "
+                          "pip install 'tonecommand[audition]'"}
     return ir_audition.integrity(drive, seconds)
 
 

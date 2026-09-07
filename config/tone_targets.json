@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "issue": 50,
+  "_why": [
+    "config/tone_rules.md says a clean gets a 'generous mix' and a lead is",
+    "'audibly more saturated'. Neither the planner nor tone_review.py can act on",
+    "an adjective: a 12 percent reverb satisfies 'generous' exactly as well as 40",
+    "does, which is how a build shipped at 12 and read as compliant. Strengthening",
+    "the prose was tried on 2026-09-04 and could not have worked, because the",
+    "problem is not emphasis, it is that the rule is unfalsifiable.",
+    "",
+    "These are the numbers those adjectives mean, so a violation is arithmetic",
+    "rather than a matter of taste."
+  ],
+  "_provenance": [
+    "Every floor sits just above a value the owner ACTUALLY REJECTED on hardware",
+    "in the John Sykes build (issue #50), not a number invented here:",
+    "  amp levels  -8 clean, -12 rhythm, -10 lead  -> 'nothing is loud enough'",
+    "  reverb mix  12   chorus mix 22   delay mix 18 -> 'nearly dry'",
+    "  lead gain   7.8 with the boost at 6.0, BELOW the rhythm's 7.5",
+    "The hand-fix that helped raised amp levels to about -2.",
+    "",
+    "These are a starting point calibrated to one build and one player. They are",
+    "versioned and editable, and they are FLOORS that flag, never silent",
+    "rewrites. If a style genuinely wants a dry clean, the finding is dismissed",
+    "rather than the number being wrong."
+  ],
+  "all_roles": {
+    "amp_level_min": -6.0,
+    "_amp_level_min": "A distorted amp turned down 10 dB reads thin, not aggressive. -8, -10 and -12 were all rejected."
+  },
+  "roles": {
+    "clean": {
+      "requires_engaged": ["DELAY", "REVERB"],
+      "amp_level_min": -4.0,
+      "mix_min": {
+        "REVERB": 25.0,
+        "DELAY": 20.0,
+        "CHORUS": 30.0
+      },
+      "_note": "The 80s/arena clean is lush by definition. Rejected at reverb 12, delay 18, chorus 22."
+    },
+    "lead": {
+      "gain_margin_over_rhythm": 1.5,
+      "boost_must_not_sit_below_rhythm": true,
+      "mix_min": {
+        "REVERB": 20.0,
+        "DELAY": 18.0
+      },
+      "_note": "A lead needs space and a sustain tail, and a boost dialled BELOW the rhythm's is a clean-volume push, not an overdrive pushing the amp."
+    },
+    "rhythm": {
+      "mix_max": {
+        "REVERB": 25.0
+      },
+      "_note": "Rhythm is the exception: reverb stays LOW so the tightness survives. This is a ceiling, not a floor."
+    }
+  }
+}
