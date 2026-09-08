@@ -476,9 +476,29 @@ def ir_context(prompt: str) -> str:
              "<ir_candidates>"]
     for h in hits:
         why = _fence(", ".join(h.get("why") or []))
-        lines.append(f"- {_fence(h.get('name'))} (pack: {_fence(h.get('pack'))}"
-                     + (f"; {why}" if why else "") + ")")
+        m = h.get("match")
+        bits = [f"pack: {_fence(h.get('pack'))}"]
+        if isinstance(m, (int, float)):
+            bits.append(f"match {m:.2f}")
+        if why:
+            bits.append(why)
+        lines.append(f"- {_fence(h.get('name'))} ({'; '.join(bits)})")
     lines.append("</ir_candidates>")
+    # The candidates used to arrive with no measure of how well they answer,
+    # so a thin result looked exactly like a strong one and the planner could
+    # not tell that the library has nothing for this request. `match` is the
+    # fraction of the request IRCommand could actually satisfy, and
+    # `unmatched` names the words no vocabulary knew.
+    best = max((h.get("match") or 0) for h in hits)
+    unmet = sorted({w for h in hits for w in (h.get("unmatched") or [])})
+    if unmet:
+        lines.append("Nothing in the library is " + _fence(", ".join(unmet))
+                     + ". Those words were not matched at all.")
+    if best < 0.5:
+        lines.append(
+            f"The best of these only scores {best:.2f}, so the library does "
+            "NOT really answer this request. Say so plainly and use a factory "
+            "cab instead, rather than presenting one of these as the answer.")
     return "\n".join(lines) + "\n"
 
 
