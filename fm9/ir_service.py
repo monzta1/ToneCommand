@@ -248,7 +248,7 @@ def safe_ir_path(path: str):
 
 
 def recommend(need: str, target: str = "fm9", k: int = 3,
-              reference: str = None):
+              reference: str = None, preserve: str = None):
     """Best-matching IRs for a need, or None when off / unreachable / empty.
 
     Each result carries at least name, path, tags and score. When IRCommand has
@@ -265,6 +265,8 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     q = f"/ir/recommend?need={quote(need)}&target={quote(target)}&k={int(k)}"
     if reference:
         q += f"&reference={quote(reference)}"
+    if preserve:
+        q += f"&preserve={quote(preserve)}"
     d = _get(q)
     if not d or "results" not in d:
         return None

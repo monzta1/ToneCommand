@@ -1,0 +1,55 @@
+# Rebuild and publish tonecommand.com on every push to main.
+#
+# The site is generated from the repository (README, docs, changelog,
+# recipes/, docs/img/), so a push is the only event that can change it. That
+# includes a recipe the share service auto-publishes: it lands as a commit,
+# this runs, and the gallery is current a minute later.
+#
+# Needs two repository secrets (Settings, Secrets and variables, Actions):
+#   CLOUDFLARE_API_TOKEN   an API token with "Cloudflare Pages: Edit" only
+#   CLOUDFLARE_ACCOUNT_ID  the account that owns the "tonecommand" Pages project
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - ARCHITECTURE.md
+      - CHANGELOG.md
+      - THIRD_PARTY_NOTICES.md
+      - pyproject.toml
+      - "docs/**"
+      - "recipes/**"
+      - "site/**"
+      - ".github/workflows/site.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "markdown>=3.7" "Pygments>=2.17"
+      - run: python site/build.py
+        env:
+          # The release lookup is unauthenticated GitHub API; a token lifts
+          # the shared rate limit on runners.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site/dist --project-name tonecommand --branch main

@@ -19,6 +19,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Building tonecommand.com (site/build.py). Not needed to run the app.
+site = [
+    "markdown>=3.7",
+    "Pygments>=2.17",
+]
+
 # Reading a YouTube link. Optional on purpose: without these the app runs
 # exactly as before and the source field still takes a pasted transcript, a
 # page URL, or plain text. yt-dlp does the metadata and subtitles;

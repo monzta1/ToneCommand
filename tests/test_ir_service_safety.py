@@ -337,3 +337,95 @@ def test_a_shared_profile_never_borrows_the_connected_rigs_cab(monkeypatch):
     assert seen.get("reference") is None, \
         "a shared profile borrowed the connected rig's cab as its reference"
     assert "plan_s" in (out.get("timing") or {}), "offline path reported no timing"
+
+
+# --- the common post-plan selector (brief 19.5, 26.3, 26.4, 26.5) --------
+
+def _sel(monkeypatch, result, anchor, capture):
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(
+        ir_service, "recommend",
+        lambda need, target="fm9", k=3, reference=None, preserve=None:
+        capture.update(need=need, reference=reference, preserve=preserve) or [])
+    import server
+    return server.cab_listening_set(result, anchor)
+
+
+def test_retrieval_uses_the_planners_gear_translation_not_the_raw_prompt(monkeypatch):
+    """Brief 26.4. "Steve Vai" means nothing to a gear matcher; only the
+    planner can translate it, so the search must run on cab_need."""
+    seen = {}
+    _sel(monkeypatch, {"summary": "steve vai lead",
+                       "cab_need": "4x12 celestion v30 bright lead"},
+         {"state": "unresolved"}, seen)
+    assert seen["need"] == "4x12 celestion v30 bright lead"
+
+
+def test_no_cab_target_means_no_search_rather_than_a_raw_prompt_search(monkeypatch):
+    seen = {}
+    out = _sel(monkeypatch, {"summary": "steve vai"}, {"state": "unresolved"}, seen)
+    assert "need" not in seen, "it searched anyway"
+    assert "named no cab target" in out["why"]
+
+
+def test_a_measured_anchor_passes_its_curve_as_the_reference(monkeypatch):
+    seen = {}
+    _sel(monkeypatch, {"cab_need": "darker"},
+         {"state": "measured", "reference": "/lib/cur.wav"}, seen)
+    assert seen["reference"] == "/lib/cur.wav"
+    assert seen["preserve"] is None
+
+
+def test_gear_identity_constrains_retrieval_when_the_player_asked_to_keep(monkeypatch):
+    """Brief 26.5: the identity must reach the SEARCH, not just the prose
+    after it."""
+    seen = {}
+    _sel(monkeypatch, {"summary": "darker but keep the same character",
+                       "cab_need": "darker"},
+         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen)
+    assert seen["preserve"] == "4x12 RECTO SM57"
+    assert seen["reference"] is None, "gear identity is not a curve"
+
+
+def test_preservation_is_not_forced_when_it_was_not_asked_for(monkeypatch):
+    """A build asking for a 4x12 V30 while a 1x4 Pignose is loaded would have
+    every candidate excluded for not being a Pignose."""
+    seen = {}
+    _sel(monkeypatch, {"summary": "give me a modern metal rig",
+                       "cab_need": "4x12 v30"},
+         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen)
+    assert seen["preserve"] is None
+
+
+def test_a_whole_rig_build_never_preserves_the_old_cab(monkeypatch):
+    seen = {}
+    _sel(monkeypatch, {"summary": "keep the same character",
+                       "cab_need": "4x12 v30", "whole_rig": True},
+         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen)
+    assert seen["preserve"] is None
+
+
+def test_a_gear_anchored_candidate_carries_no_numeric_delta(monkeypatch):
+    """21.5's honesty boundary, enforced in the payload rather than the prose."""
+    from fm9 import ir_service
+    import server
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(
+        ir_service, "recommend",
+        lambda *a, **k: [{"name": "x.wav", "match": 0.7, "why": [],
+                          "distance_from_reference": 1.23}])
+    out = server.cab_listening_set({"cab_need": "darker"},
+                                   {"state": "gear_anchored",
+                                    "fractal": "4x12 RECTO SM57"})
+    assert out["candidates"][0]["distance_from_current"] is None, \
+        "claimed a measured distance from a cab nothing measured"
+
+
+def test_a_shared_profile_anchors_on_its_own_declared_cab():
+    """Brief 26.3: the profile's cab field was being discarded."""
+    import server
+    a = server.current_anchor(None, profile={"cab": "4x12 RECTO SM57 = Mesa Rectifier 4x12"})
+    assert a["state"] == "gear_anchored" and a["from"] == "profile"
+    assert a["name"] == "4x12 RECTO SM57"
+    assert server.current_anchor(None, profile={})["state"] == "unresolved"

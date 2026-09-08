@@ -18,6 +18,14 @@ compatibility_date = "2026-08-31"
 # that stores no content and is not on the critical path for anything.
 workers_dev = true
 
+# The public address. Cloudflare creates the DNS record and certificate for a
+# custom domain on deploy, because tonecommand.com is a zone on this account.
+# The workers.dev address stays on as well, so nothing already pointed at it
+# breaks.
+routes = [
+  { pattern = "share.tonecommand.com", custom_domain = true },
+]
+
 [[d1_databases]]
 binding = "DB"                 # env.DB in worker.js
 database_name = "tonecommand"

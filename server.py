@@ -449,7 +449,7 @@ def _fence(text) -> str:
     return s.replace("<", "(").replace(">", ")")[:160]
 
 
-def current_anchor(snap) -> dict:
+def current_anchor(snap, profile: dict = None) -> dict:
     """What the cab currently loaded can support as a comparison anchor.
 
     Three states, from brief section 21.5.1. A relative request ("darker",
@@ -472,6 +472,22 @@ def current_anchor(snap) -> dict:
     A factory slot name is the manufacturer's own label, not a filename
     resemblance, which is why it clears the authority bar in 21.5.1.
     """
+    # A shared profile anchors on ITS OWN declared cab and never on the cab
+    # the connected rig happens to have loaded (brief 21.1). The profile
+    # carries a label like "4x12 RECTO SM57 = Mesa Rectifier 4x12, Shure
+    # SM57"; that is gear identity, so it earns gear_anchored, and discarding
+    # it would have left every profile build unresolved for no reason
+    # (brief 26.3).
+    if profile is not None:
+        label = (profile.get("cab") or "").strip()
+        if not label:
+            return {"state": "unresolved",
+                    "why": "this shared profile declares no cab"}
+        return {"state": "gear_anchored", "from": "profile",
+                "name": label.split("=")[0].strip(),
+                "models": label.split("=", 1)[1].strip() if "=" in label else None,
+                "gear": label}
+
     sel = (snap or {}).get("cab_sel") or {}
     bank, ordinal = sel.get("bank"), sel.get("ordinal")
     if bank is None or ordinal is None:
@@ -498,6 +514,90 @@ def current_anchor(snap) -> dict:
                 "gear": rec.get("fractal")}
     return {"state": "unresolved", "bank": bank, "ordinal": ordinal,
             "why": "this cab is not one of yours and is not in the roster"}
+
+
+def _plan_request_text(result: dict) -> str:
+    """The player's own words, when the plan carried them. Used only to see
+    whether preservation was ASKED for; never for ranking."""
+    return str(result.get("request") or result.get("prompt") or "")
+
+
+def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
+    """The ONE place a cab listening set is produced. Brief 19.5 and 26.4.
+
+    Runs AFTER the planner, for live, remembered and shared-profile state
+    alike, so the search is driven by the planner's validated `cab_need`
+    rather than by the player's raw words. "Steve Vai" means nothing to a gear
+    matcher; "4x12 v30 bright cutting lead" is the same request in language it
+    indexes, and only the planner can perform that translation.
+
+    The anchor decides how strong a claim may be made:
+
+      measured       its curve is passed as the reference, so candidates are
+                     ranked by least collateral change FROM Current
+      gear_anchored  its decoded identity is passed as `preserve`, a hard
+                     constraint, so "keep the same character" survives the
+                     search instead of being requested afterwards
+      unresolved     neither, so nothing here is relative to anything and the
+                     result says so
+
+    Returns evidence, not a score: the state, what was preserved, and the
+    candidates, so the layer above can present a choice rather than a number.
+    """
+    from fm9 import ir_service
+    out = {"anchor": anchor.get("state"), "current": anchor.get("name"),
+           "candidates": [], "preserved": None, "reference": None}
+    if not ir_service.enabled():
+        out["why"] = "the IR library is not connected"
+        return out
+
+    # The planner's gear translation is the target. Falling back to the raw
+    # prompt is deliberate but weak, and is reported as such.
+    target = (result.get("cab_need") or "").strip()
+    if not target:
+        out["why"] = "the plan named no cab target, so nothing was searched"
+        return out
+
+    # Preserve Current's character ONLY when the player asked to keep it.
+    # Forcing it otherwise is self-contradictory: a build asking for a 4x12
+    # V30 while the loaded cab is a 1x4 Pignose would have every candidate
+    # excluded for not being a Pignose. Whole-rig builds never preserve, by
+    # definition. These cues mirror PRESERVE_CUES in matcher.py; the matcher
+    # is authoritative and this is the decision to ASK for preservation.
+    asked_to_keep = any(
+        w in (result.get("summary", "") + " " + (result.get("cab_need") or "")
+              + " " + _plan_request_text(result)).lower()
+        for w in ("keep", "same", "similar", "character", "retain", "preserve",
+                  "still", "close to"))
+    preserve = None
+    if anchor.get("state") == "gear_anchored" and asked_to_keep \
+            and not result.get("whole_rig"):
+        # The Fractal slot name is already gear-shaped ("4x12 RECTO SM57"),
+        # so it parses into real constraints. The display label carries bank
+        # noise ("1x4 Pig 57 (FACTORY 1)") and the decoded prose is a
+        # sentence, and neither constrains as well.
+        preserve = (anchor.get("fractal") or anchor.get("models")
+                    or anchor.get("name") or anchor.get("gear"))
+    reference = anchor.get("reference") if anchor.get("state") == "measured" else None
+    out["preserved"], out["reference"] = preserve, reference
+    try:
+        rows = ir_service.recommend(target, "fm9", k, reference=reference,
+                                    preserve=preserve) or []
+    except Exception:      # noqa: BLE001  never let the IR step break a plan
+        out["why"] = "the IR library did not answer"
+        return out
+
+    out["candidates"] = [{
+        "name": r.get("name"), "path": r.get("path"), "pack": r.get("pack"),
+        "match": r.get("match"), "why": r.get("why"),
+        "measured": r.get("measured"),
+        # Only a measured Current supports a numeric delta. With gear identity
+        # alone a candidate may be AIMED darker, never called measurably
+        # darker than something nothing measured (brief 21.5).
+        "distance_from_current": (r.get("distance_from_reference")
+                                  if reference else None),
+    } for r in rows[:k]]
+    return out
 
 
 def ir_context(prompt: str, anchor: dict = None) -> str:
@@ -1639,16 +1739,18 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                 # only from the profile itself; the connected owner's present
                 # cab must never be borrowed as the profile's reference
                 # (brief 21.1).
+                # The profile's OWN cab identity, never the connected
+                # rig's (brief 21.1, 26.3). A profile that declares a cab is
+                # gear_anchored on it; one that declares none is unresolved.
+                _off_anchor = current_anchor(None, profile=prof)
                 _off_ctx = rigprofile.as_state_text(prof)
-                _off_ctx += ir_context(body.prompt,
-                                       {"state": "unresolved",
-                                        "why": "a shared profile carries no "
-                                               "measurable current cab"})
+                _off_ctx += ir_context(body.prompt, _off_anchor)
                 _t_off = time.monotonic()
                 result = _plan_counting(body.prompt, _off_ctx, on_count, cancel)
                 if isinstance(result, dict):
                     result["timing"] = {"plan_s": round(time.monotonic() - _t_off, 1)}
                     result["whole_rig"] = bool(getattr(body, "whole_rig", False))
+                    result["cab_selection"] = cab_listening_set(result, _off_anchor)
             finally:
                 _settings_lock.release()
         except planner.PlanCancelled:
@@ -1722,6 +1824,9 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         if isinstance(result, dict):
             _plan_s = time.monotonic() - _t0
             result["timing"] = {"plan_s": round(_plan_s, 1)}
+            # ONE post-plan selector, driven by the planner's gear translation
+            # rather than the player's raw words (brief 19.5, 26.4).
+            result["cab_selection"] = cab_listening_set(result, anchor)
             log.info("plan: %.1fs for %d action(s) via %s",
                      _plan_s, len(result.get("actions") or []),
                      result.get("backend", "?"))

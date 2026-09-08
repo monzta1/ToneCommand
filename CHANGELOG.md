@@ -4,6 +4,17 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **tonecommand.com.** The project has a home that is not a GitHub README.
+  `site/build.py` generates the whole site from what the repository already
+  says (README, docs, changelog, screenshots, `recipes/`), so the site can
+  never drift from the repo, and a workflow republishes it on every push to
+  main, which keeps the recipe gallery current as the share service publishes
+  new recipes. Hosted on Cloudflare Pages, free tier. Recipes are also served
+  as JSON at `/recipes/index.json` and `/recipes/<name>.json` with CORS open,
+  so the app can read them from the site instead of the GitHub contents API
+  and its 60-requests-an-hour cap.
+
 ### Security
 - **The IR bridge could be pointed at any address.** `fm9/ir_service.py` fetched
   whatever URL it was given, from inside the user's network, and the response

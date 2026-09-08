@@ -41,3 +41,6 @@ tone_dir.json
 # names the owner gave their own user-cab slots.
 ir_service.json
 user_cabs.json
+
+# generated site (site/build.py); deployed to Cloudflare Pages, never committed
+site/dist/
