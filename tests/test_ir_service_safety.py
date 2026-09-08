@@ -178,10 +178,17 @@ def test_the_online_lookup_cannot_hold_up_a_build(monkeypatch):
     """It runs BEFORE the planner starts, so its timeout is a floor on how
     long every build takes when TONE3000 is slow or gone. A cab the player
     does not own yet is the most optional thing in the request."""
-    import inspect
     from fm9 import ir_service
-    src = inspect.getsource(ir_service.gaps_online)
-    assert "timeout=3" in src, "an optional enrichment must not wait 8 seconds"
+    seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "_get",
+                        lambda path, timeout=3: seen.update(timeout=timeout))
+    ir_service.gaps_online("mesa v30")
+    # Behavioural, not a source scan: "timeout=3" appearing in the text
+    # proves nothing about the value that reaches the request, and a scan
+    # keeps passing if the constant moves to a caller or a default.
+    assert seen["timeout"] <= 3, \
+        f"an optional enrichment waits {seen['timeout']}s before every build"
 
 
 def test_a_dead_online_lookup_returns_empty_rather_than_raising(monkeypatch):
@@ -746,3 +753,43 @@ def test_a_parseable_prompt_still_gets_its_ranked_list(monkeypatch):
                prompt="marshall 4x12 v30 bright lead")
     assert "<ir_candidates>" in ctx
     assert "Mesa 4x12 V30 SM57.wav" in ctx
+
+
+def test_a_programming_error_is_not_reported_as_an_absent_service(monkeypatch):
+    """Commit 3456e11 shipped this fix with no regression test, so reverting
+    it left the suite green (brief 28.4).
+
+    A wrong call signature into ir_service was caught by a bare `except
+    Exception` and reported as "the IR library did not answer", which is how
+    a missing `preserve` argument hid for a whole commit while an entirely
+    unconstrained result looked like a working one.
+    """
+    import server
+    from fm9 import ir_service
+
+    def wrong_signature(need, target="fm9", k=3):      # no reference/preserve
+        raise AssertionError("should never be reached")
+
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "intent", lambda text: {})
+    monkeypatch.setattr(ir_service, "recommend", wrong_signature)
+    out = server.cab_listening_set({"cab_need": "4x12 v30"},
+                                   {"state": "unresolved"})
+    assert "internal error" in out["why"], out["why"]
+    assert "did not answer" not in out["why"], \
+        "a bug in this file was reported to the player as a service outage"
+
+
+def test_a_genuine_service_outage_still_reads_as_one(monkeypatch):
+    """The other side of the same boundary: a real outage must not be
+    dressed up as an internal error."""
+    import server
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "intent", lambda text: {})
+    monkeypatch.setattr(ir_service, "recommend",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            ConnectionError("refused")))
+    out = server.cab_listening_set({"cab_need": "4x12 v30"},
+                                   {"state": "unresolved"})
+    assert out["why"] == "the IR library did not answer"
