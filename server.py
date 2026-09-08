@@ -583,7 +583,18 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
     try:
         rows = ir_service.recommend(target, "fm9", k, reference=reference,
                                     preserve=preserve) or []
-    except Exception:      # noqa: BLE001  never let the IR step break a plan
+    except TypeError as exc:
+        # A programming error here is NOT "the library did not answer". This
+        # exact except swallowed a missing `preserve` parameter and reported a
+        # silently unconstrained result as a working one, which is how the
+        # constraint appeared to work for a whole commit while doing nothing.
+        # Never let the IR step break a plan, but never let it hide a bug in
+        # this file either.
+        log.error("cab_listening_set: bad call into ir_service: %s", exc)
+        out["why"] = f"internal error building the cab search: {exc}"
+        return out
+    except Exception as exc:      # noqa: BLE001  the service being down is normal
+        log.info("cab_listening_set: IR service did not answer: %s", exc)
         out["why"] = "the IR library did not answer"
         return out
 
