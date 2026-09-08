@@ -7110,6 +7110,12 @@ function renderToneCheck(findings) {
 function showPlan(plan) {
   planRecipe = plan.recipe || null;
   currentPlan = plan;
+  // Not every plan comes from the planner. The health scan assembles its
+  // arithmetic fixes locally, so that plan carries no revision, and a
+  // multi-action send without one is refused rather than silently trusted.
+  // Mint one the way an edit does, which also keeps Confirm disabled until
+  // the server has actually validated what is about to be sent.
+  if (!plan.plan_digest && (plan.actions || []).length > 1) revisePlan();
   // A plan waiting to be confirmed must never be behind a tab. Nothing
   // transmits without the button being pressed, so a hidden panel is not
   // dangerous in itself, but a proposal you cannot see is one you cannot

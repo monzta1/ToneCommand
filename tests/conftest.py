@@ -74,3 +74,27 @@ def isolated_env(tmp_path, monkeypatch):
                  "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path / ".env"
+
+
+@pytest.fixture
+def signed():
+    """Build an /api/apply body that names its reviewed revision.
+
+    A multi-action plan must say which revision it was reviewed as, or the
+    server refuses it. That check used to be skippable by simply omitting the
+    field, which made every protection built on it optional; closing that hole
+    means test callers now have to do what the real UI does.
+
+    The actions are parsed into `Action` first, because that is what the
+    server digests, and the model fills defaults (`instance=1`, `reason=""`)
+    that change the fingerprint.
+    """
+    import server
+
+    def build(actions, **extra):
+        parsed = [server.Action(**a) for a in actions]
+        body = {"actions": actions,
+                "plan_digest": server.register_revision(parsed, "test")}
+        body.update(extra)
+        return body
+    return build

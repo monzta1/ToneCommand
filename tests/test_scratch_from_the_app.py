@@ -180,12 +180,12 @@ def test_no_free_slot_is_a_refusal_that_says_what_to_do(client, monkeypatch):
 # itself when the loaded slot is empty, and an add for a block the chain
 # already carries counts as satisfied rather than halting everything after.
 
-def test_a_transmit_onto_an_empty_slot_builds_the_chain_first(client):
+def test_a_transmit_onto_an_empty_slot_builds_the_chain_first(client, signed):
     with server._fm9 as dev:
         dev.select_preset(386)
-    r = client.post("/api/apply", json={"actions": [
+    r = client.post("/api/apply", json=signed([
         {"kind": "add_block", "block": "amp", "instance": 1},
-        {"kind": "add_block", "block": "delay", "instance": 1}]}).json()
+        {"kind": "add_block", "block": "delay", "instance": 1}])).json()
     rows = r["results"]
     assert rows[0]["action"]["kind"] == "build_chain"
     assert rows[0]["ok"], rows[0]["detail"]

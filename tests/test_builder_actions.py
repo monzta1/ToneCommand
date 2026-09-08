@@ -117,7 +117,7 @@ def test_validation_rejects_bad_position():
     assert errs
 
 
-def test_apply_skips_rest_after_failed_add_block(monkeypatch):
+def test_apply_skips_rest_after_failed_add_block(monkeypatch, signed):
     """A failed add_block must abort the plan: later actions would target a
     block that never landed (hardware-observed dangling modifier binding).
     The trigger here is a genuine placement failure; a duplicate no longer
@@ -129,10 +129,10 @@ def test_apply_skips_rest_after_failed_add_block(monkeypatch):
     monkeypatch.setattr(server, "_add_block",
                         lambda fm9, a: {"ok": False,
                                         "detail": "no room anywhere"})
-    body = {"actions": [
+    body = signed([
         {"kind": "add_block", "block": "wah"},                # fails to place
         {"kind": "set_param", "block": "wah", "param": "WAH_LEVEL", "value": 0},
-    ]}
+    ])
     results = client.post("/api/apply", json=body).json()["results"]
     assert results[0]["ok"] is False
     assert results[-1]["action"] is None

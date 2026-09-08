@@ -22,7 +22,8 @@ def client(monkeypatch):
 
 # --- the skipped marker is a contract, and the UI has to implement it ---
 
-def test_a_refused_add_block_still_reports_a_null_action(client, monkeypatch):
+def test_a_refused_add_block_still_reports_a_null_action(client, monkeypatch,
+                                                        signed):
     """The server appends a marker with action None so later actions are not
     run against a block that never landed. Pinned here as well as in
     test_builder_actions, because the UI reads this shape. The trigger is a
@@ -30,11 +31,11 @@ def test_a_refused_add_block_still_reports_a_null_action(client, monkeypatch):
     state already, 2026-09-02)."""
     monkeypatch.setattr(server, "_add_block",
                         lambda fm9, a: {"ok": False, "detail": "no room"})
-    body = {"actions": [
+    body = signed([
         {"kind": "add_block", "block": "amp", "instance": 1},
         {"kind": "set_param", "block": "amp", "param": "DISTORT_DRIVE",
          "value": 5},
-    ]}
+    ])
     results = client.post("/api/apply", json=body).json()["results"]
     assert any(r["action"] is None for r in results)
 
@@ -200,18 +201,19 @@ def test_a_one_action_plan_is_not_told_its_remaining_actions_were_skipped(
     assert all("remaining actions skipped" not in r["detail"] for r in results)
 
 
-def test_a_multi_action_plan_still_says_what_it_skipped(client, monkeypatch):
+def test_a_multi_action_plan_still_says_what_it_skipped(client, monkeypatch, signed):
     """The contract this marker exists for is unchanged, and now it counts.
     Triggered by a genuine placement failure; an empty grid no longer fails
     (it gets provisioned) and a duplicate no longer fails (it is the goal
     state already)."""
     monkeypatch.setattr(server, "_add_block",
                         lambda fm9, a: {"ok": False, "detail": "no room"})
-    results = client.post("/api/apply", json={"actions": [
+    # A three-action plan has to name its reviewed revision, as the UI does.
+    results = client.post("/api/apply", json=signed([
         {"kind": "add_block", "block": "wah", "instance": 1},
         {"kind": "set_param", "block": "wah", "param": "WAH_LEVEL", "value": 0},
         {"kind": "set_bypass", "block": "wah", "instance": 1, "bypassed": True},
-    ]}).json()["results"]
+    ])).json()["results"]
     assert results[-1]["action"] is None
     assert "remaining actions skipped (2)" in results[-1]["detail"]
     assert len(results) == 2, "the later actions must not have run"

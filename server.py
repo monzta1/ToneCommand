@@ -799,10 +799,43 @@ def register_revision(actions, note: str = "") -> str:
     return dg
 
 
+def is_direct_gesture(actions) -> bool:
+    """One thing the player just did, as opposed to a reviewed plan.
+
+    A single action is self-evidently the click that produced it: a scene
+    button, a cab picked in the audition list, a store. There is no plan
+    behind it and therefore no revision to name.
+
+    A run of set_params on ONE block and instance is also one gesture. A
+    graphic EQ curve is ten writes from a single drag, and the UI batches them
+    on purpose, because ten requests would take ten undo snapshots and leave
+    nine ways to end up half applied.
+
+    Anything else is a plan: several coordinated changes across the rig, which
+    is exactly the shape that Review exists to show and Confirm exists to
+    gate.
+    """
+    if len(actions) <= 1:
+        return True
+    if {a.kind for a in actions} != {"set_param"}:
+        return False
+    return len({(a.block, a.instance) for a in actions}) == 1
+
+
 def check_revision(body: ApplyBody):
     """None when this send may proceed, else the reason it may not."""
     if not body.plan_digest:
-        return None                      # legacy caller; nothing to check
+        # This used to return None for ANY caller that omitted the field,
+        # commented "legacy caller; nothing to check". That made the whole
+        # protection optional to anyone who declined to participate: a plan
+        # edited after review could be sent unreviewed simply by leaving the
+        # digest out. A gesture genuinely has nothing to check; a plan does.
+        if is_direct_gesture(body.actions):
+            return None
+        return ("this send did not say which reviewed plan it is. A plan of "
+                f"{len(body.actions)} changes has to name the revision it was "
+                "reviewed as, so that what you confirmed is what is sent. "
+                "Re-run the review and confirm again.")
     actual = plan_digest(body.actions)
     if actual != body.plan_digest:
         return ("these changes are not the ones that were reviewed: the plan "
