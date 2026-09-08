@@ -203,7 +203,7 @@ instead of an invented answer.
 
 ## The interface
 
-![The ToneCommand interface: the eight named scenes, the request-to-send flow, and the command bar, live from a connected FM9](docs/img/ui-full.png)
+![The ToneCommand interface at the PLAN stage: the request "a Klon into a JCM800 with a greenback 4x12" turned into 24 proposed changes, the two scenes it would also move lit amber, nothing sent yet](docs/img/ui-full.png)
 
 Everything above is live from a connected FM9; nothing on this page is a
 mock-up. The full tour is in [docs/INTERFACE.md](docs/INTERFACE.md). The

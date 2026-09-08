@@ -121,6 +121,17 @@ ROUTES = {
     "CHANGELOG.md": "/docs/changelog/",
 }
 
+def img_url(name: str) -> str:
+    """/img/<name> with a content hash, so a re-taken screenshot that keeps
+    its filename is never served stale by a browser or edge cache."""
+    f = IMG / name
+    if not f.exists():
+        return f"/img/{name}"
+    import hashlib
+    h = hashlib.sha256(f.read_bytes()).hexdigest()[:10]
+    return f"/img/{name}?v={h}"
+
+
 # Screenshots that are real captures of the running tool. The mock-up in the
 # same folder is deliberately not here: the README's promise is that nothing
 # shown is a mock-up.
@@ -158,7 +169,7 @@ def rewrite_link(target: str) -> str:
     if clean.startswith("docs/"):
         clean = clean[5:]
     if clean.startswith("img/"):
-        return f"/img/{clean[4:]}{frag}"
+        return img_url(clean[4:]) + frag
     if clean in ROUTES:
         return f"{ROUTES[clean]}{frag}"
     if clean.startswith("recipes/") and clean.endswith(".json"):
@@ -504,7 +515,7 @@ def build_home(readme: str, release: dict) -> None:
     <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · current release <a href="/download/">{html.escape(release['version'])}</a></p>
   </div>
   <figure class="hero-panel">
-    <img src="/img/ui-full.png" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="2000" height="1299" fetchpriority="high">
+    <img src="{img_url('ui-full.png')}" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="2000" height="1299" fetchpriority="high">
     <figcaption>Live from a connected FM9. Nothing on this page is a mock-up.</figcaption>
   </figure>
 </section>
@@ -566,7 +577,7 @@ def build_home(readme: str, release: dict) -> None:
     ui_md = re.sub(r"^!\[[^\]]*\]\([^)]*\)\s*$", "", ui_md, flags=re.M)  # the hero already shows it
     ui_html, _ = render_md(ui_md)
     shots = "".join(
-        f'<figure class="shot reveal" style="--i:{i}"><a href="/screenshots/"><img src="/img/{n}" alt="{html.escape(caps.get(n, n))}" loading="lazy"></a>'
+        f'<figure class="shot reveal" style="--i:{i}"><a href="/screenshots/"><img src="{img_url(n)}" alt="{html.escape(caps.get(n, n))}" loading="lazy"></a>'
         f'<figcaption>{html.escape(caps.get(n, n))}</figcaption></figure>'
         for i, n in enumerate(x for x in SCREENSHOTS if x != "ui-full.png" and (IMG / x).exists()))
     out.append(section("05", "The interface", f'<div class="shots">{shots}</div>' + ui_html))
@@ -645,7 +656,7 @@ def build_docs(release: dict) -> None:
 def build_screenshots(release: dict) -> None:
     caps = screenshot_captions()
     figs = "".join(
-        f'<figure><a href="/img/{name}"><img src="/img/{name}" alt="{html.escape(caps.get(name, name))}" loading="lazy"></a>'
+        f'<figure><a href="{img_url(name)}"><img src="{img_url(name)}" alt="{html.escape(caps.get(name, name))}" loading="lazy"></a>'
         f'<figcaption>{html.escape(caps.get(name, name))}</figcaption></figure>'
         for name in SCREENSHOTS if (IMG / name).exists()
     )

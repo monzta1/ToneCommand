@@ -34,6 +34,10 @@ import ui_probe  # noqa: E402
 from PIL import Image  # noqa: E402
 
 URL = "http://127.0.0.1:8909/"
+#: A request the README itself quotes. It goes through whatever planner the
+#: app is set to, so it costs whatever that planner costs (a subscription
+#: backend costs nothing per call; an API-key backend costs cents).
+REQUEST = "a Klon into a JCM800 with a greenback 4x12"
 ROOT = Path(__file__).resolve().parent.parent
 SIZES = {"ui-full": 2000, "audition-amp": 1800, "audition-cab": 1800, "graphic-eq": 1800,
          "pedal-and-bypass": 1800, "blast-radius": 1800, "health-scan": 1200}
@@ -54,7 +58,7 @@ def finish(img: Image.Image, name: str, out: Path) -> None:
     print(f"{name}.png: {q.width}x{q.height}, {(out / f'{name}.png').stat().st_size // 1024} KB")
 
 
-async def run(out: Path) -> int:
+async def run(out: Path, empty: bool) -> int:
     ui_probe.start_chrome(quiet=True)
     conn = await ui_probe.Tab.open()
     async with conn as ws:
@@ -92,9 +96,31 @@ async def run(out: Path) -> int:
         before = state()
         print("rig:", before["preset"]["label"], before["preset"]["name"], "scene", before["scene"]["number"])
 
-        # the whole page
+        # the whole page, at the PLAN stage of a real request through the real
+        # planner: proposed, never sent. --empty takes the idle page instead.
         await fresh()
-        finish(await grab(["body"], True, pad=0), "ui-full", out)
+        if not empty:
+            await js("(() => { const p = document.getElementById('prompt'); p.value = "
+                     + json.dumps(REQUEST) + "; p.dispatchEvent(new Event('input', {bubbles: true}));"
+                     " submitRequest(); return 1; })()")
+            for _ in range(300):
+                await asyncio.sleep(1)
+                st = json.loads(await js("JSON.stringify({plan: !document.getElementById('pane-plan').hidden,"
+                                         " cards: document.querySelectorAll('#plancards > *').length,"
+                                         " ask: typeof chatNeedsAnswer !== 'undefined' && chatNeedsAnswer})"))
+                if st["plan"] and st["cards"]:
+                    break
+                if st["ask"]:
+                    print("the planner asked a question instead of planning; taking the idle page", file=sys.stderr)
+                    await fresh()
+                    break
+            else:
+                print("no plan within five minutes; taking the idle page", file=sys.stderr)
+                await fresh()
+            await asyncio.sleep(2.0)
+            await js("window.scrollTo(0, 0)")
+        finish(await grab(["body"], False, pad=0), "ui-full", out)
+        await js("typeof discardPlan === 'function' && discardPlan()")
 
         # auditions: the popover is position:fixed, so capture the viewport
         for kind, filt in (("amp", None), ("cab", "v30")):
@@ -169,6 +195,8 @@ async def run(out: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=str(ROOT / "docs" / "img"))
+    ap.add_argument("--empty", action="store_true",
+                    help="full-page shot of the idle page, without running the planner")
     args = ap.parse_args()
     try:
         st = state()
@@ -177,7 +205,7 @@ def main() -> int:
     if not st.get("connected"):
         sys.exit("no FM9 connected: the README promises live screenshots, not simulator ones")
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
-    return asyncio.run(run(out))
+    return asyncio.run(run(out, args.empty))
 
 
 if __name__ == "__main__":

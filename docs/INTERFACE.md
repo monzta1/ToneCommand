@@ -4,7 +4,7 @@ The rule this UI is built to: **if you have to switch to FM9-Edit in the middle
 of a session, we have already lost.** Every panel is a control surface, not a
 readout.
 
-![The ToneCommand interface: the five-stage rail from REQUEST to SEND, the eight named scenes, the live signal chain, and the command bar](img/ui-full.png)
+![The ToneCommand interface at the PLAN stage: the request "a Klon into a JCM800 with a greenback 4x12" turned into 24 proposed changes, the two scenes it would also move lit amber, nothing sent yet](img/ui-full.png)
 
 *Everything above is live from a connected FM9. The cyan path is the signal
 actually reaching the output; the dashed blocks are bypassed but still passing

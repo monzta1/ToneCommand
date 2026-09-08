@@ -49,8 +49,9 @@ Notable changes to ToneCommand. Dates are UTC.
 - **Every interface screenshot re-taken on the current UI**, live from a
   connected FM9: the full page, both auditions, the effects panel with its
   bypass and modifier badges and P2 buttons, the blast radius (scene rail
-  plus the WHAT WILL CHANGE card), and a health scan. `tools/readme_shots.py`
-  reproduces them. The graphic EQ shot is still the old one: this preset
+  plus the WHAT WILL CHANGE card), and a health scan. The full-page shot is
+  the PLAN stage of a real request through the real planner, proposed and
+  not sent. `tools/readme_shots.py` reproduces them. The graphic EQ shot is still the old one: this preset
   has no EQ block, and switching presets discards the edit buffer.
 
 ### Added
