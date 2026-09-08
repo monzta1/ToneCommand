@@ -289,10 +289,14 @@ driver, the same one FM9-Edit uses, before the FM9's MIDI ports appear):
 ```bat
 git clone https://github.com/monzta1/ToneCommand.git
 cd ToneCommand
-py -3.12 -m venv .venv
+py -m venv .venv
 .venv\Scripts\pip install -e .
 .venv\Scripts\tonecommand
 ```
+
+> **Never used a terminal before?** Follow
+> [the step-by-step Windows guide](docs/SETUP.md#windows) instead. It assumes
+> nothing, needs no git, and covers what to do when something goes wrong.
 
 **Linux** (untested, expected to work; the MIDI library builds against ALSA, so
 install its headers first):

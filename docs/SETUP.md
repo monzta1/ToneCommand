@@ -27,32 +27,148 @@ Run:
 
 ## Windows
 
-Untested by the maintainer, and expected to work: everything here is
-cross-platform Python, and the one macOS-only piece (instant cable
-detection through CoreMIDI) degrades cleanly to the five-second poll and
-the link pill's reconnect. If you run it on Windows, please report how it
-went, either way, in an issue.
+**No experience needed. Five steps, about ten minutes, most of it waiting for
+downloads.** You will type three lines at the end. You can copy and paste them.
 
-```bat
-git clone https://github.com/monzta1/ToneCommand.git
-cd ToneCommand
-py -3.12 -m venv .venv
-.venv\Scripts\pip install -e .
-.venv\Scripts\tonecommand
-:: open http://127.0.0.1:8909 with the FM9 connected and powered on
+Untested by the maintainer and expected to work: it is all cross-platform
+Python, and the one macOS-only piece (instant cable detection) falls back to
+checking every five seconds. If you try it, please say how it went in an
+issue, either way.
+
+### Step 1: install Python
+
+Get it from **https://www.python.org/downloads/windows/** and run the
+installer.
+
+> **On the first screen, tick the box that says "Add python.exe to PATH"**,
+> down at the bottom, before you click Install. This is the single most common
+> thing to get wrong, and skipping it is why "python is not recognised"
+> appears later. If you miss it, run the installer again and choose Modify.
+
+Any version 3.11 or newer works.
+
+### Step 2: install the FM9 USB driver
+
+Download Fractal's Windows USB driver from
+**https://www.fractalaudio.com/fm9-downloads/** and install it.
+
+This is the same driver FM9-Edit uses, so **if FM9-Edit already works on this
+computer, you can skip this step.** Without it, Windows cannot see the FM9 at
+all and ToneCommand will say it cannot find your unit.
+
+### Step 3: download ToneCommand
+
+Go to **https://github.com/monzta1/ToneCommand**, click the green **Code**
+button, then **Download ZIP**.
+
+Then find the downloaded file (usually in your Downloads folder), right-click
+it, and choose **Extract All**. You now have a folder called
+`ToneCommand-main`.
+
+### Step 4: open a terminal in that folder
+
+Open the `ToneCommand-main` folder so you can see the files inside it
+(`README.md`, `server.py` and so on).
+
+Now **hold Shift, right-click on any empty white space in that folder**, and
+choose **"Open PowerShell window here"** or **"Open in Terminal"**.
+
+A window with a black or blue background opens. That is the terminal. It is
+just a place to type commands. Nothing you do in the next step can damage your
+computer or your FM9.
+
+### Step 5: type these three lines
+
+Type or paste **one line at a time**, pressing Enter after each, and wait for
+it to finish before starting the next.
+
+```powershell
+py -m venv .venv
 ```
 
-Windows notes:
+*Makes a private space for ToneCommand's parts, so it cannot disturb anything
+else on your computer. Takes a few seconds and prints nothing. That is normal.*
 
-- The FM9 needs Fractal's Windows USB driver installed (the same one
-  FM9-Edit uses) before its MIDI ports appear.
-- For video builds, install ffmpeg with `winget install ffmpeg` instead
-  of Homebrew.
+```powershell
+.venv\Scripts\pip install -e .
+```
+
+*Downloads the pieces it needs. This is the slow one, usually one to three
+minutes, and it prints a lot of text. Scrolling text is good.*
+
+```powershell
+.venv\Scripts\tonecommand
+```
+
+*Starts ToneCommand. Leave this window open: closing it stops the program.*
+
+### What you should see
+
+The last command prints a line ending in something like:
+
+```
+Uvicorn running on http://127.0.0.1:8909
+```
+
+Now open your web browser and go to **http://127.0.0.1:8909**
+
+With the FM9 switched on and plugged in by USB, the link indicator at the top
+of the page turns green and names your preset. That is it: you are running.
+
+### Using it again tomorrow
+
+You only do steps 1 to 4 once. After that:
+
+1. Open the `ToneCommand-main` folder.
+2. Shift + right-click, **Open PowerShell window here**.
+3. Type the last line only:
+
+```powershell
+.venv\Scripts\tonecommand
+```
+
+4. Go to **http://127.0.0.1:8909** in your browser.
+
+### If something goes wrong
+
+**"py is not recognised"** or **"python is not recognised"**
+Python is not installed, or the PATH box in Step 1 was not ticked. Run the
+Python installer again, choose **Modify**, and make sure **"Add python.exe to
+PATH"** is ticked. Then close the terminal window, open a new one, and try
+again. A terminal only notices the change if it was opened afterwards.
+
+**"cannot be loaded because running scripts is disabled"**
+Windows is blocking the command. Paste this once, press Enter, answer `Y`,
+then run the failing line again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**The page loads but the link indicator is red, or it says it cannot find the
+FM9**
+Check, in this order: the FM9 is switched on; the USB cable goes from the FM9
+to the computer and is a data cable rather than a charge-only one; Fractal's
+driver from Step 2 is installed; and FM9-Edit is **closed**, because only one
+program can hold the FM9's USB connection at a time.
+
+**"port 8909 is already in use"**
+ToneCommand is already running in another window. Use that one, or close it
+and start again.
+
+**Anything else**
+Open an issue at **https://github.com/monzta1/ToneCommand/issues** and paste
+the red text. The exact wording matters, so copy it rather than describing it.
+
+### Notes for later
+
+- For video builds, install ffmpeg with `winget install ffmpeg` instead of
+  Homebrew.
 - The guided one-click setup for the ChatGPT subscription route is
-  Homebrew-based, so on Windows install
-  [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by hand as
-  its own documentation directs, or use any of the key-based services,
-  the Claude CLI, or a local model, which need no helper at all.
+  Homebrew-based, so it is macOS only. On Windows, either install
+  [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) by hand as its
+  own documentation directs, or use any key-based service, the Claude CLI, or
+  a local model, which need no helper at all.
 
 ## Linux
 
