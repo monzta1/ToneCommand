@@ -97,22 +97,11 @@ def test_an_unknown_ordinal_is_not_given_an_invented_name():
     assert "99999" in got and "cab" in got.lower()
 
 
-def test_the_review_prefers_the_name_over_the_numbers():
-    """Pins the UI side of the same contract."""
-    from pathlib import Path
-    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
-    assert "a.cab_name || a.label" in ui
-
-
-def test_a_build_that_changes_the_amp_never_goes_quiet_about_the_cab():
-    """A plan that sets no cab has still MADE a cab decision: to keep the one
-    loaded. Hiding the panel made that silent, and silence reads as 'cabs were
-    never considered'."""
-    from pathlib import Path
-    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
-    body = ui.split("async function renderCabPanel()", 1)[1][:1400]
-    assert "UNCHANGED" in body, "no cab action still hides the panel entirely"
-    assert "set_type" in body, "it must notice the amp voice changed"
+# The two UI contracts that used to be asserted here as substrings of
+# index.html ("a.cab_name || a.label" appears in the file; "UNCHANGED"
+# appears within 1400 characters of renderCabPanel) now run the real panel in
+# tests/test_review_cab_panel.py. A substring test breaks on a reformat and
+# passes on a rewrite that keeps the words, which is backwards.
 
 
 def test_the_planner_can_say_what_cab_it_wants_in_gear_words():

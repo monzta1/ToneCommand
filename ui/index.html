@@ -9807,12 +9807,15 @@ function cabRow(r, chosen) {
   const bits = [];
   if (r.match != null) bits.push(`${matchWord(r.match)} ${Math.round(r.match * 100)}%`);
   if (me && me.brightness != null) bits.push(`${Math.round(me.brightness)} Hz`);
-  const dist = r.distance_from_current != null
-    ? r.distance_from_current : r.distance_from_reference;
-  // Only ever present when Current was MEASURED: the server nulls it out for
-  // a gear-anchored or unresolved Current, because there is no curve to be a
-  // distance from. Brief 21.5.
-  if (dist != null) bits.push(`${dist} dB from current`);
+  // ONLY `distance_from_current`, which the server nulls out for a
+  // gear-anchored or unresolved Current because there is no curve to be a
+  // distance from (brief 21.5). The raw service field
+  // `distance_from_reference` is deliberately NOT read: it is not filtered
+  // by anchor state, so accepting it as a fallback would reinstate exactly
+  // the claim the server strips.
+  if (r.distance_from_current != null) {
+    bits.push(`${r.distance_from_current} dB from current`);
+  }
   return `<div class="cabrow${chosen ? ' chosen' : ''}">
     <div class="cabname">${chosen ? '&#9679; ' : ''}${esc(r.name || '')}
       ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}
@@ -9865,14 +9868,21 @@ function cabAnchorNote(sel) {
   const cur = sel.current ? String(sel.current) : 'the cab now loaded';
   const kept = sel.preserved ? `, keeping ${sel.preserved}` : '';
   if (sel.anchor === 'measured') {
-    return `Ranked by least change from ${cur}, which is measured${kept}.`;
+    // "Least change" is only true when the request named a DIRECTION and the
+    // relative pass actually ran. With no direction there is no movement to
+    // be least of, and saying so anyway describes an algorithm that did not
+    // run on this request.
+    return sel.relative
+      ? `Ranked by least change from ${cur}, which is measured${kept}.`
+      : `Ranked on the request itself. ${cur} is measured${kept}, so a `
+        + 'distance from it can be stated where one is shown.';
   }
   if (sel.anchor === 'gear_anchored') {
     return `Ranked against ${cur}, known by its gear only${kept}. `
          + 'Nothing has measured it, so no distance from it is claimed.';
   }
   return 'Nothing is loaded to compare against, so these answer the request '
-       + 'on its own terms.';
+       + 'on its own terms, and nothing here is relative to what you have.';
 }
 
 async function renderCabPanel() {
@@ -9887,19 +9897,28 @@ async function renderCabPanel() {
   // so say which cab it is either way.
   const voiced = (currentPlan?.actions || []).some(
     a => a.kind === 'set_type' || /amp|distort/i.test(a.block || ''));
+  // A listening set the plan actually produced is never hidden. The planner
+  // may name a cab TARGET without choosing an exact asset, which is a plan
+  // with a real cab_selection and no set_cab action, and the panel used to
+  // return before reading it. That is the reported complaint again in a
+  // different shape: the reasoning existed and the player never saw it.
+  const hasSet = !!(currentPlan && currentPlan.cab_selection
+                    && (currentPlan.cab_selection.candidates || []).length);
   if (!acts.length) {
-    if (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0) {
+    if (!hasSet && (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0)) {
       panel.hidden = true; return;
     }
     panel.hidden = false;
     $('cabnote').textContent = '';
     $('cabfoot').textContent = '';
-    $('cabchosen').innerHTML =
-      `<div class="cabrow"><div class="cabname">&#9679; ${esc(
-         lastCab.name || `cab ${lastCab.ordinal}`)}
-        <span class="cabwhy">kept as it is; this build changes the amp and
-        does not change the cab</span></div>
-        <div class="cabtag">UNCHANGED</div></div>`;
+    const kept = lastCab.name || (lastCab.ordinal != null && lastCab.ordinal >= 0
+      ? `cab ${lastCab.ordinal}` : null);
+    $('cabchosen').innerHTML = kept
+      ? `<div class="cabrow"><div class="cabname">&#9679; ${esc(kept)}
+          <span class="cabwhy">kept as it is; this build does not change
+          the cab</span></div>
+          <div class="cabtag">UNCHANGED</div></div>`
+      : '';
   } else {
   panel.hidden = false;
   $('cabnote').textContent = '';

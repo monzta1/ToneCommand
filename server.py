@@ -571,19 +571,23 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
     # excluded for not being a Pignose. Whole-rig builds never preserve, by
     # definition.
     #
-    # The cue list is NOT repeated here. It used to be, under a comment
-    # saying the matcher was authoritative while a second copy sat in this
-    # file doing the actual deciding. IRCommand's parser answers instead, so
-    # a cue added there works here on the next request. It is asked about the
-    # player's own words, because "keep what I have" is a thing the PLAYER
-    # says; the planner's gear translation is a target, not a wish.
-    words = " ".join(filter(None, [_plan_request_text(result),
-                                   result.get("summary", ""),
-                                   result.get("cab_need") or ""]))
-    asked_to_keep = bool(ir_service.intent(words).get("preserve"))
+    # THE PLAYER'S WORDS DECIDE, and only the player's. This used to send the
+    # prompt, the model's summary and the model's cab_need as one blob, so a
+    # summary that happened to contain "similar" turned preservation on for a
+    # player who never asked for it. The planner's gear translation is a
+    # target, not a wish.
+    #
+    # The cue list is not repeated here either. It is sent WITH the request
+    # and IRCommand decides, using the same parser it ranks with, which is
+    # one round trip instead of two and cannot half-fail into "no constraint".
+    words = _plan_request_text(result)
     preserve = None
-    if anchor.get("state") == "gear_anchored" and asked_to_keep \
+    if anchor.get("state") in ("gear_anchored", "measured") \
             and not result.get("whole_rig"):
+        # A MEASURED Current gets this too. Curve proximity is not the same
+        # promise as keeping the cabinet: the nearest curve in the library
+        # can be a different size with a different speaker, and "keep the
+        # same character" is a claim about the gear, not about a distance.
         # The Fractal slot name is already gear-shaped ("4x12 RECTO SM57"),
         # so it parses into real constraints. The display label carries bank
         # noise ("1x4 Pig 57 (FACTORY 1)") and the decoded prose is a
@@ -591,11 +595,12 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         preserve = (anchor.get("gear") or anchor.get("fractal")
                     or anchor.get("models") or anchor.get("name"))
     reference = anchor.get("reference") if anchor.get("state") == "measured" else None
-    out["preserved"], out["reference"] = preserve, reference
+    out["reference"] = reference
     detail = {}
     try:
         rows = ir_service.recommend(target, "fm9", k, reference=reference,
-                                    preserve=preserve, detail=detail) or []
+                                    preserve=preserve, preserve_when=words,
+                                    detail=detail) or []
     except (TypeError, AttributeError, KeyError, IndexError, ValueError) as exc:
         # A programming error here is NOT "the library did not answer". This
         # exact except swallowed a missing `preserve` parameter and reported a
@@ -613,6 +618,15 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         out["why"] = "the IR library did not answer"
         return out
 
+    # What was OFFERED as preservable is not what was applied: IRCommand
+    # decides from the player's words and says which it did. Reporting the
+    # offer would claim a constraint that may never have been used.
+    out["preserved"] = preserve if detail.get("preserve_asked") else None
+    # Whether the ranking was actually relative to Current, or ordinary
+    # scoring with a reference that changed nothing. Only the first supports
+    # "least change from your cab": with no requested direction there is no
+    # movement to be least of.
+    out["relative"] = bool(detail.get("relative"))
     # An empty set is an ANSWER and it has a reason. Without this a dead
     # service, an unparseable request and a genuinely empty shelf all reached
     # the player as the same silent empty list.

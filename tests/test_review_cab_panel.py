@@ -23,8 +23,14 @@ UI = (ROOT / "ui" / "index.html").read_text()
 # The panel's own code, lifted verbatim: cabRow, renderBlend, cabAnchorNote
 # and renderCabPanel. Everything else it touches is stubbed, so what runs
 # here is the shipped implementation and not a paraphrase of it.
-START = "function cabRow(r, chosen) {"
+START = "function cabActions(plan) {"
 END = "// --- CONFIRM stage"
+
+# Every id the panel writes to must EXIST in the page, or a test that creates
+# nodes on demand passes against markup that has none of them. These are read
+# straight out of the HTML rather than listed here by hand.
+PANEL_IDS = ("cabpanel", "cabnote", "cabchosen", "cabalts", "cabblend",
+             "cabfoot")
 
 HARNESS = r"""
 import { readFileSync } from "fs";
@@ -36,29 +42,37 @@ const panelCode = src.slice(start, end);
 const input = JSON.parse(readFileSync(process.argv[5], "utf8"));
 
 const fetched = [];
+// Only ids the PAGE declares get a node. An unknown id throws, so the panel
+// cannot quietly write into somewhere that does not exist in the markup.
+const known = JSON.parse(process.argv[6]);
 const nodes = {};
-function node() {
-  return { textContent: "", innerHTML: "", hidden: false,
-           querySelectorAll: () => [] };
+for (const id of known) {
+  nodes[id] = { textContent: "", innerHTML: "", hidden: false,
+                querySelectorAll: () => [] };
 }
-const $ = (id) => (nodes[id] = nodes[id] || node());
+const $ = (id) => {
+  if (!(id in nodes)) throw new Error("no element with id " + id + " on the page");
+  return nodes[id];
+};
+// The slice carries the real cabActions, stopCabAudio, playCab, matchWord,
+// cabRow, cabAnchorNote and renderCabPanel. Only what the BROWSER supplies is
+// provided here, so a change in any of those functions reaches these tests.
 const esc = (s) => String(s);
-const matchWord = () => "close";
-const stopCabAudio = () => {};
-const playCab = () => {};
-const cabActions = (p) => (p.actions || []).filter(a => a.kind === "set_cab");
+let cabAudio = null;
+const document = { querySelectorAll: () => [] };
 const fetch = async (u) => { fetched.push(u); throw new Error("no network"); };
 let cabDrive = "lead";
 let lastCab = input.lastCab || { ordinal: null, name: null };
 let currentPlan = input.plan;
 
+// cabActions is NOT stubbed: it is part of the slice, so a change that
+// stops recognising a cab action fails these tests instead of passing them.
 const run = new Function(
-  "$", "esc", "matchWord", "stopCabAudio", "playCab", "cabActions",
-  "fetch", "cabDrive", "lastCab", "currentPlan",
-  panelCode + "\nreturn renderCabPanel;");
+  "$", "esc", "document", "cabAudio", "fetch", "cabDrive", "lastCab",
+  "currentPlan", panelCode + "\nreturn renderCabPanel;");
 
-await run($, esc, matchWord, stopCabAudio, playCab, cabActions,
-          fetch, cabDrive, lastCab, currentPlan)();
+await run($, esc, document, cabAudio, fetch, cabDrive, lastCab,
+          currentPlan)();
 console.log(JSON.stringify({
   fetched,
   note: $("cabnote").textContent,
@@ -74,9 +88,13 @@ def _render(tmp_path, plan, last_cab=None) -> dict:
     h.write_text(HARNESS)
     payload = tmp_path / "input.json"
     payload.write_text(json.dumps({"plan": plan, "lastCab": last_cab}))
+    for node_id in PANEL_IDS:
+        assert f'id="{node_id}"' in UI, \
+            f"the page declares no #{node_id}; the harness would invent it"
     out = subprocess.run(
         ["node", str(h), str(ROOT / "ui" / "index.html"), START, END,
-         str(payload)], capture_output=True, text=True)
+         str(payload), json.dumps(list(PANEL_IDS))],
+        capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     assert "EXTRACT FAILED" not in out.stdout, "renderCabPanel moved; fix the slice"
     return json.loads(out.stdout.strip())
@@ -131,7 +149,7 @@ def test_a_gear_anchored_current_claims_no_measured_distance(tmp_path):
 def test_a_measured_current_may_state_a_distance(tmp_path):
     plan = json.loads(json.dumps(PLAN))
     plan["cab_selection"].update(anchor="measured", preserved=None,
-                                 reference="/l/current.wav")
+                                 relative=True, reference="/l/current.wav")
     plan["cab_selection"]["candidates"][0]["distance_from_current"] = 1.8
     r = _render(tmp_path, plan)
     assert "which is measured" in r["note"]
@@ -165,3 +183,103 @@ def test_no_selection_on_the_plan_leaves_the_panel_quiet(tmp_path):
     r = _render(tmp_path, plan)
     assert r["alts"] == ""
     assert "4x12 RECTO SM57" in r["chosen"]
+
+
+# --- a listening set is never hidden (2026-09-08) -------------------------
+#
+# The panel returned before reading cab_selection whenever the plan had no
+# cab action, no amp-voice action, and no readable loaded cab. The planner is
+# allowed to name a cab TARGET without choosing an exact asset, so a plan can
+# carry a real, constrained listening set and no set_cab. Hiding it is the
+# reported complaint again in a different shape: the reasoning existed and
+# the player never saw it.
+
+def test_a_plan_with_no_cab_action_still_shows_its_listening_set(tmp_path):
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_param", "block": "reverb",
+                        "param": "MIX", "value": 12}]
+    r = _render(tmp_path, plan, last_cab={"ordinal": None, "name": None})
+    assert r["hidden"] is False, "a real listening set was hidden"
+    assert "OwnHammer Brit V30 SM57 Cap" in r["alts"]
+    assert r["note"], "shown with no word about what it is relative to"
+
+
+def test_the_panel_still_hides_when_there_is_genuinely_nothing(tmp_path):
+    """The fix must not turn the panel into permanent furniture."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_param", "block": "reverb",
+                        "param": "MIX", "value": 12}]
+    del plan["cab_selection"]
+    r = _render(tmp_path, plan, last_cab={"ordinal": None, "name": None})
+    assert r["hidden"] is True
+
+
+def test_a_cab_action_is_recognised_by_the_pages_own_rule(tmp_path):
+    """cabActions is part of the slice now, not a stub. A plan that changes a
+    cab parameter without a set_cab is still a cab decision."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_param", "block": "Cab 1",
+                        "param": "CABINET LEVEL", "value": -2,
+                        "why": "matches the new voice"}]
+    r = _render(tmp_path, plan)
+    assert r["hidden"] is False
+    assert "CABINET LEVEL" in r["chosen"] or "cab" in r["chosen"].lower()
+
+
+def test_a_measured_current_with_no_direction_does_not_claim_least_change(
+        tmp_path):
+    """"Least change" describes the relative pass. With no requested
+    direction there is no movement to be least of, and the sentence would
+    describe an algorithm that did not run on this request."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"].update(anchor="measured", relative=False,
+                                 reference="/l/current.wav")
+    r = _render(tmp_path, plan)
+    assert "least change" not in r["note"].lower()
+    assert "is measured" in r["note"]
+
+
+def test_the_legacy_distance_field_is_not_accepted_from_a_candidate(tmp_path):
+    """`distance_from_reference` is the RAW service field and is not filtered
+    by anchor state. Reading it as a fallback would reinstate exactly the
+    claim the server strips for a gear-anchored Current."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"]["candidates"][0]["distance_from_reference"] = 2.4
+    r = _render(tmp_path, plan)
+    assert "2.4 dB from current" not in r["alts"]
+    assert "dB from current" not in r["alts"]
+
+
+# --- moved here from test_cab_selection.py, where they were substring scans
+
+def test_the_review_names_the_cab_rather_than_numbering_it(tmp_path):
+    """A player does not recognise "bank 1 ordinal 12". The action carries a
+    cab_name for exactly this, and the panel has to prefer it."""
+    r = _render(tmp_path, PLAN)
+    assert "4x12 RECTO SM57" in r["chosen"]
+    assert "ordinal" not in r["chosen"]
+
+
+def test_a_build_that_changes_the_amp_never_goes_quiet_about_the_cab(tmp_path):
+    """A plan that sets no cab has still MADE a cab decision: to keep the one
+    loaded. Hiding the panel made that silent, and silence reads as "cabs were
+    never considered", which is the sentence that started this work."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_type", "block": "Amp 1",
+                        "value": "USA IIC+ LEAD"}]
+    del plan["cab_selection"]
+    r = _render(tmp_path, plan,
+                last_cab={"ordinal": 12, "name": "4x12 BRIT V30 SM57"})
+    assert r["hidden"] is False
+    assert "UNCHANGED" in r["chosen"]
+    assert "4x12 BRIT V30 SM57" in r["chosen"]
+
+
+def test_an_unrelated_build_with_no_cab_context_stays_hidden(tmp_path):
+    """The other side of it: not every plan is a cab plan."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_param", "block": "reverb",
+                        "param": "MIX", "value": 12}]
+    del plan["cab_selection"]
+    r = _render(tmp_path, plan, last_cab={"ordinal": 12, "name": "A cab"})
+    assert r["hidden"] is True

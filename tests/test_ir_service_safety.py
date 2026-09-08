@@ -264,14 +264,16 @@ def _link(monkeypatch, tmp_path, body=b"RIFFmeasured", digest=None,
         "digest": ir_service.digest_of(src) if digest is None else digest})
     monkeypatch.setattr(ir_service, "_get",
                         lambda path, timeout=3: answer)
+
     return src
 
 
 def test_a_linked_and_analysed_cab_is_measured(monkeypatch, tmp_path):
-    """The only route to `measured`, with both halves satisfied."""
+    """The only route to `measured`, with every half satisfied."""
     import server
     src = _link(monkeypatch, tmp_path,
-                answer={"in_library": True, "measured": True})
+                answer={"in_library": True, "has_curve": True,
+                        "measured": True})
     a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26,
                                            "name": "Mine"}})
     assert a["state"] == "measured"
@@ -284,7 +286,7 @@ def test_a_digest_that_does_not_match_the_file_is_not_measured(monkeypatch,
     path survives an edit or a re-export; the sound does not."""
     import server
     _link(monkeypatch, tmp_path, digest="definitely-wrong",
-          answer={"in_library": True, "measured": True})
+          answer={"in_library": True, "has_curve": True, "measured": True})
     a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})
     assert a["state"] != "measured"
     assert "reference" not in a
@@ -293,7 +295,7 @@ def test_a_digest_that_does_not_match_the_file_is_not_measured(monkeypatch,
 def test_a_record_with_no_digest_at_all_is_not_measured(monkeypatch, tmp_path):
     import server
     _link(monkeypatch, tmp_path, digest="",
-          answer={"in_library": True, "measured": True})
+          answer={"in_library": True, "has_curve": True, "measured": True})
     assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
         "state"] != "measured"
 
@@ -304,7 +306,7 @@ def test_a_file_the_library_has_not_analysed_is_not_measured(monkeypatch,
     exists, not that a file exists."""
     import server
     _link(monkeypatch, tmp_path,
-          answer={"in_library": True, "measured": False})
+          answer={"in_library": True, "has_curve": False, "measured": False})
     assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
         "state"] != "measured"
 
@@ -314,7 +316,31 @@ def test_a_file_outside_the_library_is_not_measured(monkeypatch, tmp_path):
     actual reproduction."""
     import server
     _link(monkeypatch, tmp_path,
-          answer={"in_library": False, "measured": False})
+          answer={"in_library": False, "has_curve": False, "measured": False})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_an_orphan_feature_row_cannot_authorise_a_measured_anchor(monkeypatch,
+                                                                  tmp_path):
+    """features.json outlives the catalogue it was built from, so a row can
+    survive a rescan that dropped the file. Reading only `measured` and
+    ignoring `in_library` let that row license numeric deltas from something
+    the library does not hold."""
+    import server
+    _link(monkeypatch, tmp_path,
+          answer={"in_library": False, "has_curve": True, "measured": True})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_a_feature_row_with_no_curve_cannot_authorise_one_either(monkeypatch,
+                                                                 tmp_path):
+    """A feature ROW is not a measurement. An empty one carries no curve, and
+    a curve is the entire thing a distance is measured against."""
+    import server
+    _link(monkeypatch, tmp_path,
+          answer={"in_library": True, "has_curve": False, "measured": True})
     assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
         "state"] != "measured"
 
@@ -421,26 +447,31 @@ def test_a_shared_profile_never_borrows_the_connected_rigs_cab(monkeypatch):
 
 # --- the common post-plan selector (brief 19.5, 26.3, 26.4, 26.5) --------
 
-def _sel(monkeypatch, result, anchor, capture, preserve_asked=False):
-    """Run the selector with IRCommand stubbed.
+def _sel(monkeypatch, result, anchor, capture, preserve_applied=False):
+    """Run the selector with IRCommand stubbed at the real boundary.
 
-    `preserve_asked` is IRCOMMAND'S answer, not this file's opinion. The
-    preservation cue list lives in the matcher and is reached over
-    /ir/intent; ToneCommand used to keep a second copy of it in server.py,
-    so a cue added to the matcher silently stopped working here. Stating the
-    collaborator's answer explicitly is what keeps that from being re-derived
-    in a test.
+    ToneCommand's job here is to OFFER what it would keep and to hand over
+    the player's own words; IRCommand decides whether those words ask for
+    preservation, using the parser it also ranks with. So the capture records
+    what was SENT, and `preserve_applied` is what the service answered.
+
+    The previous version of this helper stubbed a separate ir_service.intent
+    with a caller-supplied boolean, which meant the preservation tests
+    asserted the stub. There is no separate call now: one request carries
+    both halves and cannot half-fail into "no constraint".
     """
     from fm9 import ir_service
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
-    monkeypatch.setattr(ir_service, "intent",
-                        lambda text: capture.update(intent_text=text)
-                        or {"preserve": preserve_asked})
-    monkeypatch.setattr(
-        ir_service, "recommend",
-        lambda need, target="fm9", k=3, reference=None, preserve=None,
-        detail=None: capture.update(need=need, reference=reference,
-                                    preserve=preserve) or [])
+
+    def fake(need, target="fm9", k=3, reference=None, preserve=None,
+             preserve_when=None, detail=None):
+        capture.update(need=need, reference=reference, preserve=preserve,
+                       preserve_when=preserve_when)
+        if detail is not None:
+            detail["preserve_asked"] = preserve_applied
+        return []
+
+    monkeypatch.setattr(ir_service, "recommend", fake)
     import server
     return server.cab_listening_set(result, anchor)
 
@@ -467,74 +498,68 @@ def test_a_measured_anchor_passes_its_curve_as_the_reference(monkeypatch):
     _sel(monkeypatch, {"cab_need": "darker"},
          {"state": "measured", "reference": "/lib/cur.wav"}, seen)
     assert seen["reference"] == "/lib/cur.wav"
-    assert seen["preserve"] is None
+
+
+def test_a_measured_anchor_is_also_offered_for_preservation(monkeypatch):
+    """Curve proximity is not the same promise as keeping the cabinet: the
+    nearest curve in the library can be a different size with a different
+    speaker. A measured anchor used to receive `preserve=None` always, and a
+    test in this file required that."""
+    seen = {}
+    _sel(monkeypatch, {"request": "keep the same cab but darker",
+                       "cab_need": "darker"},
+         {"state": "measured", "reference": "/lib/cur.wav",
+          "gear": "4x12 RECTO SM57 V30"}, seen, preserve_applied=True)
+    assert seen["preserve"] == "4x12 RECTO SM57 V30"
+    assert seen["reference"] == "/lib/cur.wav", "it must still be both"
 
 
 def test_gear_identity_constrains_retrieval_when_the_player_asked_to_keep(monkeypatch):
     """Brief 26.5: the identity must reach the SEARCH, not just the prose
     after it."""
     seen = {}
-    _sel(monkeypatch, {"summary": "darker but keep the same character",
-                       "cab_need": "darker"},
-         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
-         preserve_asked=True)
+    out = _sel(monkeypatch, {"request": "darker but keep the same character",
+                             "cab_need": "darker"},
+               {"state": "gear_anchored", "gear": "4x12 RECTO SM57"}, seen,
+               preserve_applied=True)
     assert seen["preserve"] == "4x12 RECTO SM57"
     assert seen["reference"] is None, "gear identity is not a curve"
+    assert out["preserved"] == "4x12 RECTO SM57"
 
 
-def test_the_preservation_decision_is_the_matchers_and_not_a_local_copy(monkeypatch):
-    """server.py used to carry its own ("keep", "same", "similar", ...) list
-    under a comment saying the matcher was authoritative. It decided every
-    real request. Whatever IRCommand answers is what happens here, including
-    when the words look nothing like the old list."""
+def test_only_the_players_words_are_sent_as_the_preservation_question(monkeypatch):
+    """The words used to be the prompt, the model's summary and the model's
+    cab_need concatenated, so a summary containing "similar" switched on a
+    hard constraint for a player who never asked for one."""
     seen = {}
-    _sel(monkeypatch, {"summary": "leave the speaker alone",
-                       "cab_need": "darker"},
-         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
-         preserve_asked=True)
-    assert seen["preserve"] == "4x12 RECTO SM57", \
-        "a cue the matcher recognised was overruled by this file"
-
-    seen2 = {}
-    _sel(monkeypatch, {"summary": "keep the same character",
-                       "cab_need": "darker"},
-         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen2,
-         preserve_asked=False)
-    assert seen2["preserve"] is None, \
-        "this file preserved on words the matcher did not treat as cues"
+    _sel(monkeypatch, {"request": "make it darker",
+                       "summary": "keeps the same speaker, similar character",
+                       "cab_need": "darker, same character"},
+         {"state": "gear_anchored", "gear": "4x12 RECTO SM57"}, seen)
+    assert seen["preserve_when"] == "make it darker", \
+        "the model's own words were sent as if the player had said them"
 
 
-def test_the_players_own_words_are_what_gets_asked_about(monkeypatch):
-    """"Keep what I have" is a thing the PLAYER says. The planner's gear
-    translation is a target, not a wish, so asking about it alone would miss
-    the request entirely. _plan_request_text() returned "" on every real call
-    until the prompt was carried onto the result (brief 28.2 item 3)."""
+def test_the_report_says_what_was_applied_not_what_was_offered(monkeypatch):
+    """IRCommand decides. Reporting the offer would claim a constraint that
+    may never have been used."""
     seen = {}
-    _sel(monkeypatch, {"request": "same cab please, just darker",
-                       "summary": "moves the mic off axis",
-                       "cab_need": "darker"},
-         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
-         preserve_asked=True)
-    assert "same cab please" in seen["intent_text"], \
-        "the player's own words never reached the preservation question"
-
-
-def test_preservation_is_not_forced_when_it_was_not_asked_for(monkeypatch):
-    """A build asking for a 4x12 V30 while a 1x4 Pignose is loaded would have
-    every candidate excluded for not being a Pignose."""
-    seen = {}
-    _sel(monkeypatch, {"summary": "give me a modern metal rig",
-                       "cab_need": "4x12 v30"},
-         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen)
-    assert seen["preserve"] is None
+    out = _sel(monkeypatch, {"request": "give me a modern metal rig",
+                             "cab_need": "4x12 v30"},
+               {"state": "gear_anchored", "gear": "1x4 Pig 57"}, seen,
+               preserve_applied=False)
+    assert out["preserved"] is None
+    assert seen["preserve"] == "1x4 Pig 57", "it must still offer it"
 
 
 def test_a_whole_rig_build_never_preserves_the_old_cab(monkeypatch):
+    """Not even offered: a whole-rig build is replacing the cab by
+    definition, so there is nothing to keep."""
     seen = {}
-    _sel(monkeypatch, {"summary": "keep the same character",
+    _sel(monkeypatch, {"request": "keep the same character",
                        "cab_need": "4x12 v30", "whole_rig": True},
-         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen,
-         preserve_asked=True)
+         {"state": "gear_anchored", "gear": "1x4 Pig 57"}, seen,
+         preserve_applied=True)
     assert seen["preserve"] is None
 
 
@@ -640,9 +665,9 @@ def test_the_preserve_constraint_names_the_speaker(monkeypatch):
     import server
     seen = {}
     anchor = server.current_anchor({"cab_sel": {"bank": 3, "ordinal": 42}})
-    _sel(monkeypatch, {"summary": "keep the same character",
+    _sel(monkeypatch, {"request": "keep the same character",
                        "cab_need": "darker"}, anchor, seen,
-         preserve_asked=True)
+         preserve_applied=True)
     rec = (server.reg.cab_models.get("3") or {}).get("42") or {}
     assert rec["group"] in (seen["preserve"] or ""), \
         "a Greenback could satisfy this preserve and nothing would notice"
@@ -662,8 +687,9 @@ def _sel_rows(monkeypatch, rows, detail_updates):
     monkeypatch.setattr(
         ir_service, "recommend",
         lambda need, target="fm9", k=3, reference=None, preserve=None,
-        detail=None: ((detail if detail is not None else {}).update(
-            detail_updates) or rows))
+        preserve_when=None, detail=None: (
+            (detail if detail is not None else {}).update(detail_updates)
+            or rows))
     import server
     return server.cab_listening_set({"cab_need": "4x12 v30"},
                                     {"state": "unresolved"})
@@ -716,8 +742,9 @@ def _ctx(monkeypatch, rows, detail_updates, prompt="steve vai lead tone"):
     monkeypatch.setattr(
         ir_service, "recommend",
         lambda need, target="fm9", k=5, reference=None, preserve=None,
-        detail=None: ((detail if detail is not None else {}).update(
-            detail_updates) or rows))
+        preserve_when=None, detail=None: (
+            (detail if detail is not None else {}).update(detail_updates)
+            or rows))
     return server.ir_context(prompt, {"state": "unresolved"})
 
 

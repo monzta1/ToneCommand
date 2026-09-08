@@ -249,7 +249,8 @@ def safe_ir_path(path: str):
 
 
 def recommend(need: str, target: str = "fm9", k: int = 3,
-              reference: str = None, preserve: str = None, detail: dict = None):
+              reference: str = None, preserve: str = None,
+              preserve_when: str = None, detail: dict = None):
     """Best-matching IRs for a need, or None when off / unreachable / empty.
 
     Each result carries at least name, path, tags and score. When IRCommand has
@@ -270,6 +271,13 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
         q += f"&reference={quote(reference)}"
     if preserve:
         q += f"&preserve={quote(preserve)}"
+    # The player's own words, sent WITH the request rather than asked about
+    # in a separate round trip. IRCommand decides whether they ask for
+    # preservation, using the same parser it ranks with, and applies the
+    # constraint or does not. A separate /ir/intent call could fail on its
+    # own and silently turn a requested hard constraint into no constraint.
+    if preserve_when is not None:
+        q += f"&preserve_when={quote(preserve_when)}"
     d = _get(q)
     # Three different Nones used to come back as one. A caller doing
     # `recommend(...) or []` turned a DEAD SERVICE into a valid empty answer
@@ -349,8 +357,14 @@ def linked_source(bank, ordinal):
     #    rather than assumed. Erring toward gear_anchored costs a numeric
     #    delta; erring toward measured quotes a distance from a curve nobody
     #    has.
-    known = _get(f"/ir/measured?path={quote(src)}", timeout=2)
-    if not (known or {}).get("measured"):
+    known = _get(f"/ir/measured?path={quote(src)}", timeout=2) or {}
+    # BOTH, and asserted here rather than trusted from one flag. The service
+    # reports library membership and the presence of a curve separately
+    # because they are separate facts, and reading only `measured` let an
+    # orphan features.json row, for a file the catalogue no longer holds,
+    # authorise a measured anchor.
+    if not (known.get("measured") and known.get("in_library")
+            and known.get("has_curve")):
         return None
     return {"path": src, "digest": rec.get("digest"),
             "analysis": rec.get("analysis")}

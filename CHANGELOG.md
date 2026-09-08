@@ -5,6 +5,32 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- **A measured anchor was never asked to keep the cab.** Only a gear-anchored
+  Current received the preserve constraint, so "keep the same cab, just
+  darker" against one of your own IRs got curve proximity and nothing else.
+  The nearest curve in the library can be a different size with a different
+  speaker; "keep the same character" is a claim about the gear, not about a
+  distance.
+- **The model's words could switch on a hard constraint.** The preservation
+  question was the prompt, the model's summary and the model's `cab_need`
+  concatenated, so a summary containing "similar" preserved the cab for a
+  player who never asked. Only the player's words decide now.
+- **A stale IR service silently dropped preservation.** It took two requests,
+  and a 404 on the first came back as "not asked for" while the second
+  answered normally, producing candidates that look fine and ignored the
+  constraint. It is one request now, and it cannot half-succeed.
+- **An orphan measurement could forge a measured anchor.** `features.json`
+  outlives the catalogue it was built from, so a row can survive a rescan
+  that dropped the file. Library membership and the presence of a curve are
+  now both required.
+- **Review hid a listening set it had been given.** The panel returned early
+  whenever a plan had no cab action, no amp-voice change and no readable
+  loaded cab. The planner may name a cab target without choosing an asset, so
+  that plan carries a real listening set and showed nothing.
+- **The panel claimed an algorithm that had not run.** A measured Current
+  always said "ranked by least change" even when the request named no
+  direction and ordinary scoring decided the order.
+
 - **The cab search ran on words no gear matcher could read.** Retrieval fired
   BEFORE the planner, on the player's raw prompt, so "steve vai lead tone"
   scored 0.07 and handed the planner a Soldano SLO30 capture. That is where
