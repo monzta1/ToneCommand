@@ -449,7 +449,53 @@ def _fence(text) -> str:
     return s.replace("<", "(").replace(">", ")")[:160]
 
 
-def ir_context(prompt: str) -> str:
+def current_anchor(snap) -> dict:
+    """What the cab currently loaded can support as a comparison anchor.
+
+    Three states, from brief section 21.5.1. A relative request ("darker",
+    "smoother", "keep the same character") is only answerable against
+    something, and how strongly depends on what that something is:
+
+      measured       Current is one of the player's own IRs, so it has a
+                     measured curve. Numeric distance from Current is fair.
+      gear_anchored  Current is a factory cab decoded in cab_models.json, so
+                     its cabinet, speaker and mic are known but not its curve.
+                     Its identity constrains the search; no distance may be
+                     claimed against it.
+      unresolved     neither. Do not claim the relative request was answered.
+
+    Why the middle state exists: measured on this installation, 3 user IRs are
+    acoustically measurable against 2,235 decoded factory slots (2,210 of them
+    with a real cabinet named). Rejecting everything but `measured` would make
+    relative requests unavailable on essentially every preset the owner has.
+
+    A factory slot name is the manufacturer's own label, not a filename
+    resemblance, which is why it clears the authority bar in 21.5.1.
+    """
+    sel = (snap or {}).get("cab_sel") or {}
+    bank, ordinal = sel.get("bank"), sel.get("ordinal")
+    if bank is None or ordinal is None:
+        return {"state": "unresolved", "why": "no cab could be read"}
+
+    # Owned IR: does IRCommand know this exact file?
+    from fm9 import ir_service
+    path = ir_service.path_for_user_cab(bank, ordinal) \
+        if hasattr(ir_service, "path_for_user_cab") else None
+    if path:
+        return {"state": "measured", "reference": path,
+                "name": sel.get("name"), "bank": bank, "ordinal": ordinal}
+
+    rec = (reg.cab_models.get(str(bank)) or {}).get(str(ordinal)) or {}
+    if rec.get("fractal"):
+        return {"state": "gear_anchored", "bank": bank, "ordinal": ordinal,
+                "name": sel.get("name") or rec.get("fractal"),
+                "fractal": rec.get("fractal"), "models": rec.get("model"),
+                "gear": rec.get("fractal")}
+    return {"state": "unresolved", "bank": bank, "ordinal": ordinal,
+            "why": "this cab is not one of yours and is not in the roster"}
+
+
+def ir_context(prompt: str, anchor: dict = None) -> str:
     """Cab IRs from the user's own library that suit this request, as context.
 
     Lets the planner say what it actually found and which cab it will use,
@@ -460,13 +506,43 @@ def ir_context(prompt: str) -> str:
     from fm9 import ir_service
     if not ir_service.enabled():
         return ""
+    anchor = anchor or {"state": "unresolved"}
     try:
-        hits = ir_service.recommend(prompt or "", "fm9", 5) or []
+        # A relative request is only answerable against something. With a
+        # measured Current, "darker" means darker THAN THAT, which is what
+        # people mean; without it the ranker answers "darker in the abstract"
+        # and returns library extremes. Measured on the fixed RKH fixture:
+        # 5.90 dB of collateral curve change without the reference, 2.93 dB
+        # with it, on the identical request.
+        hits = ir_service.recommend(prompt or "", "fm9", 5,
+                                    reference=anchor.get("reference")) or []
     except Exception:
         return ""
     if not hits:
         return ""
-    lines = ["\nCAB IRs IN THE PLAYER'S OWN LIBRARY that suit this request "
+    lines = []
+    st = anchor.get("state")
+    if st == "measured":
+        lines.append(
+            f"\nCURRENT CAB, measured: {_fence(anchor.get('name'))}. It is one "
+            "of the player's own IRs, so the candidates below were ranked "
+            "RELATIVE to it and a movement away from it is a real measurement.")
+    elif st == "gear_anchored":
+        lines.append(
+            f"\nCURRENT CAB: {_fence(anchor.get('name'))}"
+            + (f", which models {_fence(anchor.get('models'))}"
+               if anchor.get("models") else "")
+            + ". Its gear identity is known but it has NO measured curve, so "
+            "preserve what it is (size, speaker, mic) when the player asks to "
+            "keep the character, and say a candidate is AIMED darker or "
+            "smoother. Do NOT claim any candidate is measurably darker than "
+            "it, because nothing measured it.")
+    elif prompt:
+        lines.append(
+            "\nCURRENT CAB: not identified, so nothing here is relative to it. "
+            "Do not claim a candidate is darker or smoother THAN THE CURRENT "
+            "one; describe what the candidate is instead.")
+    lines += ["\nCAB IRs IN THE PLAYER'S OWN LIBRARY that suit this request "
              "(from IRCommand, best first). Name the one you would use and "
              "why. A .wav can be auditioned in the review; a .syx is installed "
              "to a user-cab slot; either way SELECT the cab with set_cab.",
@@ -1551,9 +1627,23 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             if not _hold_settings(cancel, on_status):
                 return {"error": "stopped"}
             try:
-                result = _plan_counting(body.prompt,
-                                        rigprofile.as_state_text(prof),
-                                        on_count, cancel)
+                # The eighth defect (brief 8.1 / 18.5): this path used to call
+                # the planner and return without ever building IR context, so
+                # a build from a shared profile received no cab candidates at
+                # all. It also skipped timing. A profile's Current may come
+                # only from the profile itself; the connected owner's present
+                # cab must never be borrowed as the profile's reference
+                # (brief 21.1).
+                _off_ctx = rigprofile.as_state_text(prof)
+                _off_ctx += ir_context(body.prompt,
+                                       {"state": "unresolved",
+                                        "why": "a shared profile carries no "
+                                               "measurable current cab"})
+                _t_off = time.monotonic()
+                result = _plan_counting(body.prompt, _off_ctx, on_count, cancel)
+                if isinstance(result, dict):
+                    result["timing"] = {"plan_s": round(time.monotonic() - _t_off, 1)}
+                    result["whole_rig"] = bool(getattr(body, "whole_rig", False))
             finally:
                 _settings_lock.release()
         except planner.PlanCancelled:
@@ -1609,7 +1699,8 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     # the model to write and a longer list for the player to read, for nothing.
     if _will_lay_template(body):
         context += "\n\n" + starter_template.roster_text()
-    context += ir_context(body.prompt)
+    anchor = current_anchor(snap)
+    context += ir_context(body.prompt, anchor)
     try:
         if not _hold_settings(cancel, on_status):
             return {"error": "stopped"}

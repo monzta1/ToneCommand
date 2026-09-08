@@ -271,6 +271,57 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     return d["results"]
 
 
+def path_for_user_cab(bank, ordinal):
+    """The IR file behind a USER cab slot, when IRCommand knows it.
+
+    A factory cab is device ROM and has no file, so it can never be measured.
+    A cab the player installed came from a file, and if that file is still in
+    the library it can serve as a measured comparison anchor.
+
+    Returns None rather than guessing. A wrong reference would make every
+    relative claim wrong in a way nothing downstream could detect.
+    """
+    from fm9 import user_cabs
+    name = user_cabs.name(bank, ordinal)
+    if not name or not enabled():
+        return None
+    import re
+    # The stored label is how the PLAYER named the install; the file is named
+    # however its maker named it. "Soldano SLO30 - Emil Rohbe" against
+    # "Emil Rohbe Soldano SLO30 IRs ... 82228.wav" is the same capture with
+    # the words in a different order, so search on the tokens.
+    #: Words in a player's own label that identify nothing. Every file here is
+    #: a cab and an IR, so those match anything. Found by "BT Cab 01"
+    #: resolving to "Engl 412 Cab_hx.wav" as a MEASURED reference, on the
+    #: strength of the word "cab", which would have made every relative claim
+    #: about that preset wrong against a cab the player has never heard.
+    weak = {"cab", "cabs", "cabinet", "ir", "irs", "wav", "test", "new", "old",
+            "mix", "the", "and", "for", "with", "copy", "temp", "tmp"}
+    tokens = [w for w in re.findall(r"[a-z0-9]+", name.lower())
+              if len(w) > 2 and w not in weak]
+    # Demand real evidence before claiming a measured anchor: either several
+    # distinctive words, or one long enough to stand alone. Anything less and
+    # the honest answer is that we do not know which file this is.
+    if not tokens or (len(tokens) < 2 and max(len(w) for w in tokens) < 5):
+        return None
+    # /ir/search matches the query as ONE substring of "name pack", so a
+    # multi-token query finds nothing unless those words happen to sit
+    # together in that order. Probe with the most distinctive single token and
+    # verify the rest against the results.
+    probe = max(tokens, key=len)
+    d = _get(f"/ir/search?q={quote(probe)}&limit=50", timeout=3) or {}
+    rows = d.get("results") or []
+    # VERIFY rather than trust the ranking. A wrong reference is worse than
+    # none: every relative claim would then be measured against the wrong cab
+    # and nothing downstream could detect it. Require every distinctive token
+    # of the player's own label to be present in the file.
+    for r in rows:
+        hay = f"{r.get('name', '')} {r.get('pack', '')}".lower()
+        if all(tok in hay for tok in tokens):
+            return r.get("path")
+    return None
+
+
 def gaps_online(need: str, target: str = "fm9", k: int = 3):
     """Captures on TONE3000 for a need the OWNED library cannot answer.
 

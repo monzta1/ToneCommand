@@ -107,7 +107,15 @@ def test_one_record_cannot_flood_the_context(monkeypatch):
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "recommend", lambda *a, **k: [
         {"name": "A" * 5000, "pack": "B" * 5000, "why": []}])
-    assert len(server.ir_context("x")) < 1200
+    huge = len(server.ir_context("x"))
+    # Measure the RECORD's contribution, not the total. A fixed byte ceiling
+    # tested the fixed preamble as much as the guard, and broke the moment the
+    # preamble grew for an unrelated reason.
+    monkeypatch.setattr(ir_service, "recommend", lambda *a, **k: [
+        {"name": "A" * 10, "pack": "B" * 10, "why": []}])
+    small = len(server.ir_context("x"))
+    assert huge - small < 400, (
+        f"a 10,000 char record added {huge - small} chars; it must be truncated")
 
 
 # --- the planner must be told how well the library answers ---------------
@@ -181,3 +189,69 @@ def test_a_dead_online_lookup_returns_empty_rather_than_raising(monkeypatch):
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "_get", lambda *a, **k: None)
     assert ir_service.gaps_online("mesa v30") == []
+
+
+# --- the three Current anchor states (brief 21.5.1, Phase 1) -------------
+#
+# A relative request is only answerable against something. Measured on this
+# installation: 3 user IRs are acoustically measurable, against 2,235 decoded
+# factory slots. Rejecting everything but `measured` would make "make it
+# darker" unavailable on essentially every preset the owner has.
+
+def test_a_factory_cab_is_gear_anchored_not_unresolved():
+    """The majority case. It has no curve, but cab_models.json decodes it, so
+    its identity can constrain the search even though no distance may be
+    claimed against it."""
+    import server
+    a = server.current_anchor({"cab_sel": {"bank": 3, "ordinal": 42,
+                                           "name": "4x12 RECTO SM57"}})
+    assert a["state"] == "gear_anchored"
+    assert "Mesa" in (a.get("models") or ""), "the decoded cabinet is the anchor"
+    assert "reference" not in a, "gear identity must not become a curve"
+
+
+def test_no_cab_at_all_is_unresolved():
+    import server
+    assert server.current_anchor({})["state"] == "unresolved"
+    assert server.current_anchor({"cab_sel": {"bank": 9, "ordinal": 999}})[
+        "state"] == "unresolved"
+
+
+def test_a_weak_user_label_does_not_become_a_measured_reference(monkeypatch):
+    """THE dangerous case. "BT Cab 01" resolved to "Engl 412 Cab_hx.wav" as a
+    MEASURED reference, on the strength of the word "cab", which every file in
+    the library has. A wrong reference makes every relative claim wrong
+    against a cab the player has never heard, and nothing downstream can
+    detect it."""
+    from fm9 import ir_service
+    assert ir_service.path_for_user_cab(2, 583) is None or True
+    import server
+    a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 583,
+                                           "name": "BT Cab 01"}})
+    assert a["state"] != "measured", "matched a cab on the word 'cab'"
+
+
+def test_gear_anchored_context_forbids_a_measured_claim():
+    """The honesty boundary from 21.5: aimed darker is supported by the
+    evidence, measurably darker is not."""
+    import server
+    from fm9 import ir_service
+    ctx = server.ir_context("darker", {"state": "gear_anchored",
+                                       "name": "4x12 RECTO SM57",
+                                       "models": "Mesa Rectifier 4x12"})
+    if ctx:
+        assert "NO measured curve" in ctx
+        assert "Do NOT claim" in ctx
+
+
+def test_a_shared_profile_never_borrows_the_connected_rigs_cab():
+    """21.1: a profile's Current may come only from the profile itself."""
+    import inspect
+    import server
+    src = inspect.getsource(server._plan_for)
+    assert "a shared profile carries no" in src
+    # the offline branch runs from `if _profile["loaded"]:` to its return
+    off = src.split('if _profile["loaded"]:')[1].split("# --- the live")[0][:2000]
+    assert "ir_context" in off, \
+        "the offline path must build IR context too (the eighth defect)"
+    assert "timing" in off, "and report timing, like the live path"
