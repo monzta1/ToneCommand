@@ -113,3 +113,30 @@ def test_a_build_that_changes_the_amp_never_goes_quiet_about_the_cab():
     body = ui.split("async function renderCabPanel()", 1)[1][:1400]
     assert "UNCHANGED" in body, "no cab action still hides the panel entirely"
     assert "set_type" in body, "it must notice the amp voice changed"
+
+
+def test_the_planner_can_say_what_cab_it_wants_in_gear_words():
+    """The UI reads `currentPlan.cab_need` to find alternatives worth hearing,
+    and nothing ever set it, so that query ran on an empty string.
+
+    It matters because IRCommand speaks gear, not artists: measured on the
+    owner's library, "steve vai high gain singing lead" scores 0.07 while
+    "marshall 4x12 v30 bright lead" scores 0.63. The planner is the piece that
+    knows which gear an artist used, so it translates.
+    """
+    from fm9.planner import PLAN_SCHEMA, plan_shape_line
+    spec = PLAN_SCHEMA["properties"]["cab_need"]
+    assert "GEAR" in spec["description"]
+    assert "NEVER an artist" in spec["description"]
+    # and the prompt must advertise the field, or the model never fills it
+    assert "cab_need" in plan_shape_line()
+
+
+def test_the_advertised_shape_cannot_drift_from_the_schema():
+    """plan_shape_line derived the ACTION fields but hand-wrote the top level,
+    so a new top-level field would be in the schema and absent from the prompt.
+    That is the exact drift the function was written to kill, one level up."""
+    from fm9.planner import PLAN_SCHEMA, plan_shape_line
+    line = plan_shape_line()
+    for name in PLAN_SCHEMA["properties"]:
+        assert f'"{name}"' in line, f"{name} is in the schema but not the prompt"

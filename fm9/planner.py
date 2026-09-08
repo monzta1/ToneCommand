@@ -69,6 +69,19 @@ PLAN_SCHEMA = {
     "properties": {
         "summary": {"type": "string",
                     "description": "One-sentence recap of what will change"},
+        "cab_need": {
+            "type": ["string", "null"],
+            "description": (
+                "The cab this build wants, in GEAR words only: size, speaker, "
+                "mic, brand, and tonal direction. For example '4x12 celestion "
+                "v30 sm57 bright cutting' or '2x12 greenback ribbon warm'. "
+                "NEVER an artist, band or song name. The IR matcher searches "
+                "the player's library with this and understands gear only, so "
+                "'steve vai' finds nothing while '4x12 v30 bright lead' finds "
+                "the right cabs in the same library. YOU know what gear an "
+                "artist's sound uses; translate it here. Null only if the "
+                "request has nothing to do with the cab."),
+        },
         "actions": {
             "type": "array",
             "items": {
@@ -154,10 +167,17 @@ def plan_shape_line() -> str:
             fields.append(f'"kind": "{"|".join(ACTION_KINDS)}"')
         else:
             fields.append(f'"{name}": {_type_label(spec)}')
+    # The TOP level is derived too. It used to be hand-composed here, so
+    # adding `cab_need` to the schema would have advertised a shape without
+    # it: the same drift this function exists to kill, one level up.
     top = PLAN_SCHEMA["properties"]
-    return ('{"summary": ' + _type_label(top["summary"])
-            + ', "actions": [{' + ", ".join(fields) + '}], "clarification": '
-            + _type_label(top["clarification"]) + '}')
+    parts = []
+    for name, spec in top.items():
+        if name == "actions":
+            parts.append('"actions": [{' + ", ".join(fields) + "}]")
+        else:
+            parts.append(f'"{name}": {_type_label(spec)}')
+    return "{" + ", ".join(parts) + "}"
 
 
 SYSTEM = """You translate a guitarist's natural-language tone requests into concrete Fractal FM9 parameter changes.
