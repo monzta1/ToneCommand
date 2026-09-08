@@ -53,6 +53,26 @@ class Scene:
     fx_mix: dict = field(default_factory=dict)
     boost_gain: float | None = None    # FUZZ_DRIVE, to catch a boost dialled
                                        # BELOW the rhythm it is meant to push
+    #: block -> channel (0-3) and block -> bypassed, as the PLAN sets them.
+    #: FM9 parameters live on the CHANNEL, not the scene, so what a scene
+    #: actually stores is which blocks are bypassed and which channel each one
+    #: is on. That makes these two the whole identity of a scene, which is why
+    #: health.py can spot a duplicate after apply without reading a single
+    #: parameter. Issue #51: the plan-time review threw them away, so a scene
+    #: configured purely by set_channel was invisible here.
+    channels: dict = field(default_factory=dict)
+    bypass: dict = field(default_factory=dict)
+
+    def shape(self) -> tuple:
+        """What this scene stores, and therefore what makes it itself.
+
+        The plan-time twin of health._fingerprint. Empty when the plan says
+        nothing structural about the scene, which is not the same as two
+        scenes matching, and callers must not treat it as such.
+        """
+        return tuple(sorted(
+            (b, bool(self.bypass.get(b)), self.channels.get(b))
+            for b in set(self.channels) | set(self.bypass)))
 
 
 @dataclass
@@ -76,13 +96,57 @@ def infer_role(name: str) -> str | None:
     return None
 
 
+def clones(scenes: list[Scene]) -> list[Finding]:
+    """Rule 15: two scenes the plan makes structurally identical.
+
+    Issue #51. A clone is a footswitch that does nothing on stage. health.py
+    already catches it AFTER apply, from the same fact: FM9 parameters live on
+    the CHANNEL, not the scene, so a scene's whole identity is which blocks are
+    bypassed and which channel each one is on. Observed 2026-09-05 on a fresh
+    80s build, the plan-time review passed clean and the post-apply scan then
+    found scenes 4 and 8 identical, and after that 1 and 7.
+
+    WHAT THIS CAN AND CANNOT CONCLUDE. A plan is a delta, so this sees only
+    what the plan states, never the state a scene inherits. The finding is
+    therefore worded as a fact about the PLAN, which is always true, rather
+    than a prediction about the preset, which would not be. On a from-scratch
+    build the two coincide, because a new preset's scenes all start identical,
+    and that is exactly the case this was written for.
+
+    A scene the plan says nothing structural about has an empty shape. Empty
+    shapes are excluded rather than grouped: "the plan does not touch these
+    two" is not evidence that they are the same, and treating it as a match
+    would fire on every delta plan that renames a couple of scenes.
+    """
+    out: list[Finding] = []
+    groups: dict[tuple, list[Scene]] = {}
+    for s in scenes:
+        shape = s.shape()
+        if shape:
+            groups.setdefault(shape, []).append(s)
+    for members in groups.values():
+        # Grouped, not pairwise, the same way health.py reports it: four
+        # identical scenes are one problem, not six findings burying the rest.
+        if len(members) < 2:
+            continue
+        nums = ", ".join(str(m.n) for m in members)
+        for m in members[1:]:
+            out.append(Finding(
+                m.n, "15", "warn",
+                f"scenes {nums} get the same blocks, bypass states and "
+                f"channels from this plan; parameters live on the channel, so "
+                f"nothing here makes scene {m.n} a different sound from scene "
+                f"{members[0].n}, and its footswitch would do nothing"))
+    return out
+
+
 def review(scenes: list[Scene]) -> list[Finding]:
     """Run the deterministic role checks and return what failed, worst first.
 
     The rhythm scenes are the reference the others are judged against (rule 4:
     rhythm is the loudness reference; rule 10: a lead out-saturates the rhythm).
     """
-    out: list[Finding] = []
+    out: list[Finding] = list(clones(scenes))
 
     def avg(vals):
         vals = [v for v in vals if v is not None]
@@ -211,14 +275,26 @@ def summary_from_plan(actions: list[dict], reg=None) -> list[Scene]:
                 tail = p.replace("OUTPUT_SCENE", "")
                 if tail.isdigit():
                     scn(int(tail)).scene_level = val
-        elif kind == "set_bypass" and cur is not None and a.get("bypassed") is False:
-            fam = block.upper()
-            # normalise a couple of friendly names
-            fam = {"AMP": "DISTORT", "DRIVE": "FUZZ"}.get(fam, fam)
-            if fam in _WET:
-                scn(cur).effects.add(fam)
-            if fam in _BOOST:
-                scn(cur).boosted = True
+        elif kind == "set_bypass" and cur is not None:
+            # Record the structural fact FIRST, for both directions. Only
+            # engagement used to be kept, so a scene that differs from another
+            # solely by what it BYPASSES read as identical to it.
+            scn(cur).bypass[block] = bool(a.get("bypassed"))
+            if a.get("bypassed") is False:
+                fam = block.upper()
+                # normalise a couple of friendly names
+                fam = {"AMP": "DISTORT", "DRIVE": "FUZZ"}.get(fam, fam)
+                if fam in _WET:
+                    scn(cur).effects.add(fam)
+                if fam in _BOOST:
+                    scn(cur).boosted = True
+        elif kind == "set_channel" and cur is not None:
+            # The action that was dropped entirely. A scene voiced purely by
+            # pointing blocks at already-voiced channels sets no parameters,
+            # so it created no Scene at all and every check skipped it.
+            v = a.get("value")
+            if v is not None:
+                scn(cur).channels[block] = int(v)
 
     # fill roles for any scene named but not yet role'd
     for s in scenes.values():

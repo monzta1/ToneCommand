@@ -13,8 +13,9 @@ How to read this file:
   effects that serve each. A clean is not a quiet rhythm; a lead is not a loud
   rhythm. Each role has its own targets. Build each scene to its role's
   playbook, never one setting sprayed across all three.
-- Part C (rules 12-14) are the CEILING-RAISERS and the pre-ship check: width,
-  depth, realism, and the test that keeps a build from shipping bland.
+- Part C (rules 12-15) are the CEILING-RAISERS and the pre-ship checks: width,
+  depth, realism, the test that keeps a build from shipping bland, and the one
+  that keeps two scenes from being the same sound twice.
 
 The bar: a build that passes Part A is not broken. A build that also follows the
 right role playbook (Part B) and passes the self-check (rule 14) is one a player
@@ -490,3 +491,25 @@ The bland test:
 
 A build that passes Part A is not broken. A build that also follows the role
 playbooks (Part B) and passes this check is one a player gigs as-is. Ship that.
+
+## 15. Every scene must be its own sound
+A scene that duplicates another is a footswitch that does nothing on stage.
+
+FM9 parameters live on the CHANNEL, not the scene. What a scene actually
+stores is which blocks are bypassed and which channel each one is on;
+everything else follows from the channel. So two scenes with the same blocks,
+the same bypass states and the same channels are not merely similar, they are
+the SAME SOUND under two names, necessarily.
+
+That has two consequences when building:
+- Giving two scenes different NAMES, or different amp gain values, does not
+  make them different if they land on the same channel. The gain value lives
+  on the channel, so setting it in scene 8 also changes scene 4.
+- To make a scene distinct, change its structure: a different channel on the
+  amp or drive, or a different bypass state on a wet block. Renaming is not a
+  differentiator.
+
+Observed 2026-09-05 on a fresh 80s build: scenes 4 and 8 were identical, and
+after that was fixed, scenes 1 and 7 were. Both passed the pre-ship review at
+the time, because it only looked at parameters the plan set and never at the
+channel map. It checks the channel map now, before anything is sent.
