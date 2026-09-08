@@ -710,14 +710,19 @@ def test_a_dead_library_says_it_did_not_answer(monkeypatch):
 
 def test_an_unparseable_request_is_not_reported_as_an_empty_shelf(monkeypatch):
     """The rule this whole file exists for: not understood is not the same
-    as not available, and the player has to be told which one happened."""
+    as not available, and the player has to be told which one happened.
+
+    The sentence names the target and clears the library explicitly, because
+    "no results" with no explanation is read as "you own nothing like that".
+    """
     out = _sel_rows(monkeypatch, [], {
         "why": "that request did not parse into anything a cab can be: "
                "steve, vai",
         "unmatched": ["steve", "vai"], "understood": False})
-    assert "did not parse" in out["why"]
     assert out["unmatched"] == ["steve", "vai"]
-    assert "own" not in out["why"] and "empty" not in out["why"]
+    assert "steve" in out["why"] and "vai" in out["why"]
+    assert "Your library was not the problem" in out["why"]
+    assert "empty" not in out["why"]
 
 
 def test_a_genuinely_empty_shelf_says_that_instead(monkeypatch):
@@ -826,3 +831,48 @@ def test_a_genuine_service_outage_still_reads_as_one(monkeypatch):
     out = server.cab_listening_set({"cab_need": "4x12 v30"},
                                    {"state": "unresolved"})
     assert out["why"] == "the IR library did not answer"
+
+
+def test_an_unreadable_cab_target_blames_the_plan_not_the_library(monkeypatch):
+    """`cab_need` is a free string and the planner is ASKED, not required, to
+    write gear words in it, so it can come back holding an artist name.
+
+    That is a fault in the plan. Reporting it as an empty shelf tells the
+    player they own nothing suitable, which is the exact inversion this whole
+    file exists to prevent, one level up from the player's own words.
+    """
+    from fm9 import ir_service
+    import server
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+
+    def fake(need, target="fm9", k=3, reference=None, preserve=None,
+             preserve_when=None, detail=None):
+        if detail is not None:
+            detail.update(understood=False, unmatched=["steve", "vai"])
+        return []
+
+    monkeypatch.setattr(ir_service, "recommend", fake)
+    out = server.cab_listening_set({"request": "vai tone",
+                                    "cab_need": "steve vai lead"},
+                                   {"state": "unresolved"})
+    assert out["target_unreadable"] is True
+    assert "this build described the cab" in out["why"]
+    assert "steve" in out["why"] and "vai" in out["why"]
+    assert "Your library was not the problem" in out["why"]
+
+
+def test_a_readable_target_is_not_flagged(monkeypatch):
+    from fm9 import ir_service
+    import server
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+
+    def fake(need, target="fm9", k=3, reference=None, preserve=None,
+             preserve_when=None, detail=None):
+        if detail is not None:
+            detail.update(understood=True)
+        return [{"name": "a.wav", "match": 0.8, "why": []}]
+
+    monkeypatch.setattr(ir_service, "recommend", fake)
+    out = server.cab_listening_set({"cab_need": "4x12 v30"},
+                                   {"state": "unresolved"})
+    assert "target_unreadable" not in out

@@ -9977,8 +9977,15 @@ async function renderCabPanel() {
   // with a real cab_selection and no set_cab action, and the panel used to
   // return before reading it. That is the reported complaint again in a
   // different shape: the reasoning existed and the player never saw it.
+  // Anything the selector produced counts, INCLUDING an empty set. An empty
+  // set carries the reason it is empty, and that reason is often the most
+  // useful thing on the panel: the library was unreachable, or the build
+  // described the cab in words no gear matcher can read. Requiring
+  // candidates hid exactly the cases worth explaining.
   const hasSet = !!(currentPlan && currentPlan.cab_selection
-                    && (currentPlan.cab_selection.candidates || []).length);
+                    && ((currentPlan.cab_selection.candidates || []).length
+                        || currentPlan.cab_selection.why
+                        || currentPlan.cab_selection.linkable));
   if (!acts.length) {
     if (!hasSet && (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0)) {
       panel.hidden = true; return;
@@ -10024,6 +10031,10 @@ async function renderCabPanel() {
   if (alts.length) {
     $('cabnote').textContent = cabAnchorNote(sel);
   } else if (sel) {
+    // A target the plan itself wrote in unreadable words is a fault in the
+    // build, not a report about the library. Saying which is the whole
+    // difference between "you own nothing like that" and "this build asked
+    // for the cab by a name no gear matcher can read".
     $('cabnote').textContent = sel.why || 'no alternatives to compare.';
   }
   renderCabLink(sel);

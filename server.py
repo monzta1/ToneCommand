@@ -641,6 +641,19 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         out["why"] = detail.get("why") or "nothing in the library answers that"
     if detail.get("unmatched"):
         out["unmatched"] = detail["unmatched"]
+    # The PLAN's own cab target was unreadable as gear. `cab_need` is a free
+    # string and the planner is asked, not required, to write gear words in
+    # it, so it can come back holding an artist name. That is a fault in the
+    # plan, not in the player's request and not in the library, and saying
+    # which is the difference between "your library has nothing" and "this
+    # build described the cab in words no gear matcher can read".
+    if detail.get("understood") is False:
+        out["target_unreadable"] = True
+        out["why"] = (
+            "this build described the cab as "
+            f"{target!r}, and " + ", ".join(detail.get("unmatched") or ["it"])
+            + " is not gear a library can be searched for. Your library was "
+            "not the problem.")
     out["candidates"] = [{
         "name": r.get("name"), "path": r.get("path"), "pack": r.get("pack"),
         "match": r.get("match"), "why": r.get("why"),

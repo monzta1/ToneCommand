@@ -335,3 +335,33 @@ def test_an_unresolved_factory_slot_is_not_offered_a_link(tmp_path):
                              "bank": 3, "ordinal": 42}
     r = _render(tmp_path, plan)
     assert r["link"] == ""
+
+
+def test_an_empty_selection_still_shows_the_reason_it_is_empty(tmp_path):
+    """Caught by the third review. The panel required CANDIDATES to stay
+    visible, so a plan whose cab search failed with a real explanation showed
+    nothing at all, which is the silence this whole panel exists to end."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = [{"kind": "set_param", "block": "reverb",
+                        "param": "MIX", "value": 12}]
+    plan["cab_selection"] = {"anchor": "unresolved", "current": None,
+                             "candidates": [],
+                             "why": "the IR library did not answer"}
+    r = _render(tmp_path, plan, last_cab={"ordinal": None, "name": None})
+    assert r["hidden"] is False, "the reason was hidden with the panel"
+    assert r["note"] == "the IR library did not answer"
+
+
+def test_an_unreadable_target_reaches_the_player(tmp_path):
+    """A fault in the BUILD must not be delivered as a report about the
+    player's library."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["actions"] = []
+    plan["cab_selection"] = {
+        "anchor": "unresolved", "candidates": [], "target_unreadable": True,
+        "why": "this build described the cab as 'steve vai lead', and steve, "
+               "vai is not gear a library can be searched for. Your library "
+               "was not the problem."}
+    r = _render(tmp_path, plan, last_cab={"ordinal": None, "name": None})
+    assert r["hidden"] is False
+    assert "Your library was not the problem" in r["note"]
