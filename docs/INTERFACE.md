@@ -1,8 +1,8 @@
 # The interface
 
-The rule this UI is built to: **if you have to switch to FM9-Edit in the middle
-of a session, we have already lost.** Every panel is a control surface, not a
-readout.
+Every panel here is a control surface, not a readout: click a block to bypass
+it, click a fader to move it, click a name to rename it. Nothing on this page
+is decoration you have to go elsewhere to act on.
 
 ![The ToneCommand interface at the PLAN stage: the request "a Klon into a JCM800 with a greenback 4x12" turned into 24 proposed changes, the two scenes it would also move lit amber, nothing sent yet](img/ui-full.png)
 

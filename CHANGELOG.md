@@ -5,6 +5,12 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **Dropped the "if you have to switch to FM9-Edit, we have already lost"
+  line from docs/INTERFACE.md.** It carried the 0.3.0 release's framing
+  forward as a present-tense rule, but the premise behind it (that FM9-Edit
+  destroys the edit buffer) was tested afterward and found wrong, see
+  "Running beside FM9-Edit" in docs/SETUP.md. What is still true stays:
+  every panel is a control surface, not a readout.
 - **"Humans in command" opens with the case for it, not just the rule.**
   Everyone braces for machines to take over; they already did, and every
   guitarist has spent decades learning a device's language to operate it.
