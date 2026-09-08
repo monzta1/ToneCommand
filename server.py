@@ -502,6 +502,15 @@ def current_anchor(snap, profile: dict = None) -> dict:
     if int(bank) == USER_CAB_BANK:
         link = ir_service.linked_source(bank, ordinal)
         if link:
+            # NO `gear` KEY, deliberately. A user cab's name is whatever the
+            # player typed, and the preserve fallback below would have used
+            # it as gear: a slot labelled "Soldano SLO30 - Emil Rohbe" parses
+            # to brand Soldano and became a hard pre-ranking exclusion,
+            # removing every Mesa, Marshall, Orange and Friedman row in the
+            # library and reporting the label back as if it were identity.
+            # Brief 26.1: a user-cab string is a display label and nothing
+            # more. What this anchor has is a CURVE, which is a better
+            # constraint than a guess at the words anyway.
             return {"state": "measured", "reference": link["path"],
                     "digest": link.get("digest"),
                     "name": sel.get("name"), "bank": bank, "ordinal": ordinal}
@@ -599,8 +608,14 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         # so it parses into real constraints. The display label carries bank
         # noise ("1x4 Pig 57 (FACTORY 1)") and the decoded prose is a
         # sentence, and neither constrains as well.
+        # Only fields that are GEAR. `name` is not: for a factory slot it is
+        # the roster label plus bank noise, and for a user slot it is free
+        # text the player typed. Falling through to it turned a label into a
+        # hard retrieval constraint, which is the exact thing brief 26.1
+        # forbids. No gear means no preserve, and a measured anchor still has
+        # its curve, which constrains better than a guess at the words.
         preserve = (anchor.get("gear") or anchor.get("fractal")
-                    or anchor.get("models") or anchor.get("name"))
+                    or anchor.get("models"))
     reference = anchor.get("reference") if anchor.get("state") == "measured" else None
     out["reference"] = reference
     detail = {}
@@ -628,7 +643,19 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
     # What was OFFERED as preservable is not what was applied: IRCommand
     # decides from the player's words and says which it did. Reporting the
     # offer would claim a constraint that may never have been used.
-    out["preserved"] = preserve if detail.get("preserve_asked") else None
+    # An IRCommand that predates `preserve_when` ignores it and applies
+    # `preserve` unconditionally, while answering everything else normally.
+    # Reporting "nothing preserved" then describes the opposite of what
+    # happened, so the missing field is called out rather than read as a no.
+    if preserve and "preserve_asked" not in detail:
+        out["preserved"] = preserve
+        out["preserve_undecided"] = True
+        out["why"] = out.get("why") or (
+            "your IR library is running an older build that cannot be asked "
+            "whether you wanted this cab kept, so it kept it. Restart "
+            "IRCommand to pick up the current code.")
+    else:
+        out["preserved"] = preserve if detail.get("preserve_asked") else None
     # Whether the ranking was actually relative to Current, or ordinary
     # scoring with a reference that changed nothing. Only the first supports
     # "least change from your cab": with no requested direction there is no
@@ -2885,8 +2912,14 @@ def api_install_cab(body: dict):
         # index, which is what install_user_cab_at computes from bank/number.
         try:
             from fm9 import user_cabs
-            user_cabs.set_name(USER_CAB_BANK,
-                               (bank - 1) * 512 + (number - 1), cf.label)
+            # relabel_installed, NOT set_name: this slot now holds different
+            # audio, so any link it carried is stale. set_name merges into an
+            # existing entry to protect a link across a rename, and going
+            # through it here left the old source and digest in place, so the
+            # slot went on anchoring measurements against a capture it no
+            # longer contained.
+            user_cabs.relabel_installed(
+                USER_CAB_BANK, (bank - 1) * 512 + (number - 1), cf.label)
         except OSError:
             pass                       # a name is a courtesy, never the point
     return {"ok": ok, "installed": cf.label, "bank": bank, "number": number,
@@ -4603,6 +4636,9 @@ def api_ir_search(q: str = "", limit: int = 20):
     from fm9 import ir_service
     if not ir_service.enabled():
         return {"enabled": False, "results": []}
+    # Every format, not only .wav: /api/install-cab installs Fractal .syx
+    # cabs, so restricting this to cab-ir made the slots most likely to need
+    # linking the ones whose file could never be found.
     return {"enabled": True, "results": ir_service.search(q, min(int(limit), 50))}
 
 

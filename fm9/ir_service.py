@@ -36,6 +36,12 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 
+#: Sent when the player's words are empty, because an empty query value is
+#: indistinguishable from an absent one after parse_qs. IRCommand parses this
+#: as a sentence with no preservation cue in it, which is exactly what it is.
+NO_WORDS = "-"
+
+
 class UnsafeServiceURL(ValueError):
     """Written for the person who typed the address into Settings."""
 
@@ -277,7 +283,13 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     # constraint or does not. A separate /ir/intent call could fail on its
     # own and silently turn a requested hard constraint into no constraint.
     if preserve_when is not None:
-        q += f"&preserve_when={quote(preserve_when)}"
+        # NEVER blank on the wire. urllib's parse_qs drops empty values by
+        # default, so an empty string arrived as "the caller said nothing
+        # about this", which the service reads as "apply the constraint
+        # unconditionally". A build with an empty prompt therefore preserved
+        # the loaded cab as a hard filter and reported preserving nothing.
+        # A sentinel says "asked, and the answer is no words".
+        q += f"&preserve_when={quote(preserve_when or NO_WORDS)}"
     d = _get(q)
     # Three different Nones used to come back as one. A caller doing
     # `recommend(...) or []` turned a DEAD SERVICE into a valid empty answer
@@ -349,7 +361,13 @@ def linked_source(bank, ordinal):
     # 1. The bytes are still the bytes that were linked. A digest recorded at
     #    link time and never checked records nothing; a re-exported or
     #    replaced file keeps the path and changes the sound.
-    if digest_of(p) != (rec.get("digest") or ""):
+    # An EMPTY recorded digest is a refusal, not something to compare
+    # against. digest_of returns "" when the file cannot be read, so a record
+    # with no digest pointing at an unreadable file compared "" to "" and
+    # passed. Both sides have to be a real hash.
+    recorded = (rec.get("digest") or "").strip()
+    actual = digest_of(p)
+    if not recorded or not actual or actual != recorded:
         return None
     # 2. IRCommand holds a measured curve for this exact path. That is the
     #    entire content of the word `measured`, and it is the only place that
@@ -398,8 +416,12 @@ def search(q: str, limit: int = 20) -> list:
     q = (q or "").strip()
     if not enabled() or not q:
         return []
-    d = _get(f"/ir/search?q={quote(q)}&category=cab-ir&limit={int(limit)}",
-             timeout=3)
+    # NO category filter. Restricting to cab-ir excluded every Fractal .syx,
+    # which is the format /api/install-cab actually installs, so the slots
+    # most likely to need linking were the ones whose file could never be
+    # found. The panel says "point it at the file"; every file has to be
+    # reachable.
+    d = _get(f"/ir/search?q={quote(q)}&limit={int(limit)}", timeout=3)
     return (d or {}).get("results") or []
 
 

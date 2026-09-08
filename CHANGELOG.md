@@ -4,6 +4,33 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **Installing an IR into a linked slot kept the old file's provenance.**
+  Protecting a link across a rename created this: the install path is a
+  rename call, so writing different audio into a linked slot left the old
+  `source` and `digest` in place. The file on disk was untouched, the digest
+  still matched, and the slot went on anchoring "x dB from current" against a
+  capture it no longer contained. An install and a rename are now different
+  calls, because they mean different things.
+- **A cab's display name could become a hard search constraint.** A measured
+  user slot has no gear identity, and the preserve fallback ended at the
+  slot's name, so one labelled "Soldano SLO30 - Emil Rohbe" excluded every
+  Mesa, Marshall, Orange and Friedman in the library before ranking, and
+  reported the label back as if it were gear. A measured anchor constrains
+  with its curve, which is better evidence than a guess at the words.
+- **An unreadable cab target was hidden whenever any row came back.** The
+  panel showed the reason only on an empty list, and a name-fragment match
+  usually returns rows, so filename coincidences were presented as the
+  answer. Those rows are now labelled as name matches, not alternatives.
+- **A blank preservation question vanished on the wire**, which the library
+  read as "apply the constraint unconditionally", so a build with an empty
+  prompt filtered on the loaded cab and reported preserving nothing. An
+  older library that cannot be asked at all now says so instead of being
+  read as a no.
+- **A user cab installed from a Fractal `.syx` could never be linked**: the
+  file search was filtered to `.wav`, which excluded exactly the format the
+  installer writes.
+
 ### Added
 - **Link a user-cab slot to the file it holds.** The `measured` comparison
   state has existed, been tested, and been unreachable by any route the

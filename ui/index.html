@@ -10033,19 +10033,27 @@ async function renderCabPanel() {
   // Render what the plan decided, so what is heard is what was reasoned.
   const sel = (currentPlan && currentPlan.cab_selection) || null;
   const alts = (sel && sel.candidates) || [];
-  if (alts.length) {
+  // A target the plan itself wrote in unreadable words is a fault in the
+  // BUILD, not a report about the library, and it has to be said whether or
+  // not rows came back. The text fallback can match a filename fragment
+  // ("vai" inside a pack folder), so an unreadable target often returns a
+  // non-empty list, and showing the anchor note instead presented those
+  // fragments as the answer with nothing to say they were not.
+  if (sel && sel.target_unreadable) {
+    $('cabnote').textContent = sel.why
+      || 'this build described the cab in words a gear library cannot be '
+       + 'searched for. Your library was not the problem.';
+  } else if (alts.length) {
     $('cabnote').textContent = cabAnchorNote(sel);
   } else if (sel) {
-    // A target the plan itself wrote in unreadable words is a fault in the
-    // build, not a report about the library. Saying which is the whole
-    // difference between "you own nothing like that" and "this build asked
-    // for the cab by a name no gear matcher can read".
     $('cabnote').textContent = sel.why || 'no alternatives to compare.';
   }
   renderCabLink(sel);
 
   $('cabalts').innerHTML = alts.length
-    ? `<div class="cabfoot">ALTERNATIVES &middot; drive:
+    ? `<div class="cabfoot">${sel && sel.target_unreadable
+         ? 'NAME MATCHES ONLY, not an answer to the request &middot; drive:'
+         : 'ALTERNATIVES &middot; drive:'}
          ${['clean', 'crunch', 'lead', 'high-gain'].map(d =>
            `<button class="cabplay cabdrive${d === cabDrive ? ' on' : ''}"
                     data-drive="${d}">${d}</button>`).join(' ')}</div>`

@@ -99,6 +99,9 @@ def set_name(bank: int | str, ordinal: int | str, label: str) -> dict:
     with nothing said. A name is a label; the link is a fact about a file.
     Clearing the name still clears the whole entry, because that is what the
     player asked for.
+
+    An INSTALL is not a rename and must not come through here: what the slot
+    holds has changed, so the old link is now a lie. Use relabel_installed().
     """
     data = dict(all_names())
     b = str(bank)
@@ -113,6 +116,35 @@ def set_name(bank: int | str, ordinal: int | str, label: str) -> dict:
             slots[key] = label[:64]
     else:
         slots.pop(key, None)
+    if slots:
+        data[b] = slots
+    else:
+        data.pop(b, None)
+    return _write(data)
+
+
+def relabel_installed(bank: int | str, ordinal: int | str, label: str) -> dict:
+    """Name a slot that has just had something WRITTEN INTO IT, dropping any
+    link it carried. Returns the whole map.
+
+    The distinction matters because set_name merges into an existing entry to
+    protect a link across a rename, and the install path is a set_name call.
+    So installing a different IR into a linked slot kept the old `source` and
+    `digest`: the file on disk was untouched, the digest still matched,
+    IRCommand still held its curve, and the slot went on serving as a
+    `measured` anchor for a capture it no longer contained. Every "x dB from
+    current" after that was measured against something the player could not
+    hear. Protecting the link across a rename created this; the two writes
+    have to be different calls because they mean different things.
+    """
+    data = dict(all_names())
+    b = str(bank)
+    slots = dict(data.get(b) or {})
+    label = (label or "").strip()[:64]
+    if label:
+        slots[str(ordinal)] = label
+    else:
+        slots.pop(str(ordinal), None)
     if slots:
         data[b] = slots
     else:

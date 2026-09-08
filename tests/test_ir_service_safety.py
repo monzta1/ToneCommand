@@ -262,9 +262,14 @@ def _link(monkeypatch, tmp_path, body=b"RIFFmeasured", digest=None,
     monkeypatch.setattr(user_cabs, "record", lambda b, o: {
         "label": "Mine", "source": str(src),
         "digest": ir_service.digest_of(src) if digest is None else digest})
+    # enabled() MUST be forced on. Without it measured_check returns {} the
+    # moment IRCommand is not running, so every negative test below passed
+    # with all of linked_source's checks deleted: they were asserting "the
+    # bridge is off", not "the check refused". The positive test failed
+    # honestly, which is the only reason it was noticeable at all.
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "_get",
                         lambda path, timeout=3: answer)
-
     return src
 
 
@@ -500,18 +505,41 @@ def test_a_measured_anchor_passes_its_curve_as_the_reference(monkeypatch):
     assert seen["reference"] == "/lib/cur.wav"
 
 
-def test_a_measured_anchor_is_also_offered_for_preservation(monkeypatch):
-    """Curve proximity is not the same promise as keeping the cabinet: the
-    nearest curve in the library can be a different size with a different
-    speaker. A measured anchor used to receive `preserve=None` always, and a
-    test in this file required that."""
+def test_a_measured_user_cab_never_preserves_on_its_display_name(monkeypatch):
+    """A measured anchor carries no gear field, by design: a user cab's name
+    is whatever the player typed. The preserve fallback used to end in
+    `anchor["name"]`, so a slot labelled "Soldano SLO30 - Emil Rohbe" parsed
+    to brand Soldano and became a hard pre-ranking exclusion that removed
+    every Mesa, Marshall, Orange and Friedman row in the library, while
+    reporting the label back as if it were identity. Brief 26.1: a user-cab
+    string is a display label and nothing more.
+
+    The real anchor shape is used here, not a hand-written one with a `gear`
+    key the product cannot produce, which is how the previous version of this
+    test looked straight past the defect.
+    """
+    import server
+    from fm9 import ir_service
     seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "measured_check",
+                        lambda p: {"in_library": True, "has_curve": True,
+                                   "measured": True})
+    monkeypatch.setattr(ir_service, "linked_source",
+                        lambda b, o: {"path": "/lib/cur.wav", "digest": "d"})
+    anchor = server.current_anchor(
+        {"cab_sel": {"bank": server.USER_CAB_BANK, "ordinal": 26,
+                     "name": "Soldano SLO30 - Emil Rohbe (USER)"}})
+    assert anchor["state"] == "measured"
+    assert "gear" not in anchor and "fractal" not in anchor
+
     _sel(monkeypatch, {"request": "keep the same cab but darker",
-                       "cab_need": "darker"},
-         {"state": "measured", "reference": "/lib/cur.wav",
-          "gear": "4x12 RECTO SM57 V30"}, seen, preserve_applied=True)
-    assert seen["preserve"] == "4x12 RECTO SM57 V30"
-    assert seen["reference"] == "/lib/cur.wav", "it must still be both"
+                       "cab_need": "darker"}, anchor, seen,
+         preserve_applied=True)
+    assert seen["preserve"] is None, \
+        "a label the player typed became a hard retrieval constraint"
+    assert seen["reference"] == "/lib/cur.wav", \
+        "the curve is what a measured anchor constrains with"
 
 
 def test_gear_identity_constrains_retrieval_when_the_player_asked_to_keep(monkeypatch):
@@ -689,7 +717,6 @@ def test_the_preserve_constraint_names_the_speaker(monkeypatch):
 def _sel_rows(monkeypatch, rows, detail_updates):
     from fm9 import ir_service
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
-    monkeypatch.setattr(ir_service, "intent", lambda text: {})
     monkeypatch.setattr(
         ir_service, "recommend",
         lambda need, target="fm9", k=3, reference=None, preserve=None,
@@ -809,7 +836,6 @@ def test_a_programming_error_is_not_reported_as_an_absent_service(monkeypatch):
         raise AssertionError("should never be reached")
 
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
-    monkeypatch.setattr(ir_service, "intent", lambda text: {})
     monkeypatch.setattr(ir_service, "recommend", wrong_signature)
     out = server.cab_listening_set({"cab_need": "4x12 v30"},
                                    {"state": "unresolved"})
@@ -824,7 +850,6 @@ def test_a_genuine_service_outage_still_reads_as_one(monkeypatch):
     import server
     from fm9 import ir_service
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
-    monkeypatch.setattr(ir_service, "intent", lambda text: {})
     monkeypatch.setattr(ir_service, "recommend",
                         lambda *a, **k: (_ for _ in ()).throw(
                             ConnectionError("refused")))

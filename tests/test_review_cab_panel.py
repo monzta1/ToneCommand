@@ -238,7 +238,11 @@ def test_a_cab_action_is_recognised_by_the_pages_own_rule(tmp_path):
                         "why": "matches the new voice"}]
     r = _render(tmp_path, plan)
     assert r["hidden"] is False
-    assert "CABINET LEVEL" in r["chosen"] or "cab" in r["chosen"].lower()
+    # Not `or "cab" in chosen.lower()`: the class names cabrow and cabname
+    # are in every non-empty render, so that disjunct was satisfied by any
+    # output at all and only the empty string could fail it.
+    assert "CABINET LEVEL" in r["chosen"]
+    assert "matches the new voice" in r["chosen"]
 
 
 def test_a_measured_current_with_no_direction_does_not_claim_least_change(
@@ -365,3 +369,73 @@ def test_an_unreadable_target_reaches_the_player(tmp_path):
     r = _render(tmp_path, plan, last_cab={"ordinal": None, "name": None})
     assert r["hidden"] is False
     assert "Your library was not the problem" in r["note"]
+
+
+def test_an_unreadable_target_is_said_even_when_rows_came_back(tmp_path):
+    """Found by the fourth review. The server sets `why` and
+    `target_unreadable` regardless of whether rows returned, and the panel
+    showed `why` ONLY on an empty list. The text fallback matches filename
+    fragments ("vai" inside a pack folder), so an unreadable target usually
+    DOES return rows, and the panel presented those fragments as the answer
+    under the ordinary anchor note."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"]["target_unreadable"] = True
+    plan["cab_selection"]["why"] = (
+        "this build described the cab as 'steve vai signature lead', and "
+        "steve, vai is not gear a library can be searched for. Your library "
+        "was not the problem.")
+    r = _render(tmp_path, plan)
+    assert "Your library was not the problem" in r["note"]
+    assert "Ranked against" not in r["note"], \
+        "filename fragments were presented as a ranked answer"
+    assert "NAME MATCHES ONLY" in r["alts"], \
+        "the rows still read as alternatives that answer the request"
+
+
+def test_a_readable_target_still_gets_the_ordinary_note(tmp_path):
+    r = _render(tmp_path, PLAN)
+    assert "NAME MATCHES ONLY" not in r["alts"]
+    assert "Ranked against" in r["note"]
+
+
+def test_the_page_actually_calls_the_panel(tmp_path):
+    """Every test in this file calls renderCabPanel itself. Nothing asserted
+    the PAGE calls it, so deleting the call site left all of them green while
+    the panel never rendered, which is the original symptom: a build that
+    said nothing about the cab."""
+    body = UI.split("function renderReviewStage", 1)
+    assert len(body) == 2, "renderReviewStage moved; this check is stale"
+    assert "renderCabPanel()" in body[1][:4000], \
+        "the review stage no longer renders the cab panel"
+
+
+def test_the_link_offer_is_gated_on_the_user_bank_in_the_server(monkeypatch):
+    """`linkable` arrives from the server and every panel test supplies it as
+    a literal, so the USER-bank boundary itself had no test anywhere. Brief
+    26.1: a factory slot's identity is the roster's, and inviting a hand
+    link over it is the boundary error."""
+    import sys
+    sys.argv = ["x"]
+    import server
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "recommend",
+                        lambda *a, **k: (k.get("detail") or {}).update(
+                            understood=True) or [])
+
+    user = server.cab_listening_set(
+        {"cab_need": "4x12 v30"},
+        {"state": "unresolved", "bank": server.USER_CAB_BANK, "ordinal": 26})
+    assert user["linkable"] is True
+
+    factory = server.cab_listening_set(
+        {"cab_need": "4x12 v30"},
+        {"state": "unresolved", "bank": 3, "ordinal": 42})
+    assert factory["linkable"] is False, \
+        "the panel would invite a hand link over the factory roster"
+
+    resolved = server.cab_listening_set(
+        {"cab_need": "4x12 v30"},
+        {"state": "gear_anchored", "bank": server.USER_CAB_BANK,
+         "ordinal": 26, "gear": "4x12 RECTO SM57"})
+    assert resolved["linkable"] is False, "a repair offered where none is needed"
