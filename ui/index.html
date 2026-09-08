@@ -9848,7 +9848,28 @@ async function renderCabPanel() {
   const panel = $('cabpanel');
   const acts = cabActions(currentPlan || {});
   stopCabAudio();
-  if (!acts.length) { panel.hidden = true; return; }
+  // A build that changes the amp voice and sets no cab has still MADE a cab
+  // decision: to keep the one that is loaded. Hiding the panel made that
+  // silent, and silence reads as "cabs were never considered" (reported
+  // 2026-09-07 on a Steve Vai build: no question asked about the cab, and
+  // nothing said about how one was chosen). The speaker is half the sound,
+  // so say which cab it is either way.
+  const voiced = (currentPlan?.actions || []).some(
+    a => a.kind === 'set_type' || /amp|distort/i.test(a.block || ''));
+  if (!acts.length) {
+    if (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0) {
+      panel.hidden = true; return;
+    }
+    panel.hidden = false;
+    $('cabnote').textContent = '';
+    $('cabfoot').textContent = '';
+    $('cabchosen').innerHTML =
+      `<div class="cabrow"><div class="cabname">&#9679; ${esc(
+         lastCab.name || `cab ${lastCab.ordinal}`)}
+        <span class="cabwhy">kept as it is; this build changes the amp and
+        does not change the cab</span></div>
+        <div class="cabtag">UNCHANGED</div></div>`;
+  } else {
   panel.hidden = false;
   $('cabnote').textContent = '';
   $('cabfoot').textContent = '';
@@ -9863,6 +9884,7 @@ async function renderCabPanel() {
       <span class="cabwhy">${esc((a.why || a.reason || '') + scene)}</span></div>
       <div class="cabtag">THIS BUILD</div><span class="cabtag">ON RIG ONLY</span></div>`;
   }).join('');
+  }
 
   // Alternatives worth hearing, from IRCommand. Off by default: when the IR
   // service is unset this whole section simply stays quiet.

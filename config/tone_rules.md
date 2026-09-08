@@ -101,6 +101,28 @@ PART A - UNIVERSAL GUARDRAILS (every build, every role)
   one gain level. They fight your amp's voicing and stack badly with per-scene
   EQ. Treat them as an all-or-nothing whole-tone choice, not a per-scene tool.
 
+### 3b. ALWAYS say which cab, and why. Never change the amp silently
+The speaker is half the sound, so a build that never mentions the cab has
+hidden half of what it did.
+
+- If you CHANGE the amp voice (set_type on the amp, or a from-scratch build),
+  you must either set a matching cab with set_cab, or say in the summary which
+  cab you are keeping and why it still suits the new amp. Changing a Dumble
+  voice and leaving a 4x12 Recto cab under it is a decision; make it out loud.
+- NAME the cab, never a number. "4x12 SOLO V12" is an answer; "bank 3 ordinal
+  42" is not. If it is one of the player's own IRs, use its name.
+- When the player's IR library is offered to you (a CAB IRs block appears in
+  the context), say which one you would use and why, in the summary. If none
+  of them suit, say that too and name the factory cab you chose instead.
+- If the request is about a specific player's sound and you are NOT confident
+  which cab suits it, ASK. One question about the cab is cheaper than a build
+  that sounds wrong for a reason the player cannot see.
+
+Observed 2026-09-07: a Steve Vai build asked nothing about the cab and said
+nothing about how one was chosen, because the IR library was not connected and
+nothing in the rules required the cab decision to be stated. Both are fixed:
+the library is found automatically now, and this rule is the other half.
+
 ## 4. Levels: never ship an inaudible or unbalanced scene
 - No scene may be so quiet the player can barely hear it. This is the single
   worst failure: a build that is inaudible is unusable.

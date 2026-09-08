@@ -1,10 +1,22 @@
 """Optional bridge to IRCommand, the local IR database and matcher.
 
-Config-gated and OFF by default. TONECOMMAND_IR_SERVICE holds the IRCommand
-service URL (for example http://127.0.0.1:8770). Unset or empty means the IR
-feature is off and ToneCommand behaves exactly as before: factory cabs, no IR
-step, no network call. This mirrors the store and cab whitelists, which are
-also empty-default-disabled.
+TONECOMMAND_IR_SERVICE pins the IRCommand service URL (for example
+http://127.0.0.1:8770), and Settings can save one. When NEITHER is set, a
+local service that is simply running is found automatically.
+
+That default changed on 2026-09-07. It used to be off unless configured, on
+the same empty-default-disabled pattern as the store and cab whitelists. The
+difference is that those whitelists gate WRITES to hardware, where silence is
+the safe answer, and this only gates whether the planner is told which cabs
+the player owns. Nobody had configured it, so a Steve Vai build asked nothing
+about the cab and said nothing about how one was chosen, with 7,655 analysed
+IRs sitting on the machine unused. Requiring someone to paste a port number
+into Settings to avoid that is the exposed machinery this product hides.
+
+Discovery is loopback-only by construction rather than by check: the
+candidates are literal 127.0.0.1 addresses. It never overrides a deliberate
+choice, an empty URL saved from Settings still means OFF, and a miss is
+silent, so a build never waits on it.
 
 It is never a hard dependency. If the service is unset, down, or errors, every
 call here returns None or "off" and the caller simply skips the IR step. The
@@ -16,6 +28,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -93,10 +106,55 @@ def env_url() -> str:
     return (os.environ.get("TONECOMMAND_IR_SERVICE") or "").strip().rstrip("/")
 
 
+#: Where IRCommand serves by default. Probed when nothing is configured, so
+#: the player never has to know a port number exists.
+DEFAULT_PORTS = (8770,)
+_found: dict = {"url": None, "at": 0.0}
+FIND_EVERY = 30.0
+
+
+def discover() -> str:
+    """The local IRCommand service, if one is simply running.
+
+    Nothing was configured by default, so the bridge was off, so the planner
+    was never told the player owns an IR library and never mentioned a cab.
+    That is a real build reported on 2026-09-07: a Steve Vai preset where no
+    question was asked about the cab and nothing was said about how one was
+    chosen. Requiring someone to paste `http://127.0.0.1:8770` into Settings
+    to avoid that is exactly the exposed machinery this product hides.
+
+    Loopback only, by construction rather than by check: the candidates are
+    literal 127.0.0.1 addresses, so discovery cannot reach anything else. The
+    result is cached briefly, and a miss is silent, so a build never waits on
+    this more than once every FIND_EVERY seconds.
+    """
+    now = time.monotonic()
+    if _found["url"] is not None and now - _found["at"] < FIND_EVERY:
+        return _found["url"]
+    _found["at"] = now
+    for port in DEFAULT_PORTS:
+        url = f"http://127.0.0.1:{port}"
+        try:
+            with _opener.open(url + "/health", timeout=0.4) as r:
+                got = json.loads(r.read(10_000).decode("utf-8", "replace"))
+            if got.get("ok") and got.get("cabs"):
+                _found["url"] = url
+                return url
+        except Exception:      # noqa: BLE001  not running is the normal case
+            continue
+    _found["url"] = ""
+    return ""
+
+
 def get_url() -> str:
     """The IRCommand service URL. The env var wins (an operator pin), else the
-    URL saved from Settings, else empty (feature off). Same precedence as the
-    store whitelist and tone folder."""
+    URL saved from Settings, else a local service that is simply running, else
+    empty. Same precedence as the store whitelist and tone folder, with
+    discovery last so it can never override a deliberate choice.
+
+    An empty string saved from Settings is a deliberate OFF and is respected:
+    discovery only runs when nothing has been configured at all.
+    """
     if env_url():
         return env_url()
     f = _config_path()
@@ -104,10 +162,10 @@ def get_url() -> str:
         try:
             got = json.loads(f.read_text())
             if isinstance(got, dict) and isinstance(got.get("url"), str):
-                return got["url"].strip().rstrip("/")
+                return got["url"].strip().rstrip("/")   # "" means OFF on purpose
         except (ValueError, OSError):
             pass
-    return ""
+    return discover()
 
 
 def set_url(url: str) -> str:

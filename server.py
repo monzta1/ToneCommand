@@ -580,7 +580,10 @@ def snapshot(fm9: FM9) -> dict:
                 values["cab"] = reg.cab_description(slot, bank)
                 # the UI needs the address, not just the description, so the
                 # audition list can show which one is loaded
-                meta["__cab__"] = {"bank": int(bank), "ordinal": int(slot)}
+                # The NAME travels too, so a review can say which cab a build
+                # is leaving alone instead of going quiet about cabs entirely.
+                meta["__cab__"] = {"bank": int(bank), "ordinal": int(slot),
+                                   "name": cab_label(int(bank), int(slot))}
         if fname in INTEREST and fname not in seen_fams:
             seen_fams.add(fname)
             vals = fm9.bulk_read(reg.effect_id(fname, inst))
@@ -797,6 +800,28 @@ def register_revision(actions, note: str = "") -> str:
                         )[:len(_plan_revisions) - _MAX_REVISIONS]:
             _plan_revisions.pop(k, None)
     return dg
+
+
+def cab_label(bank, ordinal) -> str:
+    """A cab a player would recognise, from the numbers the wire uses.
+
+    Falls back to the bare ordinal rather than inventing a name: the USER and
+    SCRATCHPAD banks hold the player's own IRs, so no catalogue can list them,
+    and `user_cabs.json` names only the ones ToneCommand installed or the
+    owner labelled by hand.
+    """
+    try:
+        b, o = str(int(bank if bank is not None else 0)), str(int(ordinal))
+    except (TypeError, ValueError):
+        return f"cab {ordinal}"
+    name = (reg.cab_rosters.get(b) or {}).get(o)
+    if not name:
+        # The player's own installed IRs. No catalogue can list these, which
+        # is exactly why user_cabs.json exists.
+        from fm9 import user_cabs
+        name = user_cabs.name(b, o)
+    bank_name = reg.cab_bank_names.get(b, f"bank {b}")
+    return f"{name} ({bank_name})" if name else f"{bank_name} cab {o}"
 
 
 def is_direct_gesture(actions) -> bool:
@@ -1540,6 +1565,13 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             # numbering rule stays in protocol.py alone.
             if a.get("kind") == "store" and isinstance(a.get("value"), (int, float)):
                 a["slot_label"] = proto.slot_label(int(a["value"]))
+            # Name the cab. The review renders `cab_name` when it has one and
+            # otherwise falls back to "bank 3 - ordinal 42", which tells a
+            # player nothing about what they are about to hear. Resolved here
+            # for the same reason as the slot label: the roster lives on the
+            # server, so the browser should not be looking numbers up.
+            if a.get("kind") == "set_cab" and a.get("value") is not None:
+                a["cab_name"] = cab_label(a.get("bank"), a.get("value"))
             # Resolve the block to its effect id so the UI can say which other
             # scenes share its channel and will move with a parameter edit.
             # Resolved here for the same reason as the label: one place.
