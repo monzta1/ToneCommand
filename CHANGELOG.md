@@ -4,6 +4,14 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **"Humans in command" opens with the case for it, not just the rule.**
+  Everyone braces for machines to take over; they already did, and every
+  guitarist has spent decades learning a device's language to operate it.
+  ToneCommand inverts that: the machine learns yours. The existing safety
+  prose (no autonomous mode, blast radius, "ears: pending, always") now
+  follows as the proof the reversal is safe, instead of standing alone.
+
 ### Added
 - **Current is the permanent A side of the cab comparison, and you can
   choose a B.** The panel used to have a B side and no A: three candidates

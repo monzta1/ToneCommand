@@ -141,6 +141,21 @@ below is a real request you can type.
 
 ## Humans in command
 
+Everyone is terrified the machines are going to take over. They already did.
+For decades, YOU learned THEIR language just to operate them: menus,
+parameters, MIDI, file formats, manuals. You adapted to the machine.
+
+**We reversed it.**
+
+With ToneCommand, the machine learns your language.
+
+> *"Build me a crushing Drop C rhythm."*
+
+And it figures out how to make that happen on the hardware. We're done
+speaking machine.
+
+**The machines speak human now. Humans in command.**
+
 That is not a slogan. It is the constraint every other decision here bends to.
 
 A language model proposes. It never sends. There is no autonomous mode, no
