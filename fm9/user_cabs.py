@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 _cache: dict = {}
@@ -82,21 +83,83 @@ def name(bank: int | str, ordinal: int | str) -> str | None:
     return val.strip() or None if isinstance(val, str) else None
 
 
-def set_name(bank: int | str, ordinal: int | str, label: str) -> dict:
-    """Name a slot, or clear it with an empty label. Returns the whole map."""
+def _write(data: dict) -> dict:
     global _stamp
+    path().write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    _stamp = None                      # force a re-read on the next lookup
+    return data
+
+
+def set_name(bank: int | str, ordinal: int | str, label: str) -> dict:
+    """Name a slot, or clear it with an empty label. Returns the whole map.
+
+    RENAMING NEVER DISCARDS A LINK. This used to overwrite the whole entry
+    with a bare string, so typing a nicer name into a linked slot silently
+    threw the provenance away and the slot stopped being a measured anchor,
+    with nothing said. A name is a label; the link is a fact about a file.
+    Clearing the name still clears the whole entry, because that is what the
+    player asked for.
+    """
     data = dict(all_names())
     b = str(bank)
     slots = dict(data.get(b) or {})
+    key = str(ordinal)
     label = (label or "").strip()
     if label:
-        slots[str(ordinal)] = label[:64]
+        existing = slots.get(key)
+        if isinstance(existing, dict):
+            slots[key] = dict(existing, label=label[:64])
+        else:
+            slots[key] = label[:64]
     else:
-        slots.pop(str(ordinal), None)
+        slots.pop(key, None)
     if slots:
         data[b] = slots
     else:
         data.pop(b, None)
-    path().write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    _stamp = None                      # force a re-read on the next lookup
-    return data
+    return _write(data)
+
+
+def set_link(bank: int | str, ordinal: int | str, source: str,
+             digest: str, label: str = "") -> dict:
+    """Record WHICH FILE a user-cab slot holds. Returns the whole map.
+
+    This is the only writer of the provenance shape, and until it existed the
+    `measured` anchor state was unreachable by any route the product offers:
+    every install path wrote a bare display string, so a slot could be named
+    and never linked. Verified by test and never once by use.
+
+    What a link asserts, exactly, so nothing downstream over-reads it:
+
+      - the player says this slot holds this file
+      - the file is one IRCommand has measured, checked when the link is made
+      - `digest` is the file's bytes at link time, so a later change is caught
+
+    What it does NOT assert: that the FM9 slot really contains that capture.
+    Nothing can read the IR back off the device and compare it, so the device
+    side is the player's word. That is enough to rank against, which is all
+    the anchor is for, and it is not enough to call the slot verified.
+
+    Clearing the source reverts the slot to a plain name.
+    """
+    data = dict(all_names())
+    b = str(bank)
+    slots = dict(data.get(b) or {})
+    key = str(ordinal)
+    existing = slots.get(key)
+    kept = (existing.get("label") if isinstance(existing, dict)
+            else existing if isinstance(existing, str) else None)
+    label = (label or kept or "").strip()[:64]
+    source = (source or "").strip()
+    if not source:
+        slots[key] = label or None
+        if not label:
+            slots.pop(key, None)
+    else:
+        slots[key] = {"label": label, "source": source, "digest": digest,
+                      "linked": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    if slots:
+        data[b] = slots
+    else:
+        data.pop(b, None)
+    return _write(data)

@@ -1958,6 +1958,8 @@
   .cabtag { color: var(--muted); font-size: var(--fs-hint); white-space: nowrap; }
   .cabplay { white-space: nowrap; }
   .cabalts { margin-top: 6px; }
+  .cablinkq { flex: 1; min-width: 0; }
+  .cablinkpick { white-space: nowrap; }
   .cabfoot { color: var(--muted); font-size: var(--fs-hint); margin-top: 8px; }
   .intentlist { display: grid; gap: 8px; margin-top: 16px; }
   .intentrow { display: grid; grid-template-columns: 180px minmax(0,1fr) 72px;
@@ -3438,6 +3440,7 @@
             <span class="cabnote" id="cabnote"></span>
           </div>
           <div id="cabchosen"></div>
+          <div id="cablink"></div>
           <div class="cabalts" id="cabalts"></div>
           <div class="cabalts" id="cabblend"></div>
           <div class="cabfoot" id="cabfoot"></div>
@@ -9858,6 +9861,78 @@ async function renderBlend(path) {
   } catch (e) { box.innerHTML = ''; }
 }
 
+// Offer to LINK an unresolved user-cab slot to the file it holds.
+//
+// The measured anchor state has existed and been unreachable: every install
+// path writes a bare display name, and the whole /api/user-cabs surface had
+// no client in this page at all. So a player with 7,000 analysed IRs and one
+// of their own cabs loaded was permanently told "nothing is loaded to
+// compare against", with no way to fix it. The panel that says that is the
+// right place to offer the fix.
+//
+// The player picks the file. Identity is being established, and searching by
+// name and taking the top hit is ranking, which cannot establish identity:
+// two captures of one product share every token (brief 26.1).
+function renderCabLink(sel) {
+  const box = $('cablink');
+  if (!box) return;
+  if (!sel || !sel.linkable) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="cabfoot">This is one of your own cab slots and
+      nothing here knows which file it holds, so no comparison can be made
+      against it. Point it at the file and it becomes a real reference.</div>
+    <div class="cabrow"><input id="cablinkq" class="cablinkq" type="text"
+        placeholder="search your IR library by name"><button
+        id="cablinkgo">SEARCH</button></div>
+    <div id="cablinkhits"></div>`;
+  const run = async () => {
+    const q = ($('cablinkq').value || '').trim();
+    const hits = $('cablinkhits');
+    if (!q) { hits.innerHTML = ''; return; }
+    hits.innerHTML = '<div class="cabfoot">Looking...</div>';
+    let rows = [];
+    try {
+      const r = await fetch(`/api/ir/search?q=${encodeURIComponent(q)}&limit=12`);
+      const d = await r.json();
+      rows = d.results || [];
+    } catch (e) { rows = []; }
+    if (!rows.length) {
+      hits.innerHTML = '<div class="cabfoot">Nothing in your library matches '
+        + 'that name. That is about the NAME, not about what you own.</div>';
+      return;
+    }
+    hits.innerHTML = rows.map(r =>
+      `<div class="cabrow"><div class="cabname">${esc(r.name || '')}
+         <span class="cabwhy">${esc(r.pack || '')}</span></div>
+       <button class="cablinkpick" data-path="${esc(r.path)}">THIS ONE</button>
+       </div>`).join('');
+    for (const b of hits.querySelectorAll('.cablinkpick')) {
+      b.onclick = async () => {
+        b.disabled = true;
+        b.textContent = 'LINKING';
+        try {
+          const r = await fetch('/api/user-cabs/link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bank: sel.bank, ordinal: sel.ordinal,
+                                   source: b.dataset.path }),
+          });
+          const d = await r.json();
+          // Say exactly what happened, including a refusal. A link this
+          // cannot stand behind is worse than no link: the slot would claim
+          // an anchor and produce no comparison.
+          hits.innerHTML = `<div class="cabfoot">${esc(d.detail || d.error
+            || 'that did not work')}</div>`;
+        } catch (e) {
+          hits.innerHTML = '<div class="cabfoot">could not reach the '
+            + 'server</div>';
+        }
+      };
+    }
+  };
+  $('cablinkgo').onclick = run;
+  $('cablinkq').onkeydown = (e) => { if (e.key === 'Enter') run(); };
+}
+
 // What claim the listening set is entitled to make, said in the player's
 // words. The three states are the brief's (21.5.1). Only a MEASURED current
 // has a curve, so only it supports "x dB from current". Gear identity alone
@@ -9902,8 +9977,15 @@ async function renderCabPanel() {
   // with a real cab_selection and no set_cab action, and the panel used to
   // return before reading it. That is the reported complaint again in a
   // different shape: the reasoning existed and the player never saw it.
+  // Anything the selector produced counts, INCLUDING an empty set. An empty
+  // set carries the reason it is empty, and that reason is often the most
+  // useful thing on the panel: the library was unreachable, or the build
+  // described the cab in words no gear matcher can read. Requiring
+  // candidates hid exactly the cases worth explaining.
   const hasSet = !!(currentPlan && currentPlan.cab_selection
-                    && (currentPlan.cab_selection.candidates || []).length);
+                    && ((currentPlan.cab_selection.candidates || []).length
+                        || currentPlan.cab_selection.why
+                        || currentPlan.cab_selection.linkable));
   if (!acts.length) {
     if (!hasSet && (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0)) {
       panel.hidden = true; return;
@@ -9949,8 +10031,13 @@ async function renderCabPanel() {
   if (alts.length) {
     $('cabnote').textContent = cabAnchorNote(sel);
   } else if (sel) {
+    // A target the plan itself wrote in unreadable words is a fault in the
+    // build, not a report about the library. Saying which is the whole
+    // difference between "you own nothing like that" and "this build asked
+    // for the cab by a name no gear matcher can read".
     $('cabnote').textContent = sel.why || 'no alternatives to compare.';
   }
+  renderCabLink(sel);
 
   $('cabalts').innerHTML = alts.length
     ? `<div class="cabfoot">ALTERNATIVES &middot; drive:

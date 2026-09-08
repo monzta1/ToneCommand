@@ -4,7 +4,29 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Link a user-cab slot to the file it holds.** The `measured` comparison
+  state has existed, been tested, and been unreachable by any route the
+  product offers: every install path writes a bare display name, and the
+  whole `/api/user-cabs` surface had no client in the page at all. So a
+  player with thousands of analysed IRs and one of their own cabs loaded was
+  permanently told "nothing is loaded to compare against", with no way to fix
+  it. The cab panel now offers the fix where it reports the problem: search
+  your library by name, pick the file, and the slot becomes a real reference.
+
+  The player picks. Searching by name and taking the top hit is ranking, and
+  ranking cannot establish identity: two captures of one product share every
+  token, so the best match can be plausible and wrong. A link is refused
+  rather than recorded when it cannot be stood behind, because a slot that
+  claims an anchor and produces no comparison is worse than no link. And the
+  reply says what a link does not prove: nothing can read the IR back off the
+  FM9, so the device side is your word.
+
 ### Fixed
+- **Renaming a linked slot threw the link away.** `set_name` overwrote the
+  whole entry with a bare string, so typing a nicer name silently stopped the
+  slot being an anchor and said nothing.
+
 - **A measured anchor was never asked to keep the cab.** Only a gear-anchored
   Current received the preserve constraint, so "keep the same cab, just
   darker" against one of your own IRs got curve proximity and nothing else.

@@ -357,7 +357,7 @@ def linked_source(bank, ordinal):
     #    rather than assumed. Erring toward gear_anchored costs a numeric
     #    delta; erring toward measured quotes a distance from a curve nobody
     #    has.
-    known = _get(f"/ir/measured?path={quote(src)}", timeout=2) or {}
+    known = measured_check(src)
     # BOTH, and asserted here rather than trusted from one flag. The service
     # reports library membership and the presence of a curve separately
     # because they are separate facts, and reading only `measured` let an
@@ -385,6 +385,37 @@ def digest_of(path) -> str:
     except OSError:
         return ""
     return h.hexdigest()
+
+
+def search(q: str, limit: int = 20) -> list:
+    """Library files matching a plain text query. [] when it cannot be asked.
+
+    Text search, not the ranker: this answers "which of my files is called
+    something like this", which is what a person needs when they are pointing
+    at the file a slot holds. Ranking would answer a different question and
+    would be the wrong tool for establishing identity (brief 26.1).
+    """
+    q = (q or "").strip()
+    if not enabled() or not q:
+        return []
+    d = _get(f"/ir/search?q={quote(q)}&category=cab-ir&limit={int(limit)}",
+             timeout=3)
+    return (d or {}).get("results") or []
+
+
+def measured_check(path: str) -> dict:
+    """What IRCommand knows about ONE exact file. {} when it cannot be asked.
+
+    Three separate facts come back, because they fail separately:
+    `in_library` (the catalogue holds it), `has_curve` (something analysed
+    it) and `measured` (both). A caller that reads only the last one and gets
+    {} must treat that as NO, never as yes: this is the check that gates a
+    numeric claim.
+    """
+    path = (path or "").strip()
+    if not enabled() or not path:
+        return {}
+    return _get(f"/ir/measured?path={quote(path)}", timeout=2) or {}
 
 
 def library_shape() -> dict:
