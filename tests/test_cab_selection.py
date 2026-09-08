@@ -53,3 +53,63 @@ def test_the_reference_no_longer_says_cabs_are_not_plannable():
     pr = server.param_reference()
     assert "NOT a plannable" not in pr
     assert "selectable via set_cab" in pr
+
+
+# --- the cab has to have a NAME (2026-09-07) ----------------------------
+#
+# Reported on a Steve Vai build: no question was asked about the cab and
+# nothing was said about how one was chosen. One cause was that the review
+# renders `cab_name` when it has one and otherwise falls back to
+# "bank 3 - ordinal 42", and the server never populated it.
+
+def test_a_planned_cab_arrives_with_a_name(monkeypatch):
+    """Resolved server side for the same reason as the store slot label: the
+    roster lives here, so the browser should not be looking numbers up."""
+    from fastapi.testclient import TestClient
+    import server
+    from fm9.sim import SimFM9
+    monkeypatch.setattr(server, "_fm9", SimFM9(server.reg))
+    client = TestClient(server.app)
+    monkeypatch.setattr(server.planner, "plan", lambda *a, **kw: {
+        "summary": "voice it", "clarification": None,
+        "actions": [{"kind": "set_cab", "block": "CABINET", "instance": 1,
+                     "bank": 3, "value": 42, "reason": "matches the amp"}]})
+    plan = client.post("/api/plan", json={"prompt": "give me a recto cab"}).json()
+    a = plan["actions"][0]
+    assert a.get("cab_name"), "the review would show a bare ordinal"
+    assert "4x12" in a["cab_name"] or "RECTO" in a["cab_name"].upper()
+
+
+def test_a_user_cab_is_named_from_the_players_own_labels(monkeypatch):
+    """No catalogue can list the player's own IRs, which is what
+    user_cabs.json exists for."""
+    import server
+    from fm9 import user_cabs
+    monkeypatch.setattr(user_cabs, "name",
+                        lambda b, o: "Soldano SLO30 - Emil Rohbe"
+                        if (str(b), str(o)) == ("2", "26") else None)
+    assert "Soldano SLO30" in server.cab_label(2, 26)
+
+
+def test_an_unknown_ordinal_is_not_given_an_invented_name():
+    import server
+    got = server.cab_label(2, 99999)
+    assert "99999" in got and "cab" in got.lower()
+
+
+def test_the_review_prefers_the_name_over_the_numbers():
+    """Pins the UI side of the same contract."""
+    from pathlib import Path
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    assert "a.cab_name || a.label" in ui
+
+
+def test_a_build_that_changes_the_amp_never_goes_quiet_about_the_cab():
+    """A plan that sets no cab has still MADE a cab decision: to keep the one
+    loaded. Hiding the panel made that silent, and silence reads as 'cabs were
+    never considered'."""
+    from pathlib import Path
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    body = ui.split("async function renderCabPanel()", 1)[1][:1400]
+    assert "UNCHANGED" in body, "no cab action still hides the panel entirely"
+    assert "set_type" in body, "it must notice the amp voice changed"
