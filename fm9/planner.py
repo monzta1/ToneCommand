@@ -114,7 +114,21 @@ PLAN_SCHEMA = {
                     "pedal": {"type": ["integer", "null"],
                               "description": "For bind_pedal/unbind_pedal: which expression pedal, 1 or 2. Null defaults to Pedal 2. Bind the parameter the player named to the pedal they named"},
                     "reason": {"type": "string",
-                               "description": "Short justification tied to the user's request"},
+                               "description": (
+                                   "Why THIS change, and keep it PROPORTIONATE. "
+                                   "A routine value set gets at most 8 words "
+                                   "('tightens the low end', 'matches the "
+                                   "rhythm level'). The choices a player "
+                                   "actually questions, the amp, the cab, the "
+                                   "drive and each scene's role, get one full "
+                                   "sentence naming the real gear. Never "
+                                   "restate the parameter name, never repeat "
+                                   "the summary, never explain what the block "
+                                   "does. Measured on a real build: reason "
+                                   "text was 38 percent of everything the "
+                                   "model wrote, mostly paragraphs attached to "
+                                   "single EQ values, and that time is time "
+                                   "the player spends waiting."),},
                 },
                 "required": ["kind", "block", "instance", "param", "value",
                              "bypassed", "type_name", "position", "ref", "bank",

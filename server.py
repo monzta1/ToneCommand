@@ -1613,10 +1613,22 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     try:
         if not _hold_settings(cancel, on_status):
             return {"error": "stopped"}
+        _t0 = time.monotonic()
         try:
             result = _plan_counting(body.prompt, context, on_count, cancel)
         finally:
             _settings_lock.release()
+        # Measure it rather than reason about it. The owner asked why a build
+        # took over ten minutes and the honest answer was that nothing timed
+        # any of it, so the question could only be argued from settle
+        # constants. plan_stream's own docstring records 283 seconds for a
+        # four-scene build; now every build says its own number.
+        if isinstance(result, dict):
+            _plan_s = time.monotonic() - _t0
+            result["timing"] = {"plan_s": round(_plan_s, 1)}
+            log.info("plan: %.1fs for %d action(s) via %s",
+                     _plan_s, len(result.get("actions") or []),
+                     result.get("backend", "?"))
         # The send needs the same intent the plan was made under, or apply
         # would splice after a plan that was reviewed as a template build.
         if isinstance(result, dict) and "actions" in result:
@@ -4622,6 +4634,7 @@ def _set_param_spec(a: Action):
 
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
+    _send_t0 = time.monotonic()
     # Review and Send must refer to the same object (#55). A digest that does
     # not match the actions, or names a revision the server never validated,
     # means the plan changed after it was reviewed.
@@ -4780,9 +4793,20 @@ def _apply_for(body: ApplyBody, on_step=None):
                     log.warning("apply: starting-chain check failed: %s", exc)
 
             acts = body.actions
+            _act_t0 = time.monotonic()
             i = 0
             while i < len(acts):
                 a = acts[i]
+                _n0, _at0 = len(results), time.monotonic()
+
+                def _stamp(_n0=_n0, _at0=_at0):
+                    """Cost of the action just processed, onto the rows it
+                    produced. Per action, because a total cannot tell a slow
+                    splice from ninety fast parameter writes."""
+                    took = round(time.monotonic() - _at0, 2)
+                    for r in results[_n0:]:
+                        r.setdefault("seconds", took)
+
                 # Batched run of consecutive same-block set_params (#47 lever 2):
                 # write them in a burst and verify with one read. Only a run of
                 # two or more; validation, spec resolution, results and progress
@@ -4825,6 +4849,7 @@ def _apply_for(body: ApplyBody, on_step=None):
                     results.append({"action": a.model_dump(), "ok": False,
                                     "detail": "validation: " + "; ".join(errs)})
                     step(False, a)
+                    _stamp()
                     i += 1
                     continue
                 try:
@@ -4857,6 +4882,7 @@ def _apply_for(body: ApplyBody, on_step=None):
                                                   f"({len(remaining)}): "
                                                   f"add_block failed"})
                     break
+                _stamp()
                 i += 1
 
             # After a build that changed scene structure, surface clone/dead
@@ -4880,7 +4906,19 @@ def _apply_for(body: ApplyBody, on_step=None):
         except FM9NotFound:
             drop_fm9()
             return JSONResponse({"error": "FM9 not connected"}, status_code=503)
-    return {"results": results, "health": health_findings}
+    # What the send actually cost, next to what the plan cost, so "why was
+    # that slow" is answered by the build itself instead of by argument.
+    _send_s = time.monotonic() - _send_t0
+    slow = sorted((r for r in results if r.get("seconds")),
+                  key=lambda r: -r["seconds"])[:3]
+    log.info("apply: %.1fs for %d action(s)%s", _send_s, len(body.actions),
+             "".join(f"; {r['action'].get('kind', '?')} {r['seconds']:.1f}s"
+                     for r in slow if r.get("action")))
+    return {"results": results, "health": health_findings,
+            "timing": {"send_s": round(_send_s, 1),
+                       "actions": len(body.actions),
+                       "slowest": [{"kind": (r.get("action") or {}).get("kind"),
+                                    "seconds": r["seconds"]} for r in slow]}}
 
 
 def main():
