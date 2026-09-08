@@ -29,8 +29,8 @@ END = "// --- CONFIRM stage"
 # Every id the panel writes to must EXIST in the page, or a test that creates
 # nodes on demand passes against markup that has none of them. These are read
 # straight out of the HTML rather than listed here by hand.
-PANEL_IDS = ("cabpanel", "cabnote", "cabchosen", "cabalts", "cabblend",
-             "cabfoot")
+PANEL_IDS = ("cabpanel", "cabnote", "cabchosen", "cablink", "cabalts",
+             "cabblend", "cabfoot")
 
 HARNESS = r"""
 import { readFileSync } from "fs";
@@ -50,8 +50,22 @@ for (const id of known) {
   nodes[id] = { textContent: "", innerHTML: "", hidden: false,
                 querySelectorAll: () => [] };
 }
+// An id resolves if the PAGE declares it, or if the panel has already
+// written it into some node's innerHTML, which is what a browser would do.
+// Anything else throws, so the panel cannot quietly address an element that
+// exists nowhere.
 const $ = (id) => {
-  if (!(id in nodes)) throw new Error("no element with id " + id + " on the page");
+  if (!(id in nodes)) {
+    const written = Object.values(nodes).some(
+      (n) => typeof n.innerHTML === "string"
+             && n.innerHTML.includes(`id="${id}"`));
+    if (!written) {
+      throw new Error("no element with id " + id + " on the page");
+    }
+    nodes[id] = { textContent: "", innerHTML: "", hidden: false,
+                  value: "", onclick: null, onkeydown: null,
+                  querySelectorAll: () => [] };
+  }
   return nodes[id];
 };
 // The slice carries the real cabActions, stopCabAudio, playCab, matchWord,
@@ -78,6 +92,7 @@ console.log(JSON.stringify({
   note: $("cabnote").textContent,
   alts: $("cabalts").innerHTML,
   chosen: $("cabchosen").innerHTML,
+  link: $("cablink").innerHTML,
   hidden: $("cabpanel").hidden,
 }));
 """
@@ -283,3 +298,40 @@ def test_an_unrelated_build_with_no_cab_context_stays_hidden(tmp_path):
     del plan["cab_selection"]
     r = _render(tmp_path, plan, last_cab={"ordinal": 12, "name": "A cab"})
     assert r["hidden"] is True
+
+
+# --- offering the link that makes `measured` reachable (2026-09-08) -------
+#
+# A player with 7,000 analysed IRs and one of their own cabs loaded was
+# permanently told "nothing is loaded to compare against", because no install
+# path records which file a slot holds and this page had no client for the
+# user-cabs API at all. The panel that reports the problem is where the fix
+# belongs.
+
+def test_an_unresolved_user_slot_is_offered_the_link(tmp_path):
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"] = {"anchor": "unresolved", "current": None,
+                             "candidates": [], "linkable": True,
+                             "bank": 2, "ordinal": 26,
+                             "why": "this cab is not one of yours"}
+    r = _render(tmp_path, plan)
+    assert "search your IR library" in r["link"]
+    assert "no comparison can be made" in r["link"]
+
+
+def test_a_resolved_current_is_not_offered_a_link(tmp_path):
+    """The offer is a repair, not furniture."""
+    r = _render(tmp_path, PLAN)              # gear_anchored
+    assert r["link"] == ""
+
+
+def test_an_unresolved_factory_slot_is_not_offered_a_link(tmp_path):
+    """Only the USER bank. A factory slot's identity is the manufacturer's
+    own label, and overriding that by hand is the brief 26.1 boundary error,
+    so the panel must not invite it."""
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"] = {"anchor": "unresolved", "current": None,
+                             "candidates": [], "linkable": False,
+                             "bank": 3, "ordinal": 42}
+    r = _render(tmp_path, plan)
+    assert r["link"] == ""
