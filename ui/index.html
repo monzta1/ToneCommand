@@ -9900,9 +9900,14 @@ function renderCabLink(sel) {
         + 'that name. That is about the NAME, not about what you own.</div>';
       return;
     }
+    // Pack AND folder. One capture ships at several sample rates under one
+    // pack with one filename, so pack alone shows three identical rows and
+    // asks the player to choose blind, on the one step where they are saying
+    // which file a slot holds.
     hits.innerHTML = rows.map(r =>
       `<div class="cabrow"><div class="cabname">${esc(r.name || '')}
-         <span class="cabwhy">${esc(r.pack || '')}</span></div>
+         <span class="cabwhy">${esc([r.pack, r.folder]
+           .filter(Boolean).join(' &middot; '))}</span></div>
        <button class="cablinkpick" data-path="${esc(r.path)}">THIS ONE</button>
        </div>`).join('');
     for (const b of hits.querySelectorAll('.cablinkpick')) {
