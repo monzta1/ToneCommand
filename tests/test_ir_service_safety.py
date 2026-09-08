@@ -620,9 +620,14 @@ def test_the_live_path_hands_the_selector_the_prompt_and_the_scope(monkeypatch):
     monkeypatch.setattr(server, "_profile", {"loaded": None})
     monkeypatch.setattr(server, "get_fm9",
                         lambda *a, **k: (_ for _ in ()).throw(server.FM9NotFound()))
-    monkeypatch.setattr(server, "_last_snapshot", {"state": None})
-    _, got = _capture_selector_input(monkeypatch, "same cab, just darker",
-                                     whole_rig=True)
+    # Keep the real dict's other keys: _plan_for reads _last_snapshot["at"]
+    # further down, and replacing the whole dict makes the plan fail AFTER
+    # the selector has run. The captured values would still be right and the
+    # test would still pass, which is a false green of my own making.
+    monkeypatch.setitem(server._last_snapshot, "state", None)
+    out, got = _capture_selector_input(monkeypatch, "same cab, just darker",
+                                       whole_rig=True)
+    assert "error" not in out, out.get("error")
     assert got.get("request") == "same cab, just darker", \
         "the player's words never reached the selector, so preservation is dead"
     assert got.get("whole_rig") is True, \
@@ -635,8 +640,9 @@ def test_the_profile_path_hands_the_selector_the_same_two(monkeypatch):
     import server
     monkeypatch.setattr(server, "_profile",
                         {"loaded": {"preset_name": "shared", "author": "a"}})
-    _, got = _capture_selector_input(monkeypatch, "same cab, just darker",
-                                     whole_rig=True)
+    out, got = _capture_selector_input(monkeypatch, "same cab, just darker",
+                                       whole_rig=True)
+    assert "error" not in out, out.get("error")
     assert got.get("request") == "same cab, just darker"
     assert got.get("whole_rig") is True
 
