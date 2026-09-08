@@ -66,3 +66,26 @@ def test_the_ui_cannot_render_zero_coverage_as_a_pass():
     assert "tone_coverage" in block, "the pass message must consult coverage"
     assert "nothing could be checked" in block
     assert "I could run" in block
+
+
+def test_a_structural_finding_does_not_make_the_values_verified():
+    """Issue #51 added rule 15, which reads the channel map rather than any
+    parameter value. That is exactly the shape of the #54 regression: a check
+    that RAN, on a scene whose tone values are still entirely unknown.
+
+    A clone finding must therefore not let coverage claim the build was
+    judged. Both statements have to survive together: 'these two scenes are
+    the same sound' and 'nothing was verified about how either one sounds'.
+    """
+    plan = []
+    for n, name in ((4, "Lead"), (8, "Solo")):
+        plan += [{"kind": "rename_scene", "value": n, "type_name": name},
+                 {"kind": "set_scene", "value": n},
+                 {"kind": "set_channel", "block": "amp", "value": 2}]
+    scenes = tone_review.summary_from_plan(plan)
+
+    assert [f.rule for f in tone_review.review(scenes)] == ["15"], \
+        "the clone itself should still be reported"
+    c = tone_review.coverage(scenes)
+    assert c["status"] == "unknown"
+    assert c["missing"]["gain"] == [4, 8] and c["missing"]["level"] == [4, 8]
