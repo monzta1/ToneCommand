@@ -271,6 +271,24 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     return d["results"]
 
 
+def gaps_online(need: str, target: str = "fm9", k: int = 3):
+    """Captures on TONE3000 for a need the OWNED library cannot answer.
+
+    IRCommand decides whether to look outward at all: it only searches when
+    the request parsed into real gear terms AND the best owned match is still
+    weak, because a low score on an artist name means the request was not
+    understood rather than that the shelf is empty.
+
+    Returns [] rather than None when there is simply nothing to add, so a
+    caller can treat it as "checked, no gap" instead of "did not check".
+    """
+    if not enabled() or not (need or "").strip():
+        return []
+    d = _get(f"/ir/recommend?need={quote(need)}&target={quote(target)}"
+             f"&k={int(k)}", timeout=8)
+    return (d or {}).get("online") or []
+
+
 def blend_partners(path: str, k: int = 5):
     """IRs that combine well with this one, and the alignment each needs.
 

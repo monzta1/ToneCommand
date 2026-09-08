@@ -123,14 +123,26 @@ def _hits(monkeypatch, hits):
     monkeypatch.setattr(ir_service, "recommend", lambda *a, **k: hits)
 
 
-def test_a_weak_field_tells_the_planner_to_use_a_factory_cab(monkeypatch):
+def test_a_weak_field_says_the_REQUEST_was_not_understood(monkeypatch):
+    """The wording matters and my first version of it was wrong.
+
+    It said "the library does NOT really answer this request", which is a
+    claim about the shelf. The owner challenged it: "out of 9040 cabs on my
+    system, none were usable?" Measured against the same library, "steve vai
+    high gain singing lead" scores 0.07 while "marshall 4x12 v30 bright lead"
+    scores 0.63. The cabs were always there; the artist name meant nothing to
+    a matcher that speaks gear. Reporting that as absence would have made
+    ToneCommand tell the player something false.
+    """
     import server
     _hits(monkeypatch, [{"name": "MesRec212.wav", "pack": "IR", "match": 0.33,
                          "why": ["less low"], "unmatched": ["vai", "singing"]}])
     ctx = server.ir_context("steve vai singing lead")
     assert "0.33" in ctx
-    assert "does NOT really answer" in ctx and "factory cab" in ctx
-    assert "Nothing in the library is singing, vai" in ctx
+    assert "does not know artist" in ctx
+    assert "not understood rather than that the library lacks" in ctx
+    assert "own nothing suitable" in ctx, "must forbid the false claim outright"
+    assert "does NOT really answer this request" not in ctx
 
 
 def test_a_strong_field_gets_no_warning(monkeypatch):

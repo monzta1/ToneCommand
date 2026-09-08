@@ -492,13 +492,37 @@ def ir_context(prompt: str) -> str:
     best = max((h.get("match") or 0) for h in hits)
     unmet = sorted({w for h in hits for w in (h.get("unmatched") or [])})
     if unmet:
-        lines.append("Nothing in the library is " + _fence(", ".join(unmet))
-                     + ". Those words were not matched at all.")
+        # NOT "the library lacks these". IRCommand matches on GEAR, so an
+        # unmatched word usually means it could not INTERPRET the request,
+        # which is a different thing and must not be reported as absence.
+        # Measured: "steve vai high gain singing lead" scores 0.07, while
+        # "marshall 4x12 v30 bright lead" scores 0.63 against the same
+        # library. The cabs were always there; the name meant nothing to it.
+        lines.append(
+            "IRCommand matched these on GEAR (brand, speaker, mic, cab size "
+            "and measured tone). It does not know artist, band or song names, "
+            "and did not understand: " + _fence(", ".join(unmet)) + ".")
     if best < 0.5:
         lines.append(
-            f"The best of these only scores {best:.2f}, so the library does "
-            "NOT really answer this request. Say so plainly and use a factory "
-            "cab instead, rather than presenting one of these as the answer.")
+            f"The best of these only scores {best:.2f}, which usually means "
+            "the REQUEST was not understood rather than that the library "
+            "lacks a suitable cab. YOU know what gear that sound uses, so "
+            "decide the cab from the amp you chose and the gear it implies "
+            "(a 4x12 with V30s, a 2x12 with Greenbacks, and so on), and say "
+            "which you picked and why. Do not tell the player they own "
+            "nothing suitable on the strength of this number.")
+    # Captures the player does NOT own. IRCommand only offers these when the
+    # request parsed into real gear AND the owned library still fell short, so
+    # reaching here means a genuine gap rather than a word it could not read.
+    gaps = ir_service.gaps_online(prompt or "")
+    if gaps:
+        lines.append("\nNOT OWNED, available on TONE3000. The player would "
+                     "have to download these, so OFFER, never assume:")
+        for g in gaps:
+            lines.append(
+                f"- {_fence(g.get('name'))} by {_fence(', '.join(g.get('makes') or []))}"
+                f" (licence {_fence(g.get('license'))}; install with "
+                f"`{_fence(g.get('install'))}`)")
     return "\n".join(lines) + "\n"
 
 
