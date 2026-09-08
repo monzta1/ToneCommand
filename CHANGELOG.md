@@ -72,8 +72,8 @@ Notable changes to ToneCommand. Dates are UTC.
   bypass and modifier badges and P2 buttons, the blast radius (scene rail
   plus the WHAT WILL CHANGE card), and a health scan. The full-page shot is
   the PLAN stage of a real request through the real planner, proposed and
-  not sent. `tools/readme_shots.py` reproduces them. The graphic EQ shot is still the old one: this preset
-  has no EQ block, and switching presets discards the edit buffer.
+  not sent. `tools/readme_shots.py` reproduces them. The graphic EQ shot comes from preset 12, found by stepping the unit
+  through all 512 presets and reading each chain: 33 carry a GEQ block.
 
 ### Added
 - **tonecommand.com.** The project has a home that is not a GitHub README.
