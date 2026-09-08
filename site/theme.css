@@ -272,3 +272,14 @@ html.fx-on pre, html.fx-on .cmdbar { background: rgba(19, 23, 21, 0.72); backdro
 .shot img { display: block; width: 100%; height: auto; border: 0; border-radius: 0; margin: 0; }
 .shot figcaption { padding: 0.7rem 0.9rem; font-size: 0.86rem; color: var(--muted); }
 .home .block, #install { scroll-margin-top: 4.5rem; }
+
+/* merch cards: the shop's own product photos, linking straight to the product */
+.merchgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin: 1.25rem 0; }
+.merchcard { display: flex; flex-direction: column; gap: 0.35rem; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg-raised); color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+.merchcard:hover { border-color: rgba(47, 230, 255, 0.5); transform: translateY(-2px); text-decoration: none; color: var(--text); }
+.merchimg { display: block; aspect-ratio: 1 / 1; background: #000; }
+.merchimg img { width: 100%; height: 100%; object-fit: cover; display: block; border: 0; border-radius: 0; margin: 0; }
+.merchimg.placeholder { background: linear-gradient(135deg, #131715, #0d0f0d); }
+.merchprice { padding: 0.6rem 1rem 0; color: var(--cyan); font-family: var(--mono); font-size: 0.9rem; }
+.merchname { padding: 0 1rem; font-weight: 600; color: #fff; }
+.merchcta { padding: 0 1rem 0.9rem; color: var(--muted); font-size: 0.88rem; }

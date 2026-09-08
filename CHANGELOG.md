@@ -4,6 +4,22 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **The amp and cab audition list was invisible in manual mode.** The manual
+  inspector is a fixed panel stacked at 90; the audition popover, also fixed
+  so a long name cannot widen it, sat at 40 and rendered behind the sliders.
+  Pressing the amp or cab name looked like nothing happened, on exactly the
+  screen whose point is auditioning by typing. Found by re-shooting the
+  README on the live rig. A test now pins the popover above the inspector.
+
+### Changed
+- **Every interface screenshot re-taken on the current UI**, live from a
+  connected FM9: the full page, both auditions, the effects panel with its
+  bypass and modifier badges and P2 buttons, the blast radius (scene rail
+  plus the WHAT WILL CHANGE card), and a health scan. `tools/readme_shots.py`
+  reproduces them. The graphic EQ shot is still the old one: this preset
+  has no EQ block, and switching presets discards the edit buffer.
+
 ### Added
 - **tonecommand.com.** The project has a home that is not a GitHub README.
   `site/build.py` generates the whole site from what the repository already

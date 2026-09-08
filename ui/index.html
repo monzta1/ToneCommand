@@ -912,7 +912,11 @@
   /* Widened with the type scale. At 460px the count wrapped to "331 of" /
      "331" and the filter placeholder clipped mid-sentence, both of which
      appeared the moment the text got big enough to read. */
-  #audpop { position: fixed; width: 520px; right: auto; }
+  /* Above the manual inspector (a fixed panel at z-index 90): the audition
+     list opens FROM that panel, and below it the list rendered behind the
+     sliders and looked like nothing had happened. Found while re-shooting
+     the README on 2026-09-08. */
+  #audpop { position: fixed; width: 520px; right: auto; z-index: 100; }
   .audtitle { font-size: var(--fs-label); letter-spacing: 0.2em; color: var(--cyan-dim);
               margin-bottom: 7px; }
   .audhead { display: flex; gap: 6px; align-items: center; margin-bottom: 7px; }

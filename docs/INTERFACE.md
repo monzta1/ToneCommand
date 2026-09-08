@@ -4,7 +4,7 @@ The rule this UI is built to: **if you have to switch to FM9-Edit in the middle
 of a session, we have already lost.** Every panel is a control surface, not a
 readout.
 
-![The ToneCommand interface: scenes, the live routing grid, the command bar, the amp and cab panel and the graphic EQ](img/ui-full.png)
+![The ToneCommand interface: the five-stage rail from REQUEST to SEND, the eight named scenes, the live signal chain, and the command bar](img/ui-full.png)
 
 *Everything above is live from a connected FM9. The cyan path is the signal
 actually reaching the output; the dashed blocks are bypassed but still passing
@@ -60,7 +60,7 @@ the shortlist with the arrow keys while you keep playing. 331 amps and 2,237
 cabs, searchable by name **and** by what the cab actually is, because
 "Vibrolux" lives in the description.
 
-![Auditioning cabinets: 1024 entries in one bank, filtered as you type](img/audition-cab.png)
+![Auditioning cabinets: the Legacy bank filtered to V30 cabs as you type, 15 of 189, with what each cab actually is](img/audition-cab.png)
 
 Every step loads on the unit and is covered by UNDO, because an audition you
 cannot back out of is a trap rather than a feature.
@@ -115,7 +115,7 @@ Pedal 1 is your global volume and is never referenced, in either direction.
 
 ## Blast radius
 
-![Three scenes lit amber with WILL CHANGE badges, beside the one you are standing in](img/blast-radius.png)
+![Two scenes lit amber beside the one you are standing in, and the WHAT WILL CHANGE card naming them](img/blast-radius.png)
 
 FM9 parameters live on the **channel**, not on the scene. Turning up the mid in
 scene 1 moves every other scene sharing that channel, which is the single
@@ -128,7 +128,7 @@ plan does.
 
 ## It can tell you whether a preset is actually correct
 
-![A preset health scan: every scene alive, levels listed, nothing flagged](img/health-scan.png)
+![A preset health scan: every scene alive, levels listed, one flagged hot](img/health-scan.png)
 
 The question no other FM9 tool answers. FM9-Edit edits presets; it does not
 reason about them, so it will happily let you save one whose scene 4 makes no

@@ -43,6 +43,37 @@ TEE_URL = f"{SHOP_URL}/products/tonecommand-emblem-tee"
 JERSEY_URL = f"{SHOP_URL}/products/tonecommand-performance-jersey"
 TAGLINE = "OLD SOUL. NEW MACHINE. HUMANS IN COMMAND."
 
+# Product images for the merch cards come from the shop's own product pages
+# (Shopify exposes them as JSON). Filled in by load_merch(); empty means the
+# cards render without a picture rather than with a wrong one.
+MERCH: dict[str, dict] = {}
+MERCH_HTML = ""
+
+
+def load_merch(offline: bool) -> None:
+    if offline:
+        return
+    for key, url in (("tee", TEE_URL), ("jersey", JERSEY_URL)):
+        try:
+            req = urllib.request.Request(url + ".json", headers={"User-Agent": "tonecommand.com build"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                prod = json.load(r)["product"]
+            img = (prod.get("images") or [{}])[0].get("src", "")
+            price = (prod.get("variants") or [{}])[0].get("price", "")
+            MERCH[key] = {"title": prod.get("title", ""), "image": img, "price": price}
+        except Exception as e:  # noqa: BLE001
+            print(f"merch lookup failed for {key}: {e}", file=sys.stderr)
+
+
+def merch_card(key: str) -> str:
+    m = MERCH.get(key)
+    if not m or not m.get("image"):
+        return '<span class="merchimg placeholder"></span>'
+    alt = html.escape(m.get("title") or key)
+    price = f'<span class="merchprice">${html.escape(str(m["price"]))}</span>' if m.get("price") else ""
+    return f'<span class="merchimg"><img src="{html.escape(m["image"])}" alt="{alt}" loading="lazy"></span>{price}'
+
+
 # Documentation pages, in the order the docs index lists them. The one-line
 # descriptions are the README's own documentation table, verbatim.
 DOC_PAGES = [
@@ -325,7 +356,7 @@ def page(*, title: str, description: str, body: str, path: str,
 <footer class="foot">
   <p class="tagline">{TAGLINE}</p>
   <p>ToneCommand {html.escape(version)}. Free, Apache-2.0. Not affiliated with or endorsed by Fractal Audio Systems. Uses a reverse-engineered protocol; may break with firmware updates. Back up your presets. Use at your own risk.</p>
-  <p><a href="/install/">Install</a> · <a href="/docs/">Docs</a> · <a href="/recipes/">Recipes</a> · <a href="{SLACK_URL}" rel="noopener">Slack</a> · <a href="{REPO_URL}/issues" rel="noopener">Issues</a> · <a href="{SHOP_URL}" rel="noopener">Merch</a> · <a href="{REPO_URL}" rel="noopener">Source on GitHub</a></p>
+  <p><a href="/install/">Install</a> · <a href="/docs/">Docs</a> · <a href="/recipes/">Recipes</a> · <a href="{SLACK_URL}" rel="noopener">Slack</a> · <a href="{REPO_URL}/issues" rel="noopener">Issues</a> · <a href="{TEE_URL}" rel="noopener">Tee</a> · <a href="{JERSEY_URL}" rel="noopener">Jersey</a> · <a href="{SHOP_URL}" rel="noopener">Shop</a> · <a href="{REPO_URL}" rel="noopener">Source on GitHub</a></p>
 </footer>
 {mermaid_tag}
 </body>
@@ -473,7 +504,7 @@ def build_home(readme: str, release: dict) -> None:
     <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · current release <a href="/download/">{html.escape(release['version'])}</a></p>
   </div>
   <figure class="hero-panel">
-    <img src="/img/ui-full.png" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="1512" height="982" fetchpriority="high">
+    <img src="/img/ui-full.png" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="2000" height="1299" fetchpriority="high">
     <figcaption>Live from a connected FM9. Nothing on this page is a mock-up.</figcaption>
   </figure>
 </section>
@@ -546,11 +577,22 @@ def build_home(readme: str, release: dict) -> None:
     safe_html, _ = render_md(sec.get("Safety", ""))
     out.append(section("07", "Safety", safe_html))
 
+    # 08 support: the README's own words, with the merch as direct links
+    support_html, _ = render_md(sec.get("Support", ""))
+    merch = MERCH_HTML if MERCH_HTML else ""
+    out.append(section("08", "Support", support_html + f"""
+<div class="merchgrid">
+  <a class="merchcard" href="{TEE_URL}" rel="noopener">{merch_card('tee')}<span class="merchname">ToneCommand emblem tee</span><span class="merchcta">See it in the shop</span></a>
+  <a class="merchcard" href="{JERSEY_URL}" rel="noopener">{merch_card('jersey')}<span class="merchname">ToneCommand performance jersey</span><span class="merchcta">See it in the shop</span></a>
+</div>
+<p><a class="btn" href="{COFFEE_URL}" rel="noopener">Buy the maintainer a coffee</a> <a class="btn" href="{SHOP_URL}" rel="noopener">The whole Shieldbearer shop</a></p>
+"""))
+
     # install
     install_short, _ = render_md(sec.get("Install", ""))
     out.append(f"""
 <section id="install" class="block reveal">
-  <p class="kicker">08 · INSTALL</p>
+  <p class="kicker">09 · INSTALL</p>
   <h2>Install</h2>
   {install_short}
   <p><a class="btn primary sweep" href="/install/">The full install guide</a></p>
@@ -677,7 +719,7 @@ def build_recipes(recipes: list[dict], release: dict) -> None:
 <p class="meta">{html.escape(str(r.get('device', '')))} · by {html.escape(str(r.get('author', 'unknown')))}{' · tested on firmware ' + html.escape(str(r['tested_firmware'])) if r.get('tested_firmware') else ''}</p>
 <p>{html.escape(r.get('summary', ''))}</p>
 <p><a class="btn primary" href="/recipes/{html.escape(name)}.json" download>Download recipe JSON</a></p>
-<p>In the app, open the recipes list on the <strong>DESIGN WITH AI</strong> tab to replay it, or from a terminal:</p>
+<p>In the app, open <strong>LIBRARY</strong> in the footer to replay it, or from a terminal:</p>
 <pre><code>python tools/replay_recipe.py recipes/{html.escape(name)}.json            # dry-run: validate only
 python tools/replay_recipe.py recipes/{html.escape(name)}.json --apply    # edit buffer</code></pre>
 <h2>Steps</h2>
@@ -796,6 +838,7 @@ def main() -> int:
     DIST.mkdir(parents=True)
     readme = (ROOT / "README.md").read_text()
     release = latest_release(args.offline)
+    load_merch(args.offline)
     recipes = load_recipes()
     build_static(recipes)
     build_home(readme, release)
