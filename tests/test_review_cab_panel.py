@@ -29,8 +29,8 @@ END = "// --- CONFIRM stage"
 # Every id the panel writes to must EXIST in the page, or a test that creates
 # nodes on demand passes against markup that has none of them. These are read
 # straight out of the HTML rather than listed here by hand.
-PANEL_IDS = ("cabpanel", "cabnote", "cabchosen", "cablink", "cabalts",
-             "cabblend", "cabfoot")
+PANEL_IDS = ("cabpanel", "cabnote", "cabchosen", "cabcurrent", "cablink",
+             "cabalts", "cabblend", "cabfoot")
 
 HARNESS = r"""
 import { readFileSync } from "fs";
@@ -75,6 +75,11 @@ const esc = (s) => String(s);
 let cabAudio = null;
 const document = { querySelectorAll: () => [] };
 const fetch = async (u) => { fetched.push(u); throw new Error("no network"); };
+// revisePlan lives outside the slice. Choosing a cab must go through it, so
+// it is recorded rather than reimplemented: a selection that mutates the
+// plan without re-validating is the #55 defect, not a feature.
+const revised = [];
+const revisePlan = () => { revised.push(JSON.parse(JSON.stringify(currentPlan.actions))); };
 let cabDrive = "lead";
 let lastCab = input.lastCab || { ordinal: null, name: null };
 let currentPlan = input.plan;
@@ -82,27 +87,38 @@ let currentPlan = input.plan;
 // cabActions is NOT stubbed: it is part of the slice, so a change that
 // stops recognising a cab action fails these tests instead of passing them.
 const run = new Function(
-  "$", "esc", "document", "cabAudio", "fetch", "cabDrive", "lastCab",
-  "currentPlan", panelCode + "\nreturn renderCabPanel;");
-
-await run($, esc, document, cabAudio, fetch, cabDrive, lastCab,
-          currentPlan)();
+  "$", "esc", "document", "cabAudio", "fetch", "revisePlan", "cabDrive",
+  "lastCab", "currentPlan",
+  panelCode + "\nreturn {render: renderCabPanel, useCab};");
+const api = run($, esc, document, cabAudio, fetch, revisePlan, cabDrive,
+                lastCab, currentPlan);
+await api.render();
+// Optionally exercise a selection, then re-render, exactly as the click
+// handler does.
+if (input.use) {
+  api.useCab(input.use.bank, input.use.ordinal, input.use.label);
+  await api.render();
+}
 console.log(JSON.stringify({
   fetched,
   note: $("cabnote").textContent,
   alts: $("cabalts").innerHTML,
   chosen: $("cabchosen").innerHTML,
+  current: $("cabcurrent").innerHTML,
   link: $("cablink").innerHTML,
+  revised,
+  actions: currentPlan ? currentPlan.actions : null,
   hidden: $("cabpanel").hidden,
 }));
 """
 
 
-def _render(tmp_path, plan, last_cab=None) -> dict:
+def _render(tmp_path, plan, last_cab=None, use=None) -> dict:
     h = tmp_path / "harness.mjs"
     h.write_text(HARNESS)
     payload = tmp_path / "input.json"
-    payload.write_text(json.dumps({"plan": plan, "lastCab": last_cab}))
+    payload.write_text(json.dumps({"plan": plan, "lastCab": last_cab,
+                                   "use": use}))
     for node_id in PANEL_IDS:
         assert f'id="{node_id}"' in UI, \
             f"the page declares no #{node_id}; the harness would invent it"
@@ -125,13 +141,17 @@ PLAN = {
         "current": "4x12 BRIT V30 SM57 (FACTORY 1)",
         "preserved": "4x12 BRIT V30 SM57",
         "reference": None,
+        "current_row": {"name": "4x12 BRIT V30 SM57 (FACTORY 1)",
+                        "path": None, "state": "gear_anchored",
+                        "slot": {"bank": 3, "ordinal": 11}},
         "candidates": [
             {"name": "OwnHammer Brit V30 SM57 Cap", "path": "/l/a.wav",
              "pack": "OwnHammer", "match": 0.81, "why": ["4x12", "v30"],
-             "measured": None, "distance_from_current": None},
+             "measured": None, "distance_from_current": None,
+             "slot": {"bank": 2, "ordinal": 26, "label": "OwnHammer Brit"}},
             {"name": "York Audio BRIT V30 R121", "path": "/l/b.wav",
              "pack": "York", "match": 0.74, "why": ["4x12", "v30"],
-             "measured": None, "distance_from_current": None},
+             "measured": None, "distance_from_current": None, "slot": None},
         ],
     },
 }
@@ -439,3 +459,81 @@ def test_the_link_offer_is_gated_on_the_user_bank_in_the_server(monkeypatch):
         {"state": "gear_anchored", "bank": server.USER_CAB_BANK,
          "ordinal": 26, "gear": "4x12 RECTO SM57"})
     assert resolved["linkable"] is False, "a repair offered where none is needed"
+
+
+# --- Current as the permanent A side, and choosing a B (brief 19.4) -------
+#
+# The panel had a B side and no A: three candidates you could play, and no
+# way to hear or see the thing they were being compared against except as a
+# sentence. And nothing could be CHOSEN, so the reasoning ended in a preview.
+
+def test_current_is_shown_as_the_permanent_anchor(tmp_path):
+    r = _render(tmp_path, PLAN)
+    assert "4x12 BRIT V30 SM57 (FACTORY 1)" in r["current"]
+    assert "what these are compared against" in r["current"]
+
+
+def test_a_gear_anchored_current_says_it_has_nothing_to_play(tmp_path):
+    """Only a measured Current has a file. Offering a preview button that
+    plays nothing would be worse than saying so."""
+    r = _render(tmp_path, PLAN)
+    assert "NOTHING TO PLAY" in r["current"]
+    assert 'class="cabplay"' not in r["current"]
+
+
+def test_a_measured_current_can_be_previewed(tmp_path):
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"]["current_row"] = {
+        "name": "My Capture", "path": "/l/current.wav", "state": "measured",
+        "slot": {"bank": 2, "ordinal": 26}}
+    r = _render(tmp_path, plan)
+    assert "/l/current.wav" in r["current"]
+    assert "NOTHING TO PLAY" not in r["current"]
+
+
+def test_the_anchor_row_is_absent_when_there_is_nothing_to_compare(tmp_path):
+    plan = json.loads(json.dumps(PLAN))
+    plan["cab_selection"]["candidates"] = []
+    plan["cab_selection"]["why"] = "the IR library did not answer"
+    r = _render(tmp_path, plan)
+    assert r["current"] == "", "an A side with no B side is not a comparison"
+
+
+def test_a_candidate_on_the_rig_can_be_used(tmp_path):
+    r = _render(tmp_path, PLAN)
+    assert "USE THIS" in r["alts"]
+
+
+def test_a_candidate_not_on_the_rig_cannot_be_used(tmp_path):
+    """A file in the library is not a slot on the FM9. Offering to select it
+    would be inventing one."""
+    r = _render(tmp_path, PLAN)
+    assert "NOT ON THE RIG" in r["alts"]
+
+
+def test_choosing_a_candidate_edits_the_plan_and_revalidates(tmp_path):
+    """A selection is an EDIT, and goes through the same path an edited
+    number does: mutate, then let the server re-validate and mint a fresh
+    digest. Mutating the reviewed plan in the browser without that is the
+    #55 defect."""
+    r = _render(tmp_path, PLAN, use={"bank": 2, "ordinal": 26,
+                                     "label": "OwnHammer Brit"})
+    assert len(r["revised"]) == 1, "the plan was changed without revalidating"
+    cabs = [a for a in r["actions"] if a["kind"] == "set_cab"]
+    assert len(cabs) == 1, "a second set_cab was added instead of replacing"
+    assert cabs[0]["bank"] == 2 and cabs[0]["value"] == 26
+    assert "comparing against the current cab" in cabs[0]["why"]
+
+
+def test_the_chosen_candidate_is_marked_in_the_list(tmp_path):
+    r = _render(tmp_path, PLAN, use={"bank": 2, "ordinal": 26,
+                                     "label": "OwnHammer Brit"})
+    assert "IN THE BUILD" in r["alts"]
+
+
+def test_choosing_replaces_the_builds_own_cab_rather_than_stacking(tmp_path):
+    """PLAN already carries a set_cab for bank 1 ordinal 12."""
+    r = _render(tmp_path, PLAN, use={"bank": 2, "ordinal": 26,
+                                     "label": "OwnHammer Brit"})
+    banks = sorted(a["bank"] for a in r["actions"] if a["kind"] == "set_cab")
+    assert banks == [2], f"the old cab action survived: {banks}"

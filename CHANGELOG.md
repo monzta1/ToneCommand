@@ -4,6 +4,21 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Current is the permanent A side of the cab comparison, and you can
+  choose a B.** The panel used to have a B side and no A: three candidates
+  you could preview, and no way to hear or see the cab they were being
+  compared against except as a sentence. Current is now a row of its own,
+  previewable when it is one of your own IRs and honest about having nothing
+  to play when it is not.
+
+  Each alternative that is actually on the FM9, in a slot you have linked,
+  carries USE THIS. Choosing one is an edit to the plan and goes through the
+  same path an edited number does: the server re-validates it and mints a
+  fresh digest, so Confirm cannot arm against the plan you were shown before
+  the change. A candidate that is only a file in your library says so rather
+  than offering a slot that does not exist.
+
 ### Fixed
 - **Installing an IR into a linked slot kept the old file's provenance.**
   Protecting a link across a rename created this: the install path is a

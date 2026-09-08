@@ -123,6 +123,34 @@ def set_name(bank: int | str, ordinal: int | str, label: str) -> dict:
     return _write(data)
 
 
+def slot_for_source(source: str):
+    """The slot linked to this exact file, as (bank, ordinal), or None.
+
+    The reverse of set_link, and the reason Review can offer to USE a
+    candidate: a file the player has linked is already on the device, so
+    choosing it is a set_cab the executor can verify by read-back. A file
+    that is not linked is not on the FM9 as far as anything here knows, and
+    saying "use this" about it would be inventing a slot.
+
+    Exact path equality only. Matching on the filename would let two captures
+    with the same name in different packs resolve to each other's slot, which
+    is ranking standing in for identity again (brief 26.1).
+    """
+    source = (source or "").strip()
+    if not source:
+        return None
+    for bank, slots in (all_names() or {}).items():
+        if not isinstance(slots, dict):
+            continue
+        for ordinal, rec in slots.items():
+            if isinstance(rec, dict) and (rec.get("source") or "") == source:
+                try:
+                    return int(bank), int(ordinal)
+                except (TypeError, ValueError):
+                    return None
+    return None
+
+
 def relabel_installed(bank: int | str, ordinal: int | str, label: str) -> dict:
     """Name a slot that has just had something WRITTEN INTO IT, dropping any
     link it carried. Returns the whole map.

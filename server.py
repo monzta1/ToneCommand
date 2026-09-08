@@ -511,8 +511,19 @@ def current_anchor(snap, profile: dict = None) -> dict:
             # Brief 26.1: a user-cab string is a display label and nothing
             # more. What this anchor has is a CURVE, which is a better
             # constraint than a guess at the words anyway.
+            # `gear` here is the LIBRARY's own tags for that exact file,
+            # never the slot's display name. The name is whatever the player
+            # typed and proves nothing; the catalogue entry is the same
+            # scanned metadata every candidate is ranked on. That is what
+            # lets "keep the same basic character" mean something for a cab
+            # of the player's own (brief 19.4, 26.1).
+            _g = link.get("gear") or {}
+            _gear = " ".join(str(_g[k]) for k in
+                             ("config", "brand", "speaker", "mic")
+                             if _g.get(k)) or None
             return {"state": "measured", "reference": link["path"],
-                    "digest": link.get("digest"),
+                    "digest": link.get("digest"), "gear": _gear,
+                    "speaker": _g.get("speaker"),
                     "name": sel.get("name"), "bank": bank, "ordinal": ordinal}
 
     rec = (reg.cab_models.get(str(bank)) or {}).get(str(ordinal)) or {}
@@ -681,6 +692,20 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
             f"{target!r}, and " + ", ".join(detail.get("unmatched") or ["it"])
             + " is not gear a library can be searched for. Your library was "
             "not the problem.")
+    # Where each candidate LIVES, so Review can offer to use one. A linked
+    # slot means the file is already on the device and choosing it is a
+    # set_cab the executor verifies by read-back. Anything else is a file on
+    # the disk, and offering "use this" for it would be inventing a slot.
+    from fm9 import user_cabs
+
+    def _slot(path):
+        got = user_cabs.slot_for_source(path or "")
+        if not got:
+            return None
+        bank, ordinal = got
+        return {"bank": bank, "ordinal": ordinal,
+                "label": cab_label(bank, ordinal)}
+
     out["candidates"] = [{
         "name": r.get("name"), "path": r.get("path"), "pack": r.get("pack"),
         "match": r.get("match"), "why": r.get("why"),
@@ -690,7 +715,19 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         # darker than something nothing measured (brief 21.5).
         "distance_from_current": (r.get("distance_from_reference")
                                   if reference else None),
+        "slot": _slot(r.get("path")),
     } for r in rows[:k]]
+    # Current as a row of its own, so the panel can show it as the permanent
+    # A side of the comparison rather than as a sentence above the list
+    # (brief 19.4: "Current as the permanent anchor"). Only a measured
+    # Current has a file, so only it can be previewed; the others are named
+    # and honest about having nothing to play.
+    out["current_row"] = {
+        "name": anchor.get("name"), "path": reference,
+        "state": anchor.get("state"),
+        "slot": {"bank": anchor.get("bank"), "ordinal": anchor.get("ordinal")}
+        if anchor.get("bank") is not None else None,
+    } if anchor.get("name") or reference else None
     return out
 
 

@@ -385,6 +385,10 @@ def linked_source(bank, ordinal):
             and known.get("has_curve")):
         return None
     return {"path": src, "digest": rec.get("digest"),
+            # The CATALOGUE's tags for this exact file, not the slot's label.
+            # Identity from the file is evidence; identity from a name the
+            # player typed is a guess (brief 26.1).
+            "gear": known.get("gear") or {},
             "analysis": rec.get("analysis")}
 
 

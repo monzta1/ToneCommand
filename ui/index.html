@@ -1959,6 +1959,8 @@
   .cabplay { white-space: nowrap; }
   .cabalts { margin-top: 6px; }
   .cablinkq { flex: 1; min-width: 0; }
+  .cabuse { white-space: nowrap; }
+  .cabuse.on { border-color: var(--cyan); color: var(--cyan); }
   .cablinkpick { white-space: nowrap; }
   .cabfoot { color: var(--muted); font-size: var(--fs-hint); margin-top: 8px; }
   .intentlist { display: grid; gap: 8px; margin-top: 16px; }
@@ -3440,6 +3442,7 @@
             <span class="cabnote" id="cabnote"></span>
           </div>
           <div id="cabchosen"></div>
+          <div id="cabcurrent"></div>
           <div id="cablink"></div>
           <div class="cabalts" id="cabalts"></div>
           <div class="cabalts" id="cabblend"></div>
@@ -9803,7 +9806,33 @@ function matchWord(m) {
   return 'weak match';
 }
 
-function cabRow(r, chosen) {
+// Is this candidate the one the plan currently sets? Compared on the SLOT,
+// not the name: two captures can share a filename across packs, and the plan
+// addresses hardware by bank and ordinal.
+function chosenSlot(r) {
+  if (!r.slot || !currentPlan) return false;
+  return (currentPlan.actions || []).some(
+    a => a.kind === 'set_cab' && Number(a.bank) === Number(r.slot.bank)
+         && Number(a.value) === Number(r.slot.ordinal));
+}
+
+// Choosing a candidate is an EDIT to the plan, and goes through the same
+// path an edited number does: mutate the actions, then let the server
+// re-validate and mint a fresh digest (#55). Nothing here writes to the FM9,
+// and Confirm stays disarmed until the revision comes back.
+function useCab(bank, ordinal, label) {
+  if (!currentPlan) return;
+  const acts = (currentPlan.actions || []).filter(a => a.kind !== 'set_cab');
+  acts.push({
+    kind: 'set_cab', block: 'cab', bank: bank, value: ordinal,
+    cab_name: label,
+    why: 'chosen from the alternatives after comparing against the current cab',
+  });
+  currentPlan.actions = acts;
+  revisePlan();               // re-validates, re-digests, re-renders
+}
+
+function cabRow(r, chosen, canUse) {
   const why = (r.why || []).join(', ');
   const playable = /\.wav$/i.test(r.path || '');
   const me = r.measured || null;
@@ -9824,6 +9853,20 @@ function cabRow(r, chosen) {
       ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}
       ${bits.length ? `<span class="cabwhy">${esc(bits.join(' &middot; '))}</span>` : ''}</div>
     <div class="cabtag">${esc(r.pack || '')}</div>
+    ${canUse !== undefined && r.slot
+      ? `<button class="cabuse${chosenSlot(r) ? ' on' : ''}"
+                 data-bank="${esc(String(r.slot.bank))}"
+                 data-ordinal="${esc(String(r.slot.ordinal))}"
+                 data-label="${esc(r.slot.label || r.name || '')}"
+                 title="Put this cab in the build. It is already on the FM9,
+                 in ${esc(r.slot.label || 'a linked slot')}, so the change is
+                 a slot selection the executor verifies by read-back."
+         >${chosenSlot(r) ? 'IN THE BUILD' : 'USE THIS'}</button>`
+      : canUse !== undefined
+        ? `<span class="cabtag" title="This file is in your library but
+            nothing here knows it is on the FM9, so it cannot be selected as a
+            slot. Install it, then link the slot to it.">NOT ON THE RIG</span>`
+        : ''}
     ${playable
       ? `<button class="cabplay" data-path="${esc(r.path)}"
                  title="Representative preview: a synthetic DI through a generic
@@ -10050,6 +10093,28 @@ async function renderCabPanel() {
   }
   renderCabLink(sel);
 
+  // CURRENT AS THE PERMANENT A SIDE (brief 19.4). It was a sentence above
+  // the list, so the comparison had a B side and no A: the player could hear
+  // three candidates and not the thing they were being compared against.
+  // Only a measured Current has a file, so only it can be previewed; the
+  // other states are named and say plainly that there is nothing to play.
+  const cur = sel && sel.current_row;
+  $('cabcurrent').innerHTML = (cur && alts.length)
+    ? `<div class="cabfoot">CURRENT &middot; what these are compared against</div>`
+      + `<div class="cabrow chosen"><div class="cabname">A &middot; ${esc(
+           cur.name || 'the cab now loaded')}
+           <span class="cabwhy">${esc(cur.state === 'measured'
+             ? 'one of your own IRs, measured'
+             : cur.state === 'gear_anchored'
+               ? 'known by its gear; nothing has measured it'
+               : 'not identified')}</span></div>
+         ${cur.path
+           ? `<button class="cabplay" data-path="${esc(cur.path)}">PREVIEW</button>`
+           : `<span class="cabtag" title="Nothing here holds a file for this
+               cab, so there is nothing to play. Link the slot to make it
+               audible.">NOTHING TO PLAY</span>`}</div>`
+    : '';
+
   $('cabalts').innerHTML = alts.length
     ? `<div class="cabfoot">${sel && sel.target_unreadable
          ? 'NAME MATCHES ONLY, not an answer to the request &middot; drive:'
@@ -10057,11 +10122,15 @@ async function renderCabPanel() {
          ${['clean', 'crunch', 'lead', 'high-gain'].map(d =>
            `<button class="cabplay cabdrive${d === cabDrive ? ' on' : ''}"
                     data-drive="${d}">${d}</button>`).join(' ')}</div>`
-      + alts.map(r => cabRow(r, false)).join('')
+      + alts.map(r => cabRow(r, false, chosenSlot(r))).join('')
     : '';
 
   for (const b of panel.querySelectorAll('.cabplay[data-path]')) {
     b.onclick = () => playCab(b, b.dataset.path);
+  }
+  for (const b of panel.querySelectorAll('.cabuse[data-bank]')) {
+    b.onclick = () => useCab(Number(b.dataset.bank), Number(b.dataset.ordinal),
+                             b.dataset.label);
   }
   for (const b of panel.querySelectorAll('.cabdrive')) {
     b.onclick = () => { cabDrive = b.dataset.drive; stopCabAudio(); renderCabPanel(); };

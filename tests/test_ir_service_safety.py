@@ -531,7 +531,8 @@ def test_a_measured_user_cab_never_preserves_on_its_display_name(monkeypatch):
         {"cab_sel": {"bank": server.USER_CAB_BANK, "ordinal": 26,
                      "name": "Soldano SLO30 - Emil Rohbe (USER)"}})
     assert anchor["state"] == "measured"
-    assert "gear" not in anchor and "fractal" not in anchor
+    assert anchor.get("gear") is None, \
+        "with no catalogue tags there is no gear, and a name is not gear"
 
     _sel(monkeypatch, {"request": "keep the same cab but darker",
                        "cab_need": "darker"}, anchor, seen,
@@ -901,3 +902,32 @@ def test_a_readable_target_is_not_flagged(monkeypatch):
     out = server.cab_listening_set({"cab_need": "4x12 v30"},
                                    {"state": "unresolved"})
     assert "target_unreadable" not in out
+
+
+def test_a_measured_cab_preserves_on_the_librarys_tags_not_its_name(monkeypatch):
+    """The other half of the rule. A user cab's LABEL is not gear, but the
+    catalogue's entry for that exact file is: it is the same scanned metadata
+    every candidate is ranked on, keyed by path rather than by something
+    someone typed. That is what lets "keep the same basic character" mean
+    anything for a cab of the player's own (brief 19.4).
+    """
+    import server
+    from fm9 import ir_service
+    seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "linked_source", lambda b, o: {
+        "path": "/lib/cur.wav", "digest": "d",
+        "gear": {"config": "4x12", "speaker": "Celestion V30",
+                 "mic": "Shure SM57", "position": "center"}})
+    anchor = server.current_anchor(
+        {"cab_sel": {"bank": server.USER_CAB_BANK, "ordinal": 26,
+                     "name": "Soldano SLO30 - Emil Rohbe (USER)"}})
+    assert anchor["gear"] == "4x12 Celestion V30 Shure SM57"
+    assert "Soldano" not in anchor["gear"], "the label leaked into the gear"
+    assert anchor["speaker"] == "Celestion V30"
+
+    _sel(monkeypatch, {"request": "darker but keep the same basic character",
+                       "cab_need": "darker"}, anchor, seen,
+         preserve_applied=True)
+    assert seen["preserve"] == "4x12 Celestion V30 Shure SM57"
+    assert seen["reference"] == "/lib/cur.wav", "it must still be both"
