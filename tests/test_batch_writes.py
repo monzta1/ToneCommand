@@ -114,21 +114,24 @@ def client(monkeypatch):
 
 
 def _amp_params(v1=5, v2=4, v3=6):
-    return {"actions": [
+    """A scene change plus three amp writes. That is a PLAN, not one gesture,
+    so every caller has to name the revision it was reviewed as."""
+    return [
         {"kind": "set_scene", "value": 1},
         {"kind": "set_param", "block": "amp", "param": "DISTORT_DRIVE", "value": v1},
         {"kind": "set_param", "block": "amp", "param": "DISTORT_BASS", "value": v2},
-        {"kind": "set_param", "block": "amp", "param": "DISTORT_MID", "value": v3}]}
+        {"kind": "set_param", "block": "amp", "param": "DISTORT_MID", "value": v3}]
 
 
-def test_a_run_of_same_block_params_batches_when_enabled(client, monkeypatch):
+def test_a_run_of_same_block_params_batches_when_enabled(client, monkeypatch,
+                                                        signed):
     monkeypatch.setattr(server, "_BATCH_WRITES", True)
     calls = {"n": 0}
     real = server._fm9.set_params_batch
     monkeypatch.setattr(server._fm9, "set_params_batch",
                         lambda items: (calls.__setitem__("n", calls["n"] + 1)
                                        or real(items)))
-    d = client.post("/api/apply", json=_amp_params()).json()
+    d = client.post("/api/apply", json=signed(_amp_params())).json()
     res = [r for r in d["results"]
            if (r.get("action") or {}).get("kind") == "set_param"]
     assert len(res) == 3 and all(r["ok"] for r in res), res
@@ -136,23 +139,24 @@ def test_a_run_of_same_block_params_batches_when_enabled(client, monkeypatch):
     assert res[0]["after"] == 5 and res[2]["after"] == 6
 
 
-def test_flag_off_never_batches(client, monkeypatch):
+def test_flag_off_never_batches(client, monkeypatch, signed):
     monkeypatch.setattr(server, "_BATCH_WRITES", False)
     calls = {"n": 0}
     monkeypatch.setattr(server._fm9, "set_params_batch",
                         lambda items: calls.__setitem__("n", calls["n"] + 1))
-    d = client.post("/api/apply", json=_amp_params()).json()
+    d = client.post("/api/apply", json=signed(_amp_params())).json()
     res = [r for r in d["results"]
            if (r.get("action") or {}).get("kind") == "set_param"]
     assert len(res) == 3 and all(r["ok"] for r in res)
     assert calls["n"] == 0, "with the flag off the batch path must not run"
 
 
-def test_batched_and_single_paths_land_the_same_values(client, monkeypatch):
+def test_batched_and_single_paths_land_the_same_values(client, monkeypatch,
+                                                       signed):
     monkeypatch.setattr(server, "_BATCH_WRITES", True)
-    on = client.post("/api/apply", json=_amp_params(7, 3, 8)).json()["results"]
+    on = client.post("/api/apply", json=signed(_amp_params(7, 3, 8))).json()["results"]
     monkeypatch.setattr(server, "_BATCH_WRITES", False)
-    off = client.post("/api/apply", json=_amp_params(7, 3, 8)).json()["results"]
+    off = client.post("/api/apply", json=signed(_amp_params(7, 3, 8))).json()["results"]
     def afters(rows):
         return {r["action"]["param"]: r.get("after") for r in rows
                 if (r.get("action") or {}).get("kind") == "set_param"}

@@ -63,15 +63,15 @@ def test_gig_mode_refuses_the_sweep_loudly(client, monkeypatch):
     assert "GIG MODE" in r.json()["error"]
 
 
-def test_a_channel_write_invalidates_the_cached_map(client):
+def test_a_channel_write_invalidates_the_cached_map(client, signed):
     """The map is exactly "which scenes sit on which channel", so a
     set_channel that lands must not leave the cached copy claiming the old
     layout."""
     server._shared_cache["preset"], server._shared_cache["map"] = 0, A_MAP
-    client.post("/api/apply", json={"actions": [
+    client.post("/api/apply", json=signed([
         {"kind": "add_block", "block": "amp", "instance": 1},
         {"kind": "set_channel", "block": "amp", "instance": 1, "value": 1},
-    ]})
+    ]))
     assert server._shared_cache["map"] is None
 
 
