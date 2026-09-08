@@ -8363,7 +8363,7 @@ async function streamPlan(payload) {
 // Build the agreed tone. Takes the sentence rather than reading the input:
 // pasting a long agreed sentence into a one-line box showed the reader the
 // middle of their own request, scrolled sideways, and nothing else.
-async function engage(prompt, name, scenes) {
+async function engage(prompt, name, scenes, wholeRig) {
   prompt = String(prompt || '').trim();
   if (!prompt) return;
   const b = $('cbuild') || $('engage');
@@ -8378,7 +8378,8 @@ async function engage(prompt, name, scenes) {
   // heartbeat, the count and the way out.
   try {
     const plan = await streamPlan({prompt, name: name || null,
-                                   scenes: scenes || null});
+                                   scenes: scenes || null,
+                                   whole_rig: !!wholeRig});
     if (plan.clarification) {
       // The planner asking a question is not an error, and printing it in red
       // under a hidden panel left it nowhere to be answered. It belongs in the
@@ -9191,6 +9192,9 @@ async function apply() {
       body: JSON.stringify({
         actions: currentPlan.actions,
         expected_preset: currentPlan.device ? currentPlan.device.preset.number : null,
+        // Same intent the plan was reviewed under, or the send would splice
+        // block by block after a plan that promised a template.
+        whole_rig: !!currentPlan.whole_rig,
         // Name the revision this was reviewed as (#55). If the plan was edited
         // after review without re-validating, the digest will not match what
         // the server approved and the send is refused rather than silently
@@ -10120,7 +10124,10 @@ function submitRequest() {
     const instruction = route === 'build'
       ? `Build a complete FM9 rig for this request: ${said}`
       : said;
-    engage(instruction);
+    // The server cannot recover this from the actions: "add delay, reverb and
+    // a chorus" and "build me a Vai rig" are both three add_blocks, and only
+    // one of them may replace the grid. So the routing decision travels.
+    engage(instruction, null, null, route === 'build');
   }
 }
 

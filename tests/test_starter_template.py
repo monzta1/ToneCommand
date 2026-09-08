@@ -117,3 +117,80 @@ def test_into_current_clears_the_loaded_buffer_and_lays_the_template():
         placed = sorted(c.effect_id for c in (d.read_grid() or []))
         assert placed == sorted(e for e, _ in st.TEMPLATE_CHAIN)
         assert "edit buffer" in rep["detail"]
+
+
+# --- used implicitly, not on request (2026-09-07) -----------------------
+#
+# "call the starter template implicitly! even if the user doesnt do it - what
+# does he know? we should offer a better experience rather than keep him
+# waiting 10 min". It was laid only on an EMPTY slot, so a whole-rig build
+# onto an occupied one spliced block by block: the slow, timing-fragile path
+# #47 was written to avoid, on the request most likely to need many blocks.
+
+import server as _server
+from fastapi.testclient import TestClient as _TC
+from fm9.sim import SimFM9 as _Sim
+
+
+def _client(monkeypatch, actions):
+    monkeypatch.setattr(_server, "_fm9", _Sim(_server.reg))
+    monkeypatch.setattr(_server.planner, "plan", lambda *a, **kw: {
+        "summary": "a rig", "clarification": None, "actions": actions})
+    return _TC(_server.app)
+
+
+ADDS = [{"kind": "add_block", "block": "delay", "instance": 1},
+        {"kind": "add_block", "block": "reverb", "instance": 1}]
+
+
+def test_a_whole_rig_build_says_it_will_replace_the_grid(monkeypatch):
+    """It replaces what is loaded, so it is said BEFORE the player confirms
+    rather than discovered afterwards."""
+    c = _client(monkeypatch, ADDS)
+    d = c.post("/api/plan", json={"prompt": "build me a vai rig",
+                                  "whole_rig": True}).json()
+    warns = " ".join(w for a in d["actions"]
+                     for w in (a.get("validation_warnings") or []))
+    assert "replaces what is on the grid" in warns
+    assert "EDIT BUFFER only" in warns, "must say it is recoverable"
+
+
+def test_a_tweak_never_offers_to_replace_the_grid(monkeypatch):
+    """THE safety property. 'add delay, reverb and a chorus' is also three
+    add_blocks, and wiping the grid for it would destroy the player's amp."""
+    c = _client(monkeypatch, ADDS)
+    d = c.post("/api/plan", json={"prompt": "add a delay and reverb"}).json()
+    warns = " ".join(w for a in d["actions"]
+                     for w in (a.get("validation_warnings") or []))
+    assert "replaces what is on the grid" not in warns
+    assert d.get("whole_rig") is False
+
+
+def test_the_intent_reaches_the_send(monkeypatch):
+    """Apply decides whether to lay or splice, so a plan reviewed as a
+    template build must not splice when it is sent."""
+    c = _client(monkeypatch, ADDS)
+    d = c.post("/api/plan", json={"prompt": "build a rig",
+                                  "whole_rig": True}).json()
+    assert d["whole_rig"] is True, "the send has no other way to know"
+
+
+def test_the_ui_sends_its_routing_decision():
+    """The server cannot recover intent from the actions, so the UI's own
+    build-vs-modify routing has to travel with the request."""
+    from pathlib import Path
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text()
+    assert "whole_rig: !!wholeRig" in ui
+    assert "engage(instruction, null, null, route === 'build')" in ui
+    assert "whole_rig: !!currentPlan.whole_rig" in ui, "the send must carry it"
+
+
+def test_the_planner_is_told_the_template_blocks_exist():
+    """roster_text() was written and tested for #47 and never called, so on an
+    empty slot the planner emitted add_block for all seven template blocks and
+    every one no-opped at apply. A longer plan for the model to write and a
+    longer list for the player to read, for nothing."""
+    import inspect
+    src = inspect.getsource(_server._plan_for)
+    assert "roster_text()" in src
+    assert "_will_lay_template" in src

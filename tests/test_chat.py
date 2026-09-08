@@ -183,7 +183,7 @@ def test_building_takes_the_sentence_rather_than_the_input_box():
     the middle of their own request, scrolled sideways, and nothing else."""
     ui = (ROOT / "ui" / "index.html").read_text()
     assert "engage(chatRequest, chatName, chatScenes)" in ui
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "$('prompt').value" not in fn, "building must not touch the input"
     # The fetch moved into streamPlan, the one way any plan is asked for, so
     # FIX IT could share it instead of growing a quieter copy.
@@ -197,7 +197,7 @@ def test_a_planner_question_lands_in_the_conversation_not_in_red():
     The UI printed the question as an error and hid the panel, leaving it
     nowhere to be answered. The conversation is where a question belongs."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "chatLog.push({role: 'assistant', content: plan.clarification})" in fn
     assert "needs clarification" not in fn, "no longer logged as an error"
 
@@ -425,7 +425,7 @@ def test_a_finished_plan_announces_itself_and_takes_the_stage():
     the PLAN stage forward the moment showPlan runs, so "done" and "nothing
     happened" can never look identical."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "Proposed ${n} change" in fn
     assert "Nothing has been " in fn and "review, confirm, and send" in fn
     shown = ui.split("function showPlan(plan)")[1].split("\nfunction ")[0]
@@ -434,13 +434,13 @@ def test_a_finished_plan_announces_itself_and_takes_the_stage():
 
 def test_a_plan_with_no_actions_still_says_something():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "That produced no changes to make." in fn
 
 
 def test_a_failed_build_is_not_silence():
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     # The failure lands in the CONVERSATION, not just the log, and in plain
     # language: the player is handed a next step, not a diagnosis.
     assert "plainPlanError(e.message)" in fn
@@ -514,7 +514,7 @@ def test_notes_look_different_from_what_either_party_said():
 def test_the_working_line_is_always_cleared():
     """A spinner that outlives its request is a hang that never resolves."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    for name in ("async function engage(prompt, name, scenes)", "async function apply()"):
+    for name in ("async function engage(", "async function apply()"):
         fn = ui.split(name)[1].split("\n}\n")[0]
         tail = fn.split("finally {")[-1]
         assert "chatWorking = ''" in tail, name
@@ -875,7 +875,7 @@ def test_a_long_build_can_be_left():
     # The catch lives in the caller; the message says the backend was
     # cancelled too, which became true when the server started killing the
     # planner subprocess on disconnect.
-    caught = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    caught = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "e.name === 'AbortError'" in caught
     assert "Nothing was built and nothing was sent" in caught
 
@@ -893,7 +893,7 @@ def test_the_button_is_not_touched_after_it_is_gone():
     """renderChat rewrites the transcript, so the BUILD THIS element the
     handler started with is detached by the time it finishes."""
     ui = (ROOT / "ui" / "index.html").read_text()
-    fn = ui.split("async function engage(prompt, name, scenes)")[1].split("\n}\n")[0]
+    fn = ui.split("async function engage(")[1].split("\n}\n")[0]
     assert "document.body.contains(b)" in fn
 
 

@@ -721,6 +721,11 @@ def state_text(snap: dict) -> str:
 
 class PromptBody(BaseModel):
     prompt: str
+    #: This request builds a WHOLE RIG rather than adjusting the loaded one.
+    #: Set by the UI's request routing. It cannot be recovered from the
+    #: actions: "add delay, reverb and a chorus" and "build me a Vai rig" are
+    #: both three add_blocks, and only one of them may replace the grid.
+    whole_rig: bool = False
     #: What the conversation decided this preset should be called, when it
     #: decided anything. Empty for an adjustment to what is already loaded.
     name: str | None = None
@@ -799,6 +804,8 @@ GUIDED_ORIGINS = frozenset({"sound_check_correction", "guided_correction"})
 
 class ApplyBody(BaseModel):
     actions: list[Action]
+    #: Carried from the request that produced this plan; see PromptBody.
+    whole_rig: bool = False
     expected_preset: int | None = None
     #: Who proposed this. Absent or "player" means a deliberate manual edit.
     origin: str | None = None
@@ -1500,6 +1507,33 @@ def _repair_refused_actions(result: dict, context: str) -> None:
         repaired += 1
 
 
+
+def _will_lay_template(body) -> bool:
+    """Whether this build will start from the starter template.
+
+    Two cases, and the second is the one a player should never have to ask
+    for. An EMPTY slot has always been laid automatically. A WHOLE-RIG build
+    onto an occupied slot was not, so it spliced block by block: the slow,
+    timing-fragile path that #47 exists to avoid, on the exact request most
+    likely to need many blocks.
+
+    `whole_rig` comes from the client because intent cannot be recovered from
+    the actions. "add delay, reverb and a chorus" and "build me a Vai rig" can
+    both be three add_blocks, and only one of them may replace the grid.
+
+    Never raises: if the device cannot be read, the answer is no and the old
+    behaviour stands.
+    """
+    try:
+        with _lock:
+            grid = get_fm9().read_grid()
+    except Exception:      # noqa: BLE001  no device, busy, anything
+        return False
+    if grid == []:
+        return True
+    return bool(getattr(body, "whole_rig", False))
+
+
 def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     """Everything /api/plan does, so the streaming twin cannot drift from it.
 
@@ -1567,6 +1601,14 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     # so it is told exactly what it has rather than being handed an
     # empty-looking state and left to assume.
     context = state_text(snap) if snap else rigprofile.as_blank_text()
+    # Tell the planner the starter template will be there. This roster has
+    # existed and been tested since #47 and was never wired to anything, so on
+    # an empty slot the planner saw a bare grid, emitted add_block for all
+    # seven template blocks, and every one of them no-opped at apply time
+    # because the template had already laid them. That is a longer plan for
+    # the model to write and a longer list for the player to read, for nothing.
+    if _will_lay_template(body):
+        context += "\n\n" + starter_template.roster_text()
     context += ir_context(body.prompt)
     try:
         if not _hold_settings(cancel, on_status):
@@ -1575,6 +1617,10 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             result = _plan_counting(body.prompt, context, on_count, cancel)
         finally:
             _settings_lock.release()
+        # The send needs the same intent the plan was made under, or apply
+        # would splice after a plan that was reviewed as a template build.
+        if isinstance(result, dict) and "actions" in result:
+            result["whole_rig"] = bool(getattr(body, "whole_rig", False))
         # This exact action set is what Review shows and Confirm arms against.
         # Recording it lets Send prove it is transmitting the reviewed plan.
         try:
@@ -1655,6 +1701,19 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                                 "cab, delay, reverb, output; the extras "
                                 "bypassed until the tone uses them), then voice "
                                 "the requested tone."])
+                    elif getattr(body, "whole_rig", False):
+                        # The player never asks for this, but it REPLACES what
+                        # is on the grid, so it is said before they confirm
+                        # rather than discovered afterwards.
+                        adds[0]["validation_warnings"] = (
+                            adds[0]["validation_warnings"] + [
+                                "This is a whole-rig build, so ToneCommand "
+                                "will lay a fresh starter chain first instead "
+                                "of splicing blocks in one at a time, which is "
+                                "much faster. It replaces what is on the grid "
+                                "in the EDIT BUFFER only: nothing is stored, "
+                                "so reloading the preset brings the old one "
+                                "back."])
                 except FM9NotFound:
                     drop_fm9()
         # Pre-ship tone review (config/tone_rules.md rule 14): the deterministic
@@ -4654,25 +4713,49 @@ def _apply_for(body: ApplyBody, on_step=None):
             # renames a plan had already landed in the buffer.
             if any(a.kind == "add_block" for a in body.actions):
                 try:
-                    if fm9.read_grid() == []:      # no cells at all: empty
+                    grid = fm9.read_grid()
+                    empty = grid == []
+                    # A whole-rig build onto an OCCUPIED slot used to splice
+                    # every block in one at a time, which is the slow path
+                    # #47 was written to avoid, on the request most likely to
+                    # need many blocks. Laying the template instead is one
+                    # pass with no cell ever sliding. Edit buffer only, so
+                    # reloading the preset brings the old one back, and the
+                    # plan said so before it was confirmed.
+                    replace = (not empty) and getattr(body, "whole_rig", False)
+                    if empty or replace:
                         cur = fm9.current_preset()
                         # Lay the whole starter template at once (issue #47):
                         # placing left to right on the empty grid never slides a
                         # cell, so no splice happens. add_block for a template
                         # block then no-ops (it is already present), so what used
                         # to splice in drive/delay/reverb costs nothing.
-                        chain = (starter_template.lay(fm9, reg, slot=cur[0])
-                                 if cur else
-                                 {"ok": False,
-                                  "detail": "could not read which preset is "
-                                            "loaded, so no chain was built"})
+                        if not cur:
+                            chain = {"ok": False,
+                                     "detail": "could not read which preset is "
+                                               "loaded, so no chain was built"}
+                        elif replace:
+                            # into_current clears the loaded buffer and lays
+                            # the template there; it does not go hunting for a
+                            # free slot, which would build the tone somewhere
+                            # the player is not looking.
+                            chain = starter_template.lay(fm9, reg,
+                                                         into_current=True)
+                        else:
+                            chain = starter_template.lay(fm9, reg, slot=cur[0])
                         results.append({
                             "action": {"kind": "build_chain"},
                             "ok": bool(chain.get("ok")),
-                            "detail": "Built the basic signal path first "
-                                      "(starter template: drive, delay and "
-                                      "reverb laid in bypassed, ready to switch "
-                                      "on), then continued with your tone."})
+                            "detail": ("Replaced the grid with a fresh starter "
+                                       "chain (edit buffer only, reload the "
+                                       "preset to get the old one back), then "
+                                       "continued with your tone."
+                                       if replace else
+                                       "Built the basic signal path first "
+                                       "(starter template: drive, delay and "
+                                       "reverb laid in bypassed, ready to "
+                                       "switch on), then continued with your "
+                                       "tone.")})
                         log.info("apply: empty slot foundation: %s",
                                  chain.get("detail", ""))
                         if on_step is not None:
@@ -4680,8 +4763,11 @@ def _apply_for(body: ApplyBody, on_step=None):
                                 on_step({"done": 0,
                                          "total": len(body.actions),
                                          "ok": bool(chain.get("ok")),
-                                         "what": "starting chain into the "
-                                                 "empty slot"})
+                                         "what": ("fresh starter chain "
+                                                  "(replacing the grid)"
+                                                  if replace else
+                                                  "starting chain into the "
+                                                  "empty slot")})
                             except Exception:
                                 pass
                         if not chain.get("ok"):
