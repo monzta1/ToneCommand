@@ -356,8 +356,9 @@ def test_the_measured_reference_reaches_the_ranker(monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "recommend",
-                        lambda need, target="fm9", k=5, reference=None:
-                        seen.update(reference=reference) or [])
+                        lambda need, target="fm9", k=5, reference=None,
+                        detail=None: seen.update(reference=reference)
+                        or (detail or {}).update(understood=True) or [])
     server.ir_context("darker", {"state": "measured",
                                  "reference": "/lib/current.wav"})
     assert seen.get("reference") == "/lib/current.wav"
@@ -371,8 +372,9 @@ def test_a_gear_anchored_context_states_the_limit_and_has_no_reference(monkeypat
     seen = {}
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "recommend",
-                        lambda need, target="fm9", k=5, reference=None:
-                        seen.update(reference=reference) or
+                        lambda need, target="fm9", k=5, reference=None,
+                        detail=None: seen.update(reference=reference)
+                        or (detail or {}).update(understood=True) or
                         [{"name": "A.wav", "pack": "P", "match": 0.4,
                           "why": [], "unmatched": []}])
     monkeypatch.setattr(ir_service, "gaps_online", lambda *a, **k: [])
@@ -395,8 +397,9 @@ def test_a_shared_profile_never_borrows_the_connected_rigs_cab(monkeypatch):
     seen = {}
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
     monkeypatch.setattr(ir_service, "recommend",
-                        lambda need, target="fm9", k=5, reference=None:
-                        seen.update(reference=reference, called=True) or [])
+                        lambda need, target="fm9", k=5, reference=None,
+                        detail=None: seen.update(reference=reference,
+                                                 called=True) or [])
     monkeypatch.setattr(server, "_profile",
                         {"loaded": {"preset_name": "shared", "author": "someone"}})
     monkeypatch.setattr(server.planner, "plan",
@@ -428,8 +431,9 @@ def _sel(monkeypatch, result, anchor, capture, preserve_asked=False):
                         or {"preserve": preserve_asked})
     monkeypatch.setattr(
         ir_service, "recommend",
-        lambda need, target="fm9", k=3, reference=None, preserve=None:
-        capture.update(need=need, reference=reference, preserve=preserve) or [])
+        lambda need, target="fm9", k=3, reference=None, preserve=None,
+        detail=None: capture.update(need=need, reference=reference,
+                                    preserve=preserve) or [])
     import server
     return server.cab_listening_set(result, anchor)
 
@@ -603,3 +607,142 @@ def test_the_profile_path_hands_the_selector_the_same_two(monkeypatch):
                                      whole_rig=True)
     assert got.get("request") == "same cab, just darker"
     assert got.get("whole_rig") is True
+
+
+# --- the roster's own speaker is authoritative (2026-09-08) ---------------
+#
+# Brief 28.3 item 5. The roster records bank 3 slot 42 as a V30 in its
+# `group` field, but the anchor emitted only the Fractal label
+# "4x12 RECTO SM57", which parses to a config, a brand and a mic and NO
+# SPEAKER. So preserving that cab could not reject a Greenback: the one
+# property that decides how a cabinet sounds was dropped on the way out.
+
+def test_the_anchor_carries_the_rosters_speaker():
+    import server
+    a = server.current_anchor({"cab_sel": {"bank": 3, "ordinal": 42}})
+    rec = (server.reg.cab_models.get("3") or {}).get("42") or {}
+    assert rec.get("group"), "fixture assumption: this slot records a speaker"
+    assert a["speaker"] == rec["group"]
+    assert rec["group"] in a["gear"], \
+        "the speaker never reached the string the search is constrained by"
+
+
+def test_the_preserve_constraint_names_the_speaker(monkeypatch):
+    """It is the `gear` string that must be passed, not the bare label: only
+    the one carrying the speaker constrains anything about the speaker."""
+    import server
+    seen = {}
+    anchor = server.current_anchor({"cab_sel": {"bank": 3, "ordinal": 42}})
+    _sel(monkeypatch, {"summary": "keep the same character",
+                       "cab_need": "darker"}, anchor, seen,
+         preserve_asked=True)
+    rec = (server.reg.cab_models.get("3") or {}).get("42") or {}
+    assert rec["group"] in (seen["preserve"] or ""), \
+        "a Greenback could satisfy this preserve and nothing would notice"
+
+
+# --- an empty listening set is an answer, and has a reason ---------------
+#
+# Brief 28.3 item 13. recommend() returned None for off, unreachable and
+# genuinely-empty alike, and `or []` turned all three into a valid empty
+# result with no `why`. The player saw an empty panel and no explanation,
+# which reads as "cabs were never considered": the original complaint.
+
+def _sel_rows(monkeypatch, rows, detail_updates):
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "intent", lambda text: {})
+    monkeypatch.setattr(
+        ir_service, "recommend",
+        lambda need, target="fm9", k=3, reference=None, preserve=None,
+        detail=None: ((detail if detail is not None else {}).update(
+            detail_updates) or rows))
+    import server
+    return server.cab_listening_set({"cab_need": "4x12 v30"},
+                                    {"state": "unresolved"})
+
+
+def test_a_dead_library_says_it_did_not_answer(monkeypatch):
+    out = _sel_rows(monkeypatch, None,
+                    {"why": "the IR library did not answer"})
+    assert out["candidates"] == []
+    assert out["why"] == "the IR library did not answer"
+
+
+def test_an_unparseable_request_is_not_reported_as_an_empty_shelf(monkeypatch):
+    """The rule this whole file exists for: not understood is not the same
+    as not available, and the player has to be told which one happened."""
+    out = _sel_rows(monkeypatch, [], {
+        "why": "that request did not parse into anything a cab can be: "
+               "steve, vai",
+        "unmatched": ["steve", "vai"], "understood": False})
+    assert "did not parse" in out["why"]
+    assert out["unmatched"] == ["steve", "vai"]
+    assert "own" not in out["why"] and "empty" not in out["why"]
+
+
+def test_a_genuinely_empty_shelf_says_that_instead(monkeypatch):
+    out = _sel_rows(monkeypatch, [], {
+        "why": "nothing in the library moves the way that asks",
+        "understood": True})
+    assert out["why"] == "nothing in the library moves the way that asks"
+    assert "unmatched" not in out
+
+
+# --- the pre-plan context (brief 19.5, 28.3 item 6) ----------------------
+#
+# This search runs BEFORE the planner, on the player's raw words, and a gear
+# matcher cannot read "steve vai lead tone". It scored 0.07 and handed the
+# planner a Soldano SLO30 capture. That is where the Soldano in the reported
+# build actually came from: not from the review panel, from this prompt.
+
+def _ctx(monkeypatch, rows, detail_updates, prompt="steve vai lead tone"):
+    import server
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "gaps_online", lambda *a, **k: [])
+    monkeypatch.setattr(ir_service, "library_shape", lambda: {
+        "cab_irs": 7703, "unique_irs": 2452,
+        "speakers": {"Celestion Greenback": 6752, "Celestion V30": 30},
+        "brands": {"Marshall": 5620, "Mesa": 281},
+        "mics": {"Shure SM57": 772}})
+    monkeypatch.setattr(
+        ir_service, "recommend",
+        lambda need, target="fm9", k=5, reference=None, preserve=None,
+        detail=None: ((detail if detail is not None else {}).update(
+            detail_updates) or rows))
+    return server.ir_context(prompt, {"state": "unresolved"})
+
+
+SOLDANO = [{"name": "Soldano SLO30 - Emil Rohbe.wav", "pack": "t3k",
+            "match": 0.07, "why": [], "unmatched": ["steve", "vai"]}]
+
+
+def test_an_unparseable_prompt_never_reaches_the_planner_as_a_ranked_list(
+        monkeypatch):
+    ctx = _ctx(monkeypatch, SOLDANO,
+               {"understood": False, "unmatched": ["steve", "vai"]})
+    assert "<ir_candidates>" not in ctx, \
+        "the planner was handed a ranked list built from words nobody parsed"
+    assert "Soldano" not in ctx
+
+
+def test_it_reports_the_library_contents_instead(monkeypatch):
+    """Facts, not a ranking. This is what lets the planner name a cab the
+    player actually owns."""
+    ctx = _ctx(monkeypatch, SOLDANO,
+               {"understood": False, "unmatched": ["steve", "vai"]})
+    assert "7703" in ctx and "Celestion Greenback" in ctx
+    assert "did not understand this request as GEAR" in ctx
+    assert "NOT A REPORT THAT THE LIBRARY IS EMPTY" in ctx
+    assert "cab_need" in ctx, "it never says how to ask the question properly"
+
+
+def test_a_parseable_prompt_still_gets_its_ranked_list(monkeypatch):
+    """The fix must not remove retrieval from requests it works on."""
+    rows = [{"name": "Mesa 4x12 V30 SM57.wav", "pack": "P", "match": 0.63,
+             "why": ["Celestion V30"], "unmatched": []}]
+    ctx = _ctx(monkeypatch, rows, {"understood": True},
+               prompt="marshall 4x12 v30 bright lead")
+    assert "<ir_candidates>" in ctx
+    assert "Mesa 4x12 V30 SM57.wav" in ctx

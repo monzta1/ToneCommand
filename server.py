@@ -508,10 +508,17 @@ def current_anchor(snap, profile: dict = None) -> dict:
 
     rec = (reg.cab_models.get(str(bank)) or {}).get(str(ordinal)) or {}
     if rec.get("fractal"):
+        # `group` is the roster's own speaker field and it is the only
+        # authoritative one: the Fractal label "4x12 RECTO SM57" parses to a
+        # config, a brand and a mic and NO SPEAKER, so bank 3 slot 42, which
+        # the roster records as a V30, could be "preserved" by a Greenback
+        # without anything noticing. Appending it makes the speaker parse,
+        # and it costs nothing when the roster has no group.
+        gear = " ".join(filter(None, [rec.get("fractal"), rec.get("group")]))
         return {"state": "gear_anchored", "bank": bank, "ordinal": ordinal,
                 "name": sel.get("name") or rec.get("fractal"),
                 "fractal": rec.get("fractal"), "models": rec.get("model"),
-                "gear": rec.get("fractal")}
+                "speaker": rec.get("group"), "gear": gear}
     return {"state": "unresolved", "bank": bank, "ordinal": ordinal,
             "why": "this cab is not one of yours and is not in the roster"}
 
@@ -581,20 +588,23 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         # so it parses into real constraints. The display label carries bank
         # noise ("1x4 Pig 57 (FACTORY 1)") and the decoded prose is a
         # sentence, and neither constrains as well.
-        preserve = (anchor.get("fractal") or anchor.get("models")
-                    or anchor.get("name") or anchor.get("gear"))
+        preserve = (anchor.get("gear") or anchor.get("fractal")
+                    or anchor.get("models") or anchor.get("name"))
     reference = anchor.get("reference") if anchor.get("state") == "measured" else None
     out["preserved"], out["reference"] = preserve, reference
+    detail = {}
     try:
         rows = ir_service.recommend(target, "fm9", k, reference=reference,
-                                    preserve=preserve) or []
-    except TypeError as exc:
+                                    preserve=preserve, detail=detail) or []
+    except (TypeError, AttributeError, KeyError, IndexError, ValueError) as exc:
         # A programming error here is NOT "the library did not answer". This
         # exact except swallowed a missing `preserve` parameter and reported a
         # silently unconstrained result as a working one, which is how the
         # constraint appeared to work for a whole commit while doing nothing.
         # Never let the IR step break a plan, but never let it hide a bug in
-        # this file either.
+        # this file either. AttributeError and KeyError are the same kind of
+        # mistake as the TypeError that started this and were still being
+        # reported as the library being down.
         log.error("cab_listening_set: bad call into ir_service: %s", exc)
         out["why"] = f"internal error building the cab search: {exc}"
         return out
@@ -603,6 +613,13 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
         out["why"] = "the IR library did not answer"
         return out
 
+    # An empty set is an ANSWER and it has a reason. Without this a dead
+    # service, an unparseable request and a genuinely empty shelf all reached
+    # the player as the same silent empty list.
+    if not rows:
+        out["why"] = detail.get("why") or "nothing in the library answers that"
+    if detail.get("unmatched"):
+        out["unmatched"] = detail["unmatched"]
     out["candidates"] = [{
         "name": r.get("name"), "path": r.get("path"), "pack": r.get("pack"),
         "match": r.get("match"), "why": r.get("why"),
@@ -614,6 +631,54 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
                                   if reference else None),
     } for r in rows[:k]]
     return out
+
+
+def _library_shape_text(anchor: dict, detail: dict) -> str:
+    """The library's CONTENTS, for a request no gear matcher could parse.
+
+    Facts only: counts and the names actually on the shelf. Deliberately not
+    a ranked list, because there is nothing here to rank against, and a list
+    presented as "these suit the request" when the request was never
+    understood is the exact confusion this replaces.
+    """
+    from fm9 import ir_service
+    shape = ir_service.library_shape()
+    if not shape:
+        return ""
+    lines = []
+    st = anchor.get("state")
+    if st == "gear_anchored":
+        lines.append(f"\nCURRENT CAB: {_fence(anchor.get('name'))}"
+                     + (f", which models {_fence(anchor.get('models'))}"
+                        if anchor.get("models") else "") + ".")
+    elif st == "measured":
+        lines.append(f"\nCURRENT CAB, measured: {_fence(anchor.get('name'))}.")
+    unmet = detail.get("unmatched") or []
+    lines.append(
+        "\nIRCommand did not understand this request as GEAR"
+        + (": " + _fence(", ".join(unmet)) if unmet else "")
+        + ". It knows brands, speakers, mics and cab sizes, not artist, band "
+        "or song names. THIS IS NOT A REPORT THAT THE LIBRARY IS EMPTY. Here "
+        "is what the player actually owns:")
+
+    def _top(d, n=8):
+        items = sorted((d or {}).items(), key=lambda kv: -kv[1])[:n]
+        return ", ".join(f"{_fence(k)} ({v})" for k, v in items)
+
+    lines.append(f"- {shape.get('cab_irs', 0)} cab IRs, "
+                 f"{shape.get('unique_irs', 0)} of them distinct")
+    for label, key in (("speakers", "speakers"), ("cabinets", "brands"),
+                       ("mics", "mics")):
+        got = _top(shape.get(key))
+        if got:
+            lines.append(f"- {label}: {got}")
+    lines.append(
+        "Decide the cab from the amp you chose and the gear that sound "
+        "implies, name it in `cab_need` as gear terms (for example "
+        "\"4x12 celestion v30 sm57 bright lead\"), and the library will be "
+        "searched properly on those terms after this plan. Do not tell the "
+        "player they own nothing suitable.")
+    return "\n".join(lines) + "\n"
 
 
 def ir_context(prompt: str, anchor: dict = None) -> str:
@@ -628,6 +693,7 @@ def ir_context(prompt: str, anchor: dict = None) -> str:
     if not ir_service.enabled():
         return ""
     anchor = anchor or {"state": "unresolved"}
+    detail = {}
     try:
         # A relative request is only answerable against something. With a
         # measured Current, "darker" means darker THAN THAT, which is what
@@ -636,9 +702,25 @@ def ir_context(prompt: str, anchor: dict = None) -> str:
         # 5.90 dB of collateral curve change without the reference, 2.93 dB
         # with it, on the identical request.
         hits = ir_service.recommend(prompt or "", "fm9", 5,
-                                    reference=anchor.get("reference")) or []
+                                    reference=anchor.get("reference"),
+                                    detail=detail) or []
     except Exception:
         return ""
+    # THE RANKED LIST ONLY SURVIVES A REQUEST THAT PARSED (brief 19.5).
+    #
+    # This search runs BEFORE the planner, on the player's raw words, and a
+    # gear matcher cannot read "steve vai lead tone". It scored 0.07 and
+    # handed the planner a Soldano SLO30 capture, which is where the Soldano
+    # in the reported build actually came from: not from the panel, from this
+    # prompt. Ranking an unparseable request produces a confident-looking
+    # list of whatever shares a filename fragment.
+    #
+    # So when the request did not parse, the planner is told what the library
+    # CONTAINS instead. That is the honest pre-plan fact, it is what lets the
+    # planner name a cab the player owns, and the real ranked search then runs
+    # afterwards on the planner's own gear translation, where it works.
+    if not detail.get("understood", True):
+        return _library_shape_text(anchor, detail)
     if not hits:
         return ""
     lines = []

@@ -249,7 +249,7 @@ def safe_ir_path(path: str):
 
 
 def recommend(need: str, target: str = "fm9", k: int = 3,
-              reference: str = None, preserve: str = None):
+              reference: str = None, preserve: str = None, detail: dict = None):
     """Best-matching IRs for a need, or None when off / unreachable / empty.
 
     Each result carries at least name, path, tags and score. When IRCommand has
@@ -262,6 +262,8 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     a factory cab has no IR file, so there is nothing to measure it against.
     """
     if not enabled() or not (need or "").strip():
+        if detail is not None:
+            detail["why"] = "the IR library is not connected"
         return None
     q = f"/ir/recommend?need={quote(need)}&target={quote(target)}&k={int(k)}"
     if reference:
@@ -269,8 +271,30 @@ def recommend(need: str, target: str = "fm9", k: int = 3,
     if preserve:
         q += f"&preserve={quote(preserve)}"
     d = _get(q)
-    if not d or "results" not in d:
+    # Three different Nones used to come back as one. A caller doing
+    # `recommend(...) or []` turned a DEAD SERVICE into a valid empty answer
+    # with nothing to say about it, so the panel showed an empty list and no
+    # reason. `detail` separates them without changing the return contract.
+    if d is None:
+        if detail is not None:
+            detail["why"] = "the IR library did not answer"
         return None
+    if "results" not in d:
+        if detail is not None:
+            detail["why"] = "the IR library sent something unreadable"
+        return None
+    if detail is not None:
+        detail.update({k2: v for k2, v in d.items() if k2 != "results"})
+        if not d["results"]:
+            # Understood and unavailable are different answers and the
+            # service now distinguishes them. Passing that through is the
+            # whole point: "I did not understand steve vai" must never be
+            # delivered as "you own no cab like that".
+            detail["why"] = (
+                "nothing in the library moves the way that asks"
+                if d.get("understood", True) else
+                "that request did not parse into anything a cab can be: "
+                + ", ".join(d.get("unmatched") or ["no gear was named"]))
     return d["results"]
 
 
@@ -347,6 +371,23 @@ def digest_of(path) -> str:
     except OSError:
         return ""
     return h.hexdigest()
+
+
+def library_shape() -> dict:
+    """What the player's library CONTAINS, with no request involved.
+
+    This is what the planner needs before it has translated anything: the
+    brands, speakers and mics actually on the shelf, so it can name a cab the
+    player owns instead of one it imagined. A ranked search cannot serve that
+    purpose, because ranking needs a parsed request and the planner has not
+    produced one yet.
+
+    Returns {} when the service is off or down, and the planner carries on
+    with the factory roster exactly as before.
+    """
+    if not enabled():
+        return {}
+    return _get("/stats", timeout=2) or {}
 
 
 def intent(text: str) -> dict:

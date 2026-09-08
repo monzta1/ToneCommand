@@ -5,6 +5,27 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- **The cab search ran on words no gear matcher could read.** Retrieval fired
+  BEFORE the planner, on the player's raw prompt, so "steve vai lead tone"
+  scored 0.07 and handed the planner a Soldano SLO30 capture. That is where
+  the Soldano actually came from: the planner's own prompt, not the review
+  panel. When a request does not parse into gear, the planner is now told
+  what the library CONTAINS (counts, speakers, cabinets, mics) and asked to
+  name the cab in gear terms; the real ranked search then runs afterwards on
+  that translation, where it works. A request that does parse is unchanged.
+- **The one property that decides how a cabinet sounds was dropped.** The
+  roster records bank 3 slot 42 as a V30 in its `group` field, but the anchor
+  emitted only "4x12 RECTO SM57", which parses to a size, a brand and a mic
+  and no speaker. Preserving that cab could not reject a Greenback. The
+  speaker now reaches the constraint.
+- **An empty cab panel gave no reason.** A dead IR service, an unparseable
+  request and a genuinely empty shelf all arrived as the same silent empty
+  list, which reads as "cabs were never considered". Each now says which one
+  happened, and an unparseable request is never reported as an empty shelf.
+- **Programming errors still hid as an absent service.** Only `TypeError` was
+  separated; `AttributeError`, `KeyError`, `IndexError` and `ValueError` were
+  still reported as "the IR library did not answer".
+
 - **Review never showed the cab reasoning it was given.** The plan built a
   constrained listening set on the server and the Review panel ignored it,
   running its own unconstrained `/api/ir/recommend` on the player's raw
