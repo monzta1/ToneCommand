@@ -1,9 +1,21 @@
 """The device adapter contract (ARCHITECTURE.md, step 1 of the migration).
 
-Any device family ToneCommand supports satisfies this Protocol. The FM9
-device and its simulator are certified against it by tests; new devices
+Any device family ToneCommand supports satisfies this Protocol. New devices
 (HeadRush, ToneX, Kemper, your fridge) implement the same surface and
 inherit the invariant safety layer above it.
+
+WHAT "CERTIFIED" MEANS HERE, AND WHAT IT DOES NOT. `conformance()` checks the
+FM9 against this contract by signature, and a test pins it. But SimFM9 is a
+factory returning a real FM9 on simulated ports, so it is the same class by a
+second route, not a second implementation. The contract therefore has exactly
+one implementation, and passing proves self-consistency rather than
+portability. That is expected at this stage: ARCHITECTURE.md step 4 is where
+adapter #2 stresses it, and the rule there is to fix the CONTRACT, not the
+adapter. The first evidence arrived early, from the FM9 itself: this file
+declared select_preset(number) and set_scene(scene) while the implementation
+took (preset) and (scene_1based), so a second adapter written to these names
+and called by keyword would have broken. The contract was the wrong one, as
+it already said set_channel(channel_0based).
 
 This is a typing.Protocol, not a base class: existing device code is not
 forced to inherit anything, it just has to actually provide the surface.
@@ -113,9 +125,9 @@ class DeviceAdapter(Protocol):
         """(number, name) of the active preset, or None if unreachable."""
         ...
 
-    def select_preset(self, number: int) -> Any: ...
+    def select_preset(self, preset: int) -> Any: ...
 
-    def set_scene(self, scene: int) -> Any: ...
+    def set_scene(self, scene_1based: int) -> Any: ...
 
     def set_bypass(self, effect_id: int, bypassed: bool) -> Any: ...
 
@@ -127,7 +139,17 @@ class DeviceAdapter(Protocol):
 
     def set_param_ordinal(self, spec: Any, ordinal: int) -> Any: ...
 
-    def bulk_read(self, effect_id: int) -> Any: ...
+    def bulk_read(self, effect_id: int, timeout: float = 1.5) -> Any:
+        """Every value on one block in a single read.
+
+        `timeout` is part of the contract because a bulk read is the slowest
+        thing on the wire and the right wait is device-specific: the FM9's
+        default was raised to 1.5 s after a 0.6 s wait TRUNCATED a reply and
+        produced a diff that looked like real movement (issue #56). An adapter
+        may ignore it, but it must accept it, or a caller that knows its
+        device needs longer has no way to say so.
+        """
+        ...
 
     def slot_name(self, preset: int) -> Any:
         """A slot's STORED name read by number, without selecting it and
@@ -146,3 +168,60 @@ class DeviceAdapter(Protocol):
         ...
 
     def close(self) -> Any: ...
+
+
+# --- certification -------------------------------------------------------
+
+def contract_members() -> tuple:
+    """Every name DeviceAdapter requires, read off the Protocol itself.
+
+    The certification test used to check a hand-written list of method names,
+    which had already drifted: `slot_name` and `is_slot_empty` were in the
+    contract and certified against nothing. A list maintained by hand beside
+    a contract will always drift, so it is derived here instead.
+    """
+    return tuple(sorted(DeviceAdapter.__protocol_attrs__))
+
+
+def conformance(impl) -> list[str]:
+    """Where `impl` fails to satisfy the contract. Empty means it conforms.
+
+    Checks SIGNATURES, not just names. `runtime_checkable` only lets
+    isinstance() test that an attribute exists, so a class whose set_scene
+    takes no scene would still pass isinstance and then fail at the first
+    call. That is the whole risk this contract exists to remove, since the
+    point of a Protocol is that a device written against it works without
+    being tried.
+
+    An implementation may ADD optional parameters (the FM9's bulk_read takes a
+    timeout), but it may not rename or drop a required one, because a caller
+    written against the contract is entitled to pass them by keyword.
+    """
+    import inspect
+
+    problems: list[str] = []
+    for name in contract_members():
+        want, got = getattr(DeviceAdapter, name, None), getattr(impl, name, None)
+        if got is None:
+            problems.append(f"{name}: missing")
+            continue
+        if not callable(got) and not isinstance(got, property):
+            continue                      # a plain attribute satisfies the name
+        try:
+            wsig = inspect.signature(want.fget if isinstance(want, property) else want)
+            gsig = inspect.signature(got.fget if isinstance(got, property) else got)
+        except (TypeError, ValueError):
+            continue                      # not introspectable; the name is all we get
+        need = [p for p in wsig.parameters if p != "self"]
+        have = [p for p in gsig.parameters if p != "self"]
+        if have[:len(need)] != need:
+            problems.append(
+                f"{name}: contract takes {tuple(need)}, implementation takes "
+                f"{tuple(have)}")
+            continue
+        for extra in have[len(need):]:
+            if gsig.parameters[extra].default is inspect.Parameter.empty:
+                problems.append(
+                    f"{name}: implementation requires an extra argument "
+                    f"{extra!r} the contract does not supply")
+    return problems

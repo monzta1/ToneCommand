@@ -71,20 +71,96 @@ def test_effect_type_models_load_and_reach_planner():
     assert reg.effect_type_models["known_ordinals"]["multitap"]["Aurora Delay"] == 1
 
 
-def test_fm9_and_simulator_satisfy_the_device_adapter_contract():
-    """ARCHITECTURE.md step 1: the adapter contract is code, and both the
-    real device class and its simulator are certified against it."""
-    from fm9.adapter import DeviceAdapter
+def test_fm9_satisfies_the_device_adapter_contract():
+    """ARCHITECTURE.md step 1, checked against the contract itself.
+
+    This used to walk a hand-written list of method names, which had already
+    drifted: `slot_name` and `is_slot_empty` were in the contract and
+    certified against nothing. The member list is derived from the Protocol
+    now, so the contract cannot grow past its certification again.
+    """
+    from fm9.adapter import DeviceAdapter, conformance, contract_members
     from fm9.device import FM9
-    from fm9.sim import SimFM9
     from fm9.registry import Registry
-    sim = SimFM9(Registry())
-    assert isinstance(sim, DeviceAdapter)
-    for name in ("status_dump", "current_preset", "select_preset",
-                 "set_scene", "set_bypass", "set_channel",
-                 "set_param_display", "set_param_ordinal", "bulk_read",
-                 "store_preset", "capabilities", "close"):
-        assert callable(getattr(FM9, name, None)), f"FM9 lacks {name}"
+    from fm9.sim import SimFM9
+    assert set(contract_members()) == set(DeviceAdapter.__protocol_attrs__)
+    assert conformance(FM9) == []
+    # SimFM9 is a FACTORY returning a real FM9 on simulated ports, so this
+    # asserts the same class by a second route rather than a second
+    # implementation. Kept because the factory is what every test uses, and
+    # it breaking is worth knowing; see the test below for why it is not
+    # evidence that the contract is portable.
+    assert isinstance(SimFM9(Registry()), DeviceAdapter)
+
+
+def test_the_contract_has_only_ever_had_one_implementation():
+    """Honest limit, pinned so it is known rather than discovered.
+
+    ARCHITECTURE.md step 4 says adapter #2 stresses the contract and that the
+    CONTRACT gets fixed, not the adapter. Until a second device exists, the
+    contract is shaped entirely by the FM9, and conformance() passing proves
+    only self-consistency. Writing this down stops "certified" from being
+    read as "portable".
+    """
+    from fm9.sim import SimFM9
+    from fm9.device import FM9
+    from fm9.registry import Registry
+    assert type(SimFM9(Registry())) is FM9
+
+
+def test_conformance_catches_a_wrong_signature_not_just_a_missing_name():
+    """`runtime_checkable` only lets isinstance() test that an attribute
+    EXISTS, so a class whose set_scene takes no scene passes isinstance and
+    then fails at the first call. That defeats the point of a Protocol, which
+    is that a device written against it works without being tried."""
+    from fm9.adapter import DeviceAdapter, conformance
+    from fm9.device import FM9
+
+    class Wrong:
+        pass
+    for name in DeviceAdapter.__protocol_attrs__:
+        setattr(Wrong, name, getattr(FM9, name))
+    assert conformance(Wrong) == [], "the copy should conform"
+
+    Wrong.set_scene = lambda self: None                    # dropped the argument
+    problems = conformance(Wrong)
+    assert any("set_scene" in p for p in problems), problems
+    assert isinstance(Wrong(), DeviceAdapter), \
+        "isinstance still passes, which is exactly why conformance() exists"
+
+
+def test_a_renamed_contract_argument_is_a_conformance_failure():
+    """Callers are entitled to pass contract arguments by keyword, so a
+    renamed parameter breaks them. This is the real defect found on the FM9:
+    the contract said select_preset(number) and set_scene(scene) while the
+    implementation took (preset) and (scene_1based). The contract was the
+    wrong one, since it already said set_channel(channel_0based)."""
+    from fm9.adapter import DeviceAdapter, conformance
+    from fm9.device import FM9
+
+    class Renamed:
+        pass
+    for name in DeviceAdapter.__protocol_attrs__:
+        setattr(Renamed, name, getattr(FM9, name))
+    Renamed.select_preset = lambda self, number: None      # the old contract name
+    assert any("select_preset" in p for p in conformance(Renamed))
+
+
+def test_an_extra_optional_argument_is_allowed():
+    """The FM9's bulk_read takes a timeout the contract now names. An adapter
+    may widen with OPTIONAL parameters; it may not require one the contract
+    does not supply."""
+    from fm9.adapter import DeviceAdapter, conformance
+    from fm9.device import FM9
+
+    class Wide:
+        pass
+    for name in DeviceAdapter.__protocol_attrs__:
+        setattr(Wide, name, getattr(FM9, name))
+    Wide.set_scene = lambda self, scene_1based, settle=0.2: None
+    assert conformance(Wide) == []
+    Wide.set_scene = lambda self, scene_1based, settle: None   # now REQUIRED
+    assert any("settle" in p for p in conformance(Wide))
 
 
 def test_an_undeclared_device_promises_nothing():
