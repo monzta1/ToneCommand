@@ -562,13 +562,18 @@ def cab_listening_set(result: dict, anchor: dict, k: int = 3) -> dict:
     # Forcing it otherwise is self-contradictory: a build asking for a 4x12
     # V30 while the loaded cab is a 1x4 Pignose would have every candidate
     # excluded for not being a Pignose. Whole-rig builds never preserve, by
-    # definition. These cues mirror PRESERVE_CUES in matcher.py; the matcher
-    # is authoritative and this is the decision to ASK for preservation.
-    asked_to_keep = any(
-        w in (result.get("summary", "") + " " + (result.get("cab_need") or "")
-              + " " + _plan_request_text(result)).lower()
-        for w in ("keep", "same", "similar", "character", "retain", "preserve",
-                  "still", "close to"))
+    # definition.
+    #
+    # The cue list is NOT repeated here. It used to be, under a comment
+    # saying the matcher was authoritative while a second copy sat in this
+    # file doing the actual deciding. IRCommand's parser answers instead, so
+    # a cue added there works here on the next request. It is asked about the
+    # player's own words, because "keep what I have" is a thing the PLAYER
+    # says; the planner's gear translation is a target, not a wish.
+    words = " ".join(filter(None, [_plan_request_text(result),
+                                   result.get("summary", ""),
+                                   result.get("cab_need") or ""]))
+    asked_to_keep = bool(ir_service.intent(words).get("preserve"))
     preserve = None
     if anchor.get("state") == "gear_anchored" and asked_to_keep \
             and not result.get("whole_rig"):
@@ -1761,6 +1766,7 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                 if isinstance(result, dict):
                     result["timing"] = {"plan_s": round(time.monotonic() - _t_off, 1)}
                     result["whole_rig"] = bool(getattr(body, "whole_rig", False))
+                    result["request"] = body.prompt
                     result["cab_selection"] = cab_listening_set(result, _off_anchor)
             finally:
                 _settings_lock.release()
@@ -1835,6 +1841,15 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         if isinstance(result, dict):
             _plan_s = time.monotonic() - _t0
             result["timing"] = {"plan_s": round(_plan_s, 1)}
+            # Both of these have to be set BEFORE the selector runs, and both
+            # used to be set after it. `request` is the player's own words,
+            # which is the only place "keep the same character" can be read
+            # from; without it _plan_request_text() returned "" on every real
+            # call and preservation fired only if the model happened to echo
+            # the word in its summary. `whole_rig` decides whether preserving
+            # is coherent at all, and the selector saw None.
+            result["request"] = body.prompt
+            result["whole_rig"] = bool(getattr(body, "whole_rig", False))
             # ONE post-plan selector, driven by the planner's gear translation
             # rather than the player's raw words (brief 19.5, 26.4).
             result["cab_selection"] = cab_listening_set(result, anchor)

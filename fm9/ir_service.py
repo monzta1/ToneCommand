@@ -25,6 +25,7 @@ only ever asks it for a cab and receives a name, path, tags and score.
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import os
@@ -300,10 +301,71 @@ def linked_source(bank, ordinal):
     if not isinstance(rec, dict):
         return None                     # legacy label only: displayable, unresolved
     src = (rec.get("source") or "").strip()
-    if not src or not Path(src).exists():
+    if not src:
+        return None
+    p = Path(src)
+    if not p.is_file():
         return None                     # the file moved or went away
+
+    # EXISTENCE IS NOT IDENTITY. Until 2026-09-08 this returned here, so a
+    # record naming any readable file on the machine, with any digest or
+    # none, made the loaded cab `measured` and licensed numeric "x dB from
+    # current" claims against it. Proven with
+    # {"source": "/etc/hosts", "digest": "definitely-wrong"}, which came back
+    # measured. Two things have to hold, and neither is about the name.
+    #
+    # 1. The bytes are still the bytes that were linked. A digest recorded at
+    #    link time and never checked records nothing; a re-exported or
+    #    replaced file keeps the path and changes the sound.
+    if digest_of(p) != (rec.get("digest") or ""):
+        return None
+    # 2. IRCommand holds a measured curve for this exact path. That is the
+    #    entire content of the word `measured`, and it is the only place that
+    #    can answer it, so a service that is off or down means unresolved
+    #    rather than assumed. Erring toward gear_anchored costs a numeric
+    #    delta; erring toward measured quotes a distance from a curve nobody
+    #    has.
+    known = _get(f"/ir/measured?path={quote(src)}", timeout=2)
+    if not (known or {}).get("measured"):
+        return None
     return {"path": src, "digest": rec.get("digest"),
             "analysis": rec.get("analysis")}
+
+
+def digest_of(path) -> str:
+    """sha256 of a file's bytes, or "" if it cannot be read.
+
+    The one definition, so the link side and the check side cannot drift into
+    hashing different things. Streamed: an IR is small but a mis-set source
+    path may not be.
+    """
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def intent(text: str) -> dict:
+    """What IRCommand's PARSER makes of a request, before any ranking.
+
+    ToneCommand needs exactly one thing from it: whether the player asked to
+    KEEP what they have. That decision used to be made from a second copy of
+    the cue list, written out in server.py alongside a comment saying the
+    matcher was authoritative. It was not; it was duplicated, and a cue added
+    on one side would silently stop working on the other.
+
+    Returns {} when the service is off, down or slow, and the caller treats
+    that as "not asked for": applying a hard preserve constraint on a guess
+    would exclude every candidate that is not the cab already loaded.
+    """
+    text = (text or "").strip()
+    if not enabled() or not text:
+        return {}
+    return _get(f"/ir/intent?q={quote(text)}", timeout=2) or {}
 
 
 def gaps_online(need: str, target: str = "fm9", k: int = 3):

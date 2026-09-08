@@ -5,6 +5,39 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- **Review never showed the cab reasoning it was given.** The plan built a
+  constrained listening set on the server and the Review panel ignored it,
+  running its own unconstrained `/api/ir/recommend` on the player's raw
+  words instead: no reference cab, no preserve constraint, no gear
+  translation. That is why a "steve vai" build came back offering a Soldano
+  SLO30 capture. Review now renders `cab_selection`, and says which of the
+  three anchor states it is entitled to claim.
+- **`measured` could be forged.** A user-cab slot became a measured anchor,
+  licensing numeric "x dB from current" claims, on the strength of a
+  recorded path that merely existed. A record naming `/etc/hosts` with a
+  wrong digest came back measured. It now requires the file's bytes to match
+  the digest recorded when it was linked, and IRCommand to hold a measured
+  curve for that exact path. A library that is off or down means
+  gear_anchored, never assumed.
+- **Preservation never fired.** "Keep the same character" was read from
+  `result["request"]`, which nothing ever set, so it returned `""` on every
+  real call and preservation only worked if the model happened to echo the
+  word in its own summary. The prompt is now carried onto the result before
+  the selector runs, and so is `whole_rig`, which was set one line too late
+  and let a whole-rig build preserve the cab it was replacing.
+- **A gain word ranked cabs.** `clean` was declared amp-only and was also a
+  character rule and a genre token, so it went on rewarding Greenbacks and
+  clean-tagged rows through two paths the exclusion never covered. An IR is
+  linear: no cab is clean. Amp-only words are now subtracted from character
+  and genre as a set, so the next overlap cannot repeat it.
+
+### Changed
+- **The preservation cue list has one home.** ToneCommand kept its own copy
+  of "keep / same / similar" in `server.py` under a comment saying the
+  matcher was authoritative. It was not, it was duplicated. IRCommand's
+  parser is asked over a new `/ir/intent` endpoint, so a cue added there
+  works here on the next request.
+
 - **The amp and cab audition list was invisible in manual mode.** The manual
   inspector is a fixed panel stacked at 90; the audition popover, also fixed
   so a long name cannot widen it, sat at 40 and rendered behind the sliders.

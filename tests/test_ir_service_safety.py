@@ -236,21 +236,91 @@ def test_a_legacy_label_is_displayable_but_never_an_anchor(monkeypatch):
     assert "reference" not in a
 
 
-def test_recorded_provenance_makes_a_user_cab_measured(monkeypatch, tmp_path):
-    """The only route to `measured`: ToneCommand recorded where the file came
-    from when it installed it."""
-    import server
-    from fm9 import user_cabs
+# --- what `measured` is allowed to mean (2026-09-08) ----------------------
+#
+# The state licenses numeric "x dB from current" claims, so the bar is not
+# "a record exists". It is: the bytes are the bytes that were linked, and
+# IRCommand holds a measured curve for that exact path. The version before
+# this returned on Path.exists() alone, and
+# {"source": "/etc/hosts", "digest": "definitely-wrong"} came back measured.
+# The test that stood here asserted exactly that behaviour with a stub file
+# and a made-up digest, so it certified the hole instead of catching it.
+
+def _link(monkeypatch, tmp_path, body=b"RIFFmeasured", digest=None,
+          answer=None):
+    """Wire one user-cab slot to a real file, and say what IRCommand knows."""
+    from fm9 import ir_service, user_cabs
     src = tmp_path / "cap.wav"
-    src.write_bytes(b"RIFF")
-    monkeypatch.setattr(user_cabs, "record",
-                        lambda b, o: {"label": "Mine", "source": str(src),
-                                      "digest": "abc123"})
+    src.write_bytes(body)
+    monkeypatch.setattr(user_cabs, "record", lambda b, o: {
+        "label": "Mine", "source": str(src),
+        "digest": ir_service.digest_of(src) if digest is None else digest})
+    monkeypatch.setattr(ir_service, "_get",
+                        lambda path, timeout=3: answer)
+    return src
+
+
+def test_a_linked_and_analysed_cab_is_measured(monkeypatch, tmp_path):
+    """The only route to `measured`, with both halves satisfied."""
+    import server
+    src = _link(monkeypatch, tmp_path,
+                answer={"in_library": True, "measured": True})
     a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26,
                                            "name": "Mine"}})
     assert a["state"] == "measured"
     assert a["reference"] == str(src), "the exact recorded source must be used"
-    assert a["digest"] == "abc123"
+
+
+def test_a_digest_that_does_not_match_the_file_is_not_measured(monkeypatch,
+                                                               tmp_path):
+    """A hand-written record, or a file replaced since it was linked. The
+    path survives an edit or a re-export; the sound does not."""
+    import server
+    _link(monkeypatch, tmp_path, digest="definitely-wrong",
+          answer={"in_library": True, "measured": True})
+    a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})
+    assert a["state"] != "measured"
+    assert "reference" not in a
+
+
+def test_a_record_with_no_digest_at_all_is_not_measured(monkeypatch, tmp_path):
+    import server
+    _link(monkeypatch, tmp_path, digest="",
+          answer={"in_library": True, "measured": True})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_a_file_the_library_has_not_analysed_is_not_measured(monkeypatch,
+                                                             tmp_path):
+    """Right bytes, right path, no curve. `measured` means a measurement
+    exists, not that a file exists."""
+    import server
+    _link(monkeypatch, tmp_path,
+          answer={"in_library": True, "measured": False})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_a_file_outside_the_library_is_not_measured(monkeypatch, tmp_path):
+    """The recorded source can point anywhere on the disk. /etc/hosts was the
+    actual reproduction."""
+    import server
+    _link(monkeypatch, tmp_path,
+          answer={"in_library": False, "measured": False})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_an_unreachable_library_means_unresolved_not_assumed(monkeypatch,
+                                                             tmp_path):
+    """IRCommand off or down is the common case. Erring toward gear_anchored
+    costs a numeric delta; erring toward measured quotes a distance from a
+    curve nobody has."""
+    import server
+    _link(monkeypatch, tmp_path, answer=None)
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
 
 
 def test_a_vanished_source_falls_back_safely(monkeypatch):
@@ -341,9 +411,21 @@ def test_a_shared_profile_never_borrows_the_connected_rigs_cab(monkeypatch):
 
 # --- the common post-plan selector (brief 19.5, 26.3, 26.4, 26.5) --------
 
-def _sel(monkeypatch, result, anchor, capture):
+def _sel(monkeypatch, result, anchor, capture, preserve_asked=False):
+    """Run the selector with IRCommand stubbed.
+
+    `preserve_asked` is IRCOMMAND'S answer, not this file's opinion. The
+    preservation cue list lives in the matcher and is reached over
+    /ir/intent; ToneCommand used to keep a second copy of it in server.py,
+    so a cue added to the matcher silently stopped working here. Stating the
+    collaborator's answer explicitly is what keeps that from being re-derived
+    in a test.
+    """
     from fm9 import ir_service
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "intent",
+                        lambda text: capture.update(intent_text=text)
+                        or {"preserve": preserve_asked})
     monkeypatch.setattr(
         ir_service, "recommend",
         lambda need, target="fm9", k=3, reference=None, preserve=None:
@@ -383,9 +465,47 @@ def test_gear_identity_constrains_retrieval_when_the_player_asked_to_keep(monkey
     seen = {}
     _sel(monkeypatch, {"summary": "darker but keep the same character",
                        "cab_need": "darker"},
-         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen)
+         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
+         preserve_asked=True)
     assert seen["preserve"] == "4x12 RECTO SM57"
     assert seen["reference"] is None, "gear identity is not a curve"
+
+
+def test_the_preservation_decision_is_the_matchers_and_not_a_local_copy(monkeypatch):
+    """server.py used to carry its own ("keep", "same", "similar", ...) list
+    under a comment saying the matcher was authoritative. It decided every
+    real request. Whatever IRCommand answers is what happens here, including
+    when the words look nothing like the old list."""
+    seen = {}
+    _sel(monkeypatch, {"summary": "leave the speaker alone",
+                       "cab_need": "darker"},
+         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
+         preserve_asked=True)
+    assert seen["preserve"] == "4x12 RECTO SM57", \
+        "a cue the matcher recognised was overruled by this file"
+
+    seen2 = {}
+    _sel(monkeypatch, {"summary": "keep the same character",
+                       "cab_need": "darker"},
+         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen2,
+         preserve_asked=False)
+    assert seen2["preserve"] is None, \
+        "this file preserved on words the matcher did not treat as cues"
+
+
+def test_the_players_own_words_are_what_gets_asked_about(monkeypatch):
+    """"Keep what I have" is a thing the PLAYER says. The planner's gear
+    translation is a target, not a wish, so asking about it alone would miss
+    the request entirely. _plan_request_text() returned "" on every real call
+    until the prompt was carried onto the result (brief 28.2 item 3)."""
+    seen = {}
+    _sel(monkeypatch, {"request": "same cab please, just darker",
+                       "summary": "moves the mic off axis",
+                       "cab_need": "darker"},
+         {"state": "gear_anchored", "fractal": "4x12 RECTO SM57"}, seen,
+         preserve_asked=True)
+    assert "same cab please" in seen["intent_text"], \
+        "the player's own words never reached the preservation question"
 
 
 def test_preservation_is_not_forced_when_it_was_not_asked_for(monkeypatch):
@@ -402,7 +522,8 @@ def test_a_whole_rig_build_never_preserves_the_old_cab(monkeypatch):
     seen = {}
     _sel(monkeypatch, {"summary": "keep the same character",
                        "cab_need": "4x12 v30", "whole_rig": True},
-         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen)
+         {"state": "gear_anchored", "fractal": "1x4 Pig 57"}, seen,
+         preserve_asked=True)
     assert seen["preserve"] is None
 
 
@@ -429,3 +550,56 @@ def test_a_shared_profile_anchors_on_its_own_declared_cab():
     assert a["state"] == "gear_anchored" and a["from"] == "profile"
     assert a["name"] == "4x12 RECTO SM57"
     assert server.current_anchor(None, profile={})["state"] == "unresolved"
+
+
+# --- what the selector is handed, on both planning paths (2026-09-08) ------
+#
+# Two silent no-ops, one per field, both from ordering. `request` was never
+# put on the result at all, so _plan_request_text() returned "" on every real
+# call and preservation could only fire if the model happened to echo "keep"
+# in its own summary. `whole_rig` was set on the line AFTER the selector ran,
+# so a whole-rig build could preserve the cab it was replacing. Neither shows
+# up as an error; both make a feature quietly do nothing.
+
+def _capture_selector_input(monkeypatch, prompt, whole_rig=False):
+    """Drive a real _plan_for and keep the result as the selector saw it."""
+    import server
+    got = {}
+
+    def spy(result, anchor, k=3):
+        got.update(dict(result), _anchor=anchor)
+        return {"anchor": anchor.get("state"), "candidates": []}
+
+    monkeypatch.setattr(server, "cab_listening_set", spy)
+    monkeypatch.setattr(server.planner, "plan",
+                        lambda *a, **kw: {"summary": "s", "clarification": None,
+                                          "actions": []})
+    body = server.PromptBody(prompt=prompt)
+    body.whole_rig = whole_rig
+    return server._plan_for(body), got
+
+
+def test_the_live_path_hands_the_selector_the_prompt_and_the_scope(monkeypatch):
+    import server
+    monkeypatch.setattr(server, "_profile", {"loaded": None})
+    monkeypatch.setattr(server, "get_fm9",
+                        lambda *a, **k: (_ for _ in ()).throw(server.FM9NotFound()))
+    monkeypatch.setattr(server, "_last_snapshot", {"state": None})
+    _, got = _capture_selector_input(monkeypatch, "same cab, just darker",
+                                     whole_rig=True)
+    assert got.get("request") == "same cab, just darker", \
+        "the player's words never reached the selector, so preservation is dead"
+    assert got.get("whole_rig") is True, \
+        "the selector saw whole_rig=None and could preserve the cab being replaced"
+
+
+def test_the_profile_path_hands_the_selector_the_same_two(monkeypatch):
+    """One body, two deliveries. A field carried on one path only is a bug
+    waiting for whichever path is not the one that was tested."""
+    import server
+    monkeypatch.setattr(server, "_profile",
+                        {"loaded": {"preset_name": "shared", "author": "a"}})
+    _, got = _capture_selector_input(monkeypatch, "same cab, just darker",
+                                     whole_rig=True)
+    assert got.get("request") == "same cab, just darker"
+    assert got.get("whole_rig") is True

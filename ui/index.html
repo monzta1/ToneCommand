@@ -9807,9 +9807,12 @@ function cabRow(r, chosen) {
   const bits = [];
   if (r.match != null) bits.push(`${matchWord(r.match)} ${Math.round(r.match * 100)}%`);
   if (me && me.brightness != null) bits.push(`${Math.round(me.brightness)} Hz`);
-  if (r.distance_from_reference != null) {
-    bits.push(`${r.distance_from_reference} dB from current`);
-  }
+  const dist = r.distance_from_current != null
+    ? r.distance_from_current : r.distance_from_reference;
+  // Only ever present when Current was MEASURED: the server nulls it out for
+  // a gear-anchored or unresolved Current, because there is no curve to be a
+  // distance from. Brief 21.5.
+  if (dist != null) bits.push(`${dist} dB from current`);
   return `<div class="cabrow${chosen ? ' chosen' : ''}">
     <div class="cabname">${chosen ? '&#9679; ' : ''}${esc(r.name || '')}
       ${why ? `<span class="cabwhy">${esc(why)}</span>` : ''}
@@ -9850,6 +9853,26 @@ async function renderBlend(path) {
       btn.onclick = () => playCab(btn, btn.dataset.path);
     }
   } catch (e) { box.innerHTML = ''; }
+}
+
+// What claim the listening set is entitled to make, said in the player's
+// words. The three states are the brief's (21.5.1). Only a MEASURED current
+// has a curve, so only it supports "x dB from current". Gear identity alone
+// constrains the search but proves no distance, and an unresolved current
+// proves nothing at all. Saying which one is in force is the difference
+// between a ranking and a guess.
+function cabAnchorNote(sel) {
+  const cur = sel.current ? String(sel.current) : 'the cab now loaded';
+  const kept = sel.preserved ? `, keeping ${sel.preserved}` : '';
+  if (sel.anchor === 'measured') {
+    return `Ranked by least change from ${cur}, which is measured${kept}.`;
+  }
+  if (sel.anchor === 'gear_anchored') {
+    return `Ranked against ${cur}, known by its gear only${kept}. `
+         + 'Nothing has measured it, so no distance from it is claimed.';
+  }
+  return 'Nothing is loaded to compare against, so these answer the request '
+       + 'on its own terms.';
 }
 
 async function renderCabPanel() {
@@ -9894,19 +9917,21 @@ async function renderCabPanel() {
   }).join('');
   }
 
-  // Alternatives worth hearing, from IRCommand. Off by default: when the IR
-  // service is unset this whole section simply stays quiet.
-  const need = (currentPlan && (currentPlan.cab_need || currentPlan.intent)) || '';
-  let alts = [];
-  try {
-    const r = await fetch(`/api/ir/recommend?need=${encodeURIComponent(need)}&k=6`);
-    const d = await r.json();
-    if (!d.enabled) {
-      $('cabnote').textContent = 'IRCommand is off, so no alternatives to compare.';
-    } else {
-      alts = d.results || [];
-    }
-  } catch (e) { /* never let the IR step break the review */ }
+  // Alternatives worth hearing: the plan's OWN listening set, built server
+  // side by cab_listening_set() against the Current anchor. This panel used
+  // to run its own fetch('/api/ir/recommend?need=' + intent) here, which
+  // threw away everything the planner had established: no reference cab, no
+  // preserve constraint, and the player's raw words in place of the
+  // planner's gear translation. That is how a "steve vai" build came back
+  // offering a Soldano SLO30 capture. Do not search from this file again.
+  // Render what the plan decided, so what is heard is what was reasoned.
+  const sel = (currentPlan && currentPlan.cab_selection) || null;
+  const alts = (sel && sel.candidates) || [];
+  if (alts.length) {
+    $('cabnote').textContent = cabAnchorNote(sel);
+  } else if (sel) {
+    $('cabnote').textContent = sel.why || 'no alternatives to compare.';
+  }
 
   $('cabalts').innerHTML = alts.length
     ? `<div class="cabfoot">ALTERNATIVES &middot; drive:
