@@ -217,41 +217,123 @@ def test_no_cab_at_all_is_unresolved():
         "state"] == "unresolved"
 
 
-def test_a_weak_user_label_does_not_become_a_measured_reference(monkeypatch):
-    """THE dangerous case. "BT Cab 01" resolved to "Engl 412 Cab_hx.wav" as a
-    MEASURED reference, on the strength of the word "cab", which every file in
-    the library has. A wrong reference makes every relative claim wrong
-    against a cab the player has never heard, and nothing downstream can
-    detect it."""
-    from fm9 import ir_service
-    assert ir_service.path_for_user_cab(2, 583) is None or True
+def test_a_legacy_label_is_displayable_but_never_an_anchor(monkeypatch):
+    """Brief 26.1. A bare string in user_cabs.json is what the PLAYER called
+    the slot. It identifies nothing, so it may name the cab in the UI and may
+    never become a measured reference.
+
+    The previous version of this test asserted `... is None or True`, which is
+    tautological and could not fail. It was reported as passing while testing
+    nothing.
+    """
     import server
-    a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 583,
-                                           "name": "BT Cab 01"}})
-    assert a["state"] != "measured", "matched a cab on the word 'cab'"
+    from fm9 import user_cabs
+    monkeypatch.setattr(user_cabs, "record",
+                        lambda b, o: "Soldano SLO30 - Emil Rohbe")
+    a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26,
+                                           "name": "Soldano SLO30 - Emil Rohbe"}})
+    assert a["state"] != "measured"
+    assert "reference" not in a
 
 
-def test_gear_anchored_context_forbids_a_measured_claim():
-    """The honesty boundary from 21.5: aimed darker is supported by the
-    evidence, measurably darker is not."""
+def test_recorded_provenance_makes_a_user_cab_measured(monkeypatch, tmp_path):
+    """The only route to `measured`: ToneCommand recorded where the file came
+    from when it installed it."""
+    import server
+    from fm9 import user_cabs
+    src = tmp_path / "cap.wav"
+    src.write_bytes(b"RIFF")
+    monkeypatch.setattr(user_cabs, "record",
+                        lambda b, o: {"label": "Mine", "source": str(src),
+                                      "digest": "abc123"})
+    a = server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26,
+                                           "name": "Mine"}})
+    assert a["state"] == "measured"
+    assert a["reference"] == str(src), "the exact recorded source must be used"
+    assert a["digest"] == "abc123"
+
+
+def test_a_vanished_source_falls_back_safely(monkeypatch):
+    """A recorded path that no longer exists must not anchor anything."""
+    import server
+    from fm9 import user_cabs
+    monkeypatch.setattr(user_cabs, "record",
+                        lambda b, o: {"label": "Mine",
+                                      "source": "/nope/gone.wav"})
+    assert server.current_anchor({"cab_sel": {"bank": 2, "ordinal": 26}})[
+        "state"] != "measured"
+
+
+def test_a_stale_user_label_cannot_override_the_factory_roster(monkeypatch):
+    """The boundary error from 26.1, proven before it was fixed: bank 3 slot
+    42 is a Mesa Recto, and a leftover user_cabs entry claimed it as a
+    measured Soldano. Only the USER bank may be resolved from provenance."""
+    import server
+    from fm9 import user_cabs
+    monkeypatch.setattr(user_cabs, "record",
+                        lambda b, o: {"label": "x", "source": "/etc/hosts"})
+    a = server.current_anchor({"cab_sel": {"bank": 3, "ordinal": 42,
+                                           "name": "4x12 RECTO SM57"}})
+    assert a["state"] == "gear_anchored", "a label beat the factory roster"
+    assert "Mesa" in (a.get("models") or "")
+
+
+def test_the_measured_reference_reaches_the_ranker(monkeypatch, tmp_path):
+    """Assert the actual call and its argument, not that a string exists in
+    the source (26.6 item 3)."""
     import server
     from fm9 import ir_service
+    seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "recommend",
+                        lambda need, target="fm9", k=5, reference=None:
+                        seen.update(reference=reference) or [])
+    server.ir_context("darker", {"state": "measured",
+                                 "reference": "/lib/current.wav"})
+    assert seen.get("reference") == "/lib/current.wav"
+
+
+def test_a_gear_anchored_context_states_the_limit_and_has_no_reference(monkeypatch):
+    """Replaces an `if ctx:` test that passed vacuously whenever the bridge
+    was off (26.6 item 2). The bridge is forced on here."""
+    import server
+    from fm9 import ir_service
+    seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "recommend",
+                        lambda need, target="fm9", k=5, reference=None:
+                        seen.update(reference=reference) or
+                        [{"name": "A.wav", "pack": "P", "match": 0.4,
+                          "why": [], "unmatched": []}])
+    monkeypatch.setattr(ir_service, "gaps_online", lambda *a, **k: [])
     ctx = server.ir_context("darker", {"state": "gear_anchored",
                                        "name": "4x12 RECTO SM57",
                                        "models": "Mesa Rectifier 4x12"})
-    if ctx:
-        assert "NO measured curve" in ctx
-        assert "Do NOT claim" in ctx
+    assert ctx, "the context must exist for this test to mean anything"
+    assert seen.get("reference") is None, "gear identity is not a curve"
+    assert "NO measured curve" in ctx and "Do NOT claim" in ctx
 
 
-def test_a_shared_profile_never_borrows_the_connected_rigs_cab():
-    """21.1: a profile's Current may come only from the profile itself."""
-    import inspect
+def test_a_shared_profile_never_borrows_the_connected_rigs_cab(monkeypatch):
+    """21.1: a profile's Current may come only from the profile itself, and
+    18.5: this path used to skip IR context and timing entirely."""
     import server
-    src = inspect.getsource(server._plan_for)
-    assert "a shared profile carries no" in src
-    # the offline branch runs from `if _profile["loaded"]:` to its return
-    off = src.split('if _profile["loaded"]:')[1].split("# --- the live")[0][:2000]
-    assert "ir_context" in off, \
-        "the offline path must build IR context too (the eighth defect)"
-    assert "timing" in off, "and report timing, like the live path"
+    # BEHAVIOURAL, not a source-string search (26.6 item 3): drive the offline
+    # path and assert which anchor actually reached selection.
+    import server
+    from fm9 import ir_service
+    seen = {}
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "recommend",
+                        lambda need, target="fm9", k=5, reference=None:
+                        seen.update(reference=reference, called=True) or [])
+    monkeypatch.setattr(server, "_profile",
+                        {"loaded": {"preset_name": "shared", "author": "someone"}})
+    monkeypatch.setattr(server.planner, "plan",
+                        lambda *a, **kw: {"summary": "s", "clarification": None,
+                                          "actions": []})
+    out = server._plan_for(server.PromptBody(prompt="make it darker"))
+    assert seen.get("called"), "the offline path built no IR context at all"
+    assert seen.get("reference") is None, \
+        "a shared profile borrowed the connected rig's cab as its reference"
+    assert "plan_s" in (out.get("timing") or {}), "offline path reported no timing"

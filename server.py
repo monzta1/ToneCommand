@@ -477,13 +477,18 @@ def current_anchor(snap) -> dict:
     if bank is None or ordinal is None:
         return {"state": "unresolved", "why": "no cab could be read"}
 
-    # Owned IR: does IRCommand know this exact file?
+    # ONLY the USER bank may be resolved from install provenance. Without this
+    # gate a stale or hand-written user_cabs.json entry on a FACTORY bank
+    # overrode the authoritative roster: bank 3 slot 42 is a Mesa Recto, and a
+    # leftover label claimed it as a measured Soldano (brief 26.1). Proven
+    # before the fix, not argued.
     from fm9 import ir_service
-    path = ir_service.path_for_user_cab(bank, ordinal) \
-        if hasattr(ir_service, "path_for_user_cab") else None
-    if path:
-        return {"state": "measured", "reference": path,
-                "name": sel.get("name"), "bank": bank, "ordinal": ordinal}
+    if int(bank) == USER_CAB_BANK:
+        link = ir_service.linked_source(bank, ordinal)
+        if link:
+            return {"state": "measured", "reference": link["path"],
+                    "digest": link.get("digest"),
+                    "name": sel.get("name"), "bank": bank, "ordinal": ordinal}
 
     rec = (reg.cab_models.get(str(bank)) or {}).get(str(ordinal)) or {}
     if rec.get("fractal"):

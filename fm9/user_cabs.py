@@ -57,12 +57,28 @@ def all_names() -> dict:
     return _cache
 
 
+def record(bank: int | str, ordinal: int | str):
+    """The raw entry for a slot: a legacy display string, a dict, or None.
+
+    Two shapes live here. A bare string is a LABEL, written by hand or by an
+    older install, and it identifies nothing. A dict carries provenance that
+    ToneCommand recorded when it installed the file, which is what may serve
+    as a measured anchor (brief 26.1).
+    """
+    return (all_names().get(str(bank)) or {}).get(str(ordinal))
+
+
 def name(bank: int | str, ordinal: int | str) -> str | None:
     """The player's name for a slot, or None when they have not named it."""
     got = all_names().get(str(bank), {})
     if not isinstance(got, dict):
         return None
     val = got.get(str(ordinal))
+    # Two shapes: a legacy display string, or a provenance dict whose label
+    # is one field of it. Both name the slot in the UI; only the dict can
+    # anchor a measurement (see record()).
+    if isinstance(val, dict):
+        val = val.get("label")
     return val.strip() or None if isinstance(val, str) else None
 
 
