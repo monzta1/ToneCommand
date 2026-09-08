@@ -12,8 +12,10 @@ Notable changes to ToneCommand. Dates are UTC.
   main, which keeps the recipe gallery current as the share service publishes
   new recipes. Hosted on Cloudflare Pages, free tier. Recipes are also served
   as JSON at `/recipes/index.json` and `/recipes/<name>.json` with CORS open,
-  so the app can read them from the site instead of the GitHub contents API
-  and its 60-requests-an-hour cap.
+  and the app now reads the shared catalogue from there first, falling back
+  to the GitHub contents API (and its 60-requests-an-hour cap) only when the
+  site is unreachable. The share service answers on share.tonecommand.com;
+  the workers.dev address still works.
 
 ### Security
 - **The IR bridge could be pointed at any address.** `fm9/ir_service.py` fetched

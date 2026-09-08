@@ -49,7 +49,7 @@ an outage and is not one. Wait and retry before debugging anything.
 Then point the app at it:
 
 ```sh
-TONECOMMAND_SHARE_URL=https://your-worker.workers.dev
+TONECOMMAND_SHARE_URL=https://share.tonecommand.com   # or your own worker's workers.dev address
 ```
 
 Exported, or as a line in `.env` at the repo root, which is where every other

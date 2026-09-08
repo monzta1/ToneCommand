@@ -8,6 +8,8 @@
 
 <p align="center"><em>ToneCommand 1.0.0</em></p>
 
+<p align="center"><a href="https://tonecommand.com"><strong>tonecommand.com</strong></a>: install guides, docs, screenshots, recipes and downloads, in one place.</p>
+
 **Talk to your FM9. It builds the tone.** Type a sentence, get a gig-ready,
 multi-scene preset on your Fractal FM9 in minutes: the signal chain wired, amps
 voiced per scene, cabs chosen, scenes named on the footswitches. You read the
@@ -322,6 +324,7 @@ testing and FM9-Edit coexistence notes are in [docs/SETUP.md](docs/SETUP.md).
 
 | | |
 |---|---|
+| [tonecommand.com](https://tonecommand.com) | All of the below, rendered, plus screenshots and the recipe gallery |
 | [docs/SETUP.md](docs/SETUP.md) | Install, video extras, testing, compatibility matrix |
 | [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md) | ChatGPT, Gemini, Grok, DeepSeek, Kimi, subscriptions, local models |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | Every panel, with screenshots |

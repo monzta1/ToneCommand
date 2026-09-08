@@ -57,7 +57,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/monzta1/ToneCommand"
+Homepage = "https://tonecommand.com"
+Documentation = "https://tonecommand.com/docs/"
+Source = "https://github.com/monzta1/ToneCommand"
 Issues = "https://github.com/monzta1/ToneCommand/issues"
 
 [project.scripts]

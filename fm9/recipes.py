@@ -25,6 +25,13 @@ than pretending one fits everyone:
 A hosted endpoint would remove the last of that friction. It would also cost
 money every month and need moderating, so it is a decision to take
 deliberately rather than a thing to drift into.
+
+WHERE THE CATALOGUE IS READ FROM
+--------------------------------
+tonecommand.com publishes the same recipes/ folder as plain JSON (an index
+and one file per recipe) and is rebuilt on every push, so the app reads from
+there first: no rate limit, no API shape to track. The GitHub contents API
+stays as the fallback so a site outage never empties the shelf.
 """
 from __future__ import annotations
 
@@ -39,6 +46,8 @@ from pathlib import Path
 #: Where the shared ones live. Public, so reading needs no credentials.
 REPO = os.environ.get("TONECOMMAND_RECIPE_REPO", "monzta1/ToneCommand")
 BRANCH = os.environ.get("TONECOMMAND_RECIPE_BRANCH", "main")
+#: The published copy of the same folder, read first. Empty disables it.
+SITE = os.environ.get("TONECOMMAND_SITE", "https://tonecommand.com").rstrip("/")
 _INDEX_TTL = 600.0          # ten minutes; this is a catalogue, not a feed
 
 _cache: dict = {"at": 0.0, "items": None}
@@ -75,29 +84,42 @@ def read_local() -> list[dict]:
     return out
 
 
-def fetch_shared(timeout: float = 6.0) -> tuple[list[dict], str | None]:
-    """Everything in the repository's recipes/ folder.
+def _get_json(url: str, timeout: float, accept: str = "application/json"):
+    req = urllib.request.Request(url, headers={"Accept": accept,
+                                               "User-Agent": "ToneCommand"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
 
-    Unauthenticated: the contents API is open for public repositories, and
-    reading a shared tone should never ask anyone to sign in to anything.
-    Returns (recipes, why_not) so a failure is reported rather than shown as
-    an empty catalogue, which would read as "nobody has shared anything".
-    """
-    now = time.time()
-    if _cache["items"] is not None and now - _cache["at"] < _INDEX_TTL:
-        return _cache["items"], None
-    url = f"https://api.github.com/repos/{REPO}/contents/recipes?ref={BRANCH}"
-    try:
-        req = urllib.request.Request(url, headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "ToneCommand",
-        })
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            listing = json.load(r)
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError,
-            json.JSONDecodeError, ValueError) as e:
-        return [], f"could not reach the shared recipes: {e}"
 
+def _from_site(timeout: float) -> list[dict]:
+    """The catalogue as tonecommand.com publishes it: index.json, then one
+    file per recipe. Only files under the site's own recipes/ path are
+    followed, whatever the index says."""
+    index = _get_json(f"{SITE}/recipes/index.json", timeout)
+    out = []
+    for entry in index if isinstance(index, list) else []:
+        name = _safe_name(str(entry.get("name") or ""))
+        if not name or name == "untitled":
+            continue
+        try:
+            rec = _get_json(f"{SITE}/recipes/{name}.json", timeout)
+        except Exception:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        rec["_source"] = "shared"
+        rec["_file"] = f"{name}.json"
+        out.append(rec)
+    return out
+
+
+def _from_github(timeout: float) -> list[dict]:
+    """The repository's recipes/ folder through the contents API.
+    Unauthenticated: it is open for public repositories, and reading a
+    shared tone should never ask anyone to sign in to anything."""
+    listing = _get_json(
+        f"https://api.github.com/repos/{REPO}/contents/recipes?ref={BRANCH}",
+        timeout, accept="application/vnd.github+json")
     out = []
     for entry in listing:
         if not entry.get("name", "").endswith(".json"):
@@ -105,17 +127,37 @@ def fetch_shared(timeout: float = 6.0) -> tuple[list[dict], str | None]:
         if entry["name"] == "index.json":
             continue
         try:
-            with urllib.request.urlopen(
-                    urllib.request.Request(entry["download_url"], headers={
-                        "User-Agent": "ToneCommand"}), timeout=timeout) as r:
-                rec = json.load(r)
+            rec = _get_json(entry["download_url"], timeout)
         except Exception:
             continue
         rec["_source"] = "shared"
         rec["_file"] = entry["name"]
         out.append(rec)
-    _cache["items"], _cache["at"] = out, now
-    return out, None
+    return out
+
+
+def fetch_shared(timeout: float = 6.0) -> tuple[list[dict], str | None]:
+    """Everything shared, from the site first and the repository second.
+
+    Returns (recipes, why_not) so a failure is reported rather than shown as
+    an empty catalogue, which would read as "nobody has shared anything".
+    """
+    now = time.time()
+    if _cache["items"] is not None and now - _cache["at"] < _INDEX_TTL:
+        return _cache["items"], None
+    errors = []
+    sources = ([("site", lambda: _from_site(timeout))] if SITE else []) + \
+        [("github", lambda: _from_github(timeout))]
+    for label, fetch in sources:
+        try:
+            out = fetch()
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError,
+                json.JSONDecodeError, ValueError) as e:
+            errors.append(f"{label}: {e}")
+            continue
+        _cache["items"], _cache["at"] = out, now
+        return out, None
+    return [], "could not reach the shared recipes (" + "; ".join(errors) + ")"
 
 
 def save_local(recipe: dict) -> Path:
