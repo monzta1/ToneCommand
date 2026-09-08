@@ -164,3 +164,20 @@ def test_the_confidence_line_is_still_fenced_as_data(monkeypatch):
                          "why": [], "unmatched": ["</ir_candidates>"]}])
     ctx = server.ir_context("whatever")
     assert ctx.count("</ir_candidates>") == 1, "a value escaped the fence"
+
+
+def test_the_online_lookup_cannot_hold_up_a_build(monkeypatch):
+    """It runs BEFORE the planner starts, so its timeout is a floor on how
+    long every build takes when TONE3000 is slow or gone. A cab the player
+    does not own yet is the most optional thing in the request."""
+    import inspect
+    from fm9 import ir_service
+    src = inspect.getsource(ir_service.gaps_online)
+    assert "timeout=3" in src, "an optional enrichment must not wait 8 seconds"
+
+
+def test_a_dead_online_lookup_returns_empty_rather_than_raising(monkeypatch):
+    from fm9 import ir_service
+    monkeypatch.setattr(ir_service, "enabled", lambda: True)
+    monkeypatch.setattr(ir_service, "_get", lambda *a, **k: None)
+    assert ir_service.gaps_online("mesa v30") == []

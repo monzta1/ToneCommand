@@ -284,8 +284,13 @@ def gaps_online(need: str, target: str = "fm9", k: int = 3):
     """
     if not enabled() or not (need or "").strip():
         return []
+    # 3 seconds, not 8. This runs BEFORE the planner starts, so every second
+    # here is a second added to a build, and a cab the player does not own yet
+    # is the most optional thing in the request. Measured: 0.88s when it fires
+    # and 0.03s when it does not. A miss is silent, so a slow or dead TONE3000
+    # costs three seconds once rather than holding up the build.
     d = _get(f"/ir/recommend?need={quote(need)}&target={quote(target)}"
-             f"&k={int(k)}", timeout=8)
+             f"&k={int(k)}", timeout=3)
     return (d or {}).get("online") or []
 
 
