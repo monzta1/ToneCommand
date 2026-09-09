@@ -283,3 +283,16 @@ html.fx-on pre, html.fx-on .cmdbar { background: rgba(19, 23, 21, 0.72); backdro
 .merchprice { padding: 0.6rem 1rem 0; color: var(--cyan); font-family: var(--mono); font-size: 0.9rem; }
 .merchname { padding: 0 1rem; font-weight: 600; color: #fff; }
 .merchcta { padding: 0 1rem 0.9rem; color: var(--muted); font-size: 0.88rem; }
+
+/* the emblem, loud and clear above the hero */
+.mark { display: flex; justify-content: center; padding: 2.75rem 0 0.5rem; }
+.mark img {
+  width: clamp(96px, 14vw, 152px); height: auto; border-radius: 28px;
+  filter: drop-shadow(0 0 42px rgba(47, 230, 255, 0.45)) drop-shadow(0 0 90px rgba(185, 140, 255, 0.2));
+  animation: mark-pulse 4.5s ease-in-out infinite;
+}
+@keyframes mark-pulse {
+  0%, 100% { filter: drop-shadow(0 0 42px rgba(47, 230, 255, 0.45)) drop-shadow(0 0 90px rgba(185, 140, 255, 0.2)); }
+  50% { filter: drop-shadow(0 0 60px rgba(47, 230, 255, 0.65)) drop-shadow(0 0 120px rgba(185, 140, 255, 0.32)); }
+}
+@media (prefers-reduced-motion: reduce) { .mark img { animation: none; } }

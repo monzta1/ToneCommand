@@ -5,6 +5,12 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **The emblem is back, loud and clear, at the top of the site.** The
+  nam9000-style redesign replaced the hero's mark with the interface
+  screenshot and left the logo as a 36px header icon, easy to miss. A large
+  glowing version (site/build.py, .mark) now opens the page above the
+  tagline, pulsing gently in the site's own cyan and purple; the header icon
+  grew to 40px too.
 - **Dropped the "if you have to switch to FM9-Edit, we have already lost"
   line from docs/INTERFACE.md.** It carried the 0.3.0 release's framing
   forward as a present-tense rule, but the premise behind it (that FM9-Edit

@@ -357,7 +357,7 @@ def page(*, title: str, description: str, body: str, path: str,
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/"><img src="/img/logo.png" alt="" width="36" height="36"><span>ToneCommand</span></a>
+  <a class="brand" href="/"><img src="{img_url('logo.png')}" alt="" width="40" height="40"><span>ToneCommand</span></a>
   <nav class="nav">{nav}</nav>
   <a class="gh" href="{REPO_URL}" rel="noopener">GitHub</a>
 </header>
@@ -497,6 +497,9 @@ def build_home(readme: str, release: dict) -> None:
     caps = screenshot_captions()
 
     hero = f"""
+<div class="mark">
+  <img src="{img_url('logo.png')}" alt="ToneCommand" width="152" height="152" fetchpriority="high">
+</div>
 <section class="hero2">
   <div class="hero-copy">
     <p class="kicker">{TAGLINE}</p>
