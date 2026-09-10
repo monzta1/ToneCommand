@@ -5,6 +5,11 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **The header logo grew from 40px to 64px.** It is the one logo visible on
+  every page of tonecommand.com, and at 40px it read as a mini icon next to
+  the wordmark instead of a real logo. site/build.py's shared header
+  template now renders it at 64px; the sticky header absorbs the extra
+  height without any other layout change.
 - **The emblem is back, loud and clear, at the top of the site.** The
   nam9000-style redesign replaced the hero's mark with the interface
   screenshot and left the logo as a 36px header icon, easy to miss. A large

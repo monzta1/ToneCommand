@@ -44,3 +44,13 @@ user_cabs.json
 
 # generated site (site/build.py); deployed to Cloudflare Pages, never committed
 site/dist/
+
+# Project Handsoff run state; lives per-repo, never committed
+handsoff-status.json
+handsoff-acceptance.json
+handsoff-events.jsonl
+handsoff-verifications.jsonl
+.handsoff.lock
+.handsoff-event-head.json
+.handsoff-writeahead.json
+.handsoff-archive/

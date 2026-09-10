@@ -357,7 +357,7 @@ def page(*, title: str, description: str, body: str, path: str,
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/"><img src="{img_url('logo.png')}" alt="" width="40" height="40"><span>ToneCommand</span></a>
+  <a class="brand" href="/"><img src="{img_url('logo.png')}" alt="" width="64" height="64"><span>ToneCommand</span></a>
   <nav class="nav">{nav}</nav>
   <a class="gh" href="{REPO_URL}" rel="noopener">GitHub</a>
 </header>

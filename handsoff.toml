@@ -1,0 +1,33 @@
+[project]
+name = "fm9-tone"
+status_file = "handsoff-status.json"
+acceptance_file = "handsoff-acceptance.json"
+event_log = "handsoff-events.jsonl"
+verification_log = "handsoff-verifications.jsonl"
+
+[workflow]
+max_design_rounds = 3
+max_review_rounds = 3
+stall_minutes = 10
+require_live_verification = true
+deployment_requires_explicit_approval = true
+
+[agents]
+supervisor = "configure-me"
+implementer = "configure-me"
+reviewer = "configure-me"
+
+[checks]
+# Shell commands the supervisor actually runs via `handsoff_supervisor.py verify`.
+# Each criterion's evidence should point at one of these having run, not a
+# free-text claim. Example: commands = ["pytest tests/ -q", "npm test"]
+commands = [
+  ".venv/bin/python -m pytest tests/test_site_build.py::test_header_logo_is_64px -q",
+  ".venv/bin/python -m pytest tests/test_site_build.py::test_no_em_dash_in_touched_site_files -q",
+]
+# Commands that verify the deployed system. Phase 8 is blocked until these
+# run successfully after deployment approval.
+live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'class=\"brand\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"64\" height=\"64\"'"]
+# Per-command timeout. A hanging check is killed and recorded as exit 124
+# rather than hanging the Supervisor indefinitely.
+timeout_seconds = 600
