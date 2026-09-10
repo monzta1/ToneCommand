@@ -356,6 +356,8 @@ def page(*, title: str, description: str, body: str, path: str,
 <script src="/fx.js" defer></script>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><img src="{img_url('logo.png')}" alt="" width="520" height="520" fetchpriority="high"></div>
+<script>(function(){{try{{if(sessionStorage.getItem('tc-splash-seen')){{document.getElementById('splash').className='skip';}}else{{sessionStorage.setItem('tc-splash-seen','1');}}}}catch(e){{}}}})();</script>
 <header class="top">
   <a class="brand" href="/"><img src="{img_url('logo.png')}" alt="" width="64" height="64"><span>ToneCommand</span></a>
   <nav class="nav">{nav}</nav>
@@ -497,9 +499,6 @@ def build_home(readme: str, release: dict) -> None:
     caps = screenshot_captions()
 
     hero = f"""
-<div class="mark">
-  <img src="{img_url('logo.png')}" alt="ToneCommand" width="152" height="152" fetchpriority="high">
-</div>
 <section class="hero2">
   <div class="hero-copy">
     <p class="kicker">{TAGLINE}</p>

@@ -23,11 +23,14 @@ reviewer = "configure-me"
 # free-text claim. Example: commands = ["pytest tests/ -q", "npm test"]
 commands = [
   ".venv/bin/python -m pytest tests/test_site_build.py::test_header_logo_is_64px -q",
+  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_logo_is_520px -q",
+  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_reduced_motion_and_no_js_fallback -q",
+  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_skip_on_interaction_is_wired -q",
   ".venv/bin/python -m pytest tests/test_site_build.py::test_no_em_dash_in_touched_site_files -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval.
-live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'class=\"brand\" href=\"/\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"64\" height=\"64\"'"]
+live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'id=\"splash\" aria-hidden=\"true\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"520\" height=\"520\"'"]
 # Per-command timeout. A hanging check is killed and recorded as exit 124
 # rather than hanging the Supervisor indefinitely.
 timeout_seconds = 600

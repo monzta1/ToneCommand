@@ -5,6 +5,17 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **The persistent 152px hero emblem is now a full-screen loading splash at
+  520px.** The header logo bump to 64px (below) still read as too small
+  against the ask to make the site's logo genuinely big, and a nav icon
+  can only grow so far before it fights the sticky header for space. The
+  fix moved the "big logo" moment to where it actually works: a full-screen
+  splash (site/build.py, site/theme.css `#splash`) shows the emblem at up
+  to 520px, centered, once per browser session, then fades to reveal the
+  page beneath. It skips instantly on a repeat visit in the same session
+  (sessionStorage), on the first click/key/tap (site/fx.js), and outright
+  under `prefers-reduced-motion`; the fade-out is plain CSS so it still
+  resolves even with JS disabled. Replaces the `.mark` pulse entirely.
 - **The header logo grew from 40px to 64px.** It is the one logo visible on
   every page of tonecommand.com, and at 40px it read as a mini icon next to
   the wordmark instead of a real logo. site/build.py's shared header

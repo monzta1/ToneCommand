@@ -284,15 +284,26 @@ html.fx-on pre, html.fx-on .cmdbar { background: rgba(19, 23, 21, 0.72); backdro
 .merchname { padding: 0 1rem; font-weight: 600; color: #fff; }
 .merchcta { padding: 0 1rem 0.9rem; color: var(--muted); font-size: 0.88rem; }
 
-/* the emblem, loud and clear above the hero */
-.mark { display: flex; justify-content: center; padding: 2.75rem 0 0.5rem; }
-.mark img {
-  width: clamp(96px, 14vw, 152px); height: auto; border-radius: 28px;
-  filter: drop-shadow(0 0 42px rgba(47, 230, 255, 0.45)) drop-shadow(0 0 90px rgba(185, 140, 255, 0.2));
-  animation: mark-pulse 4.5s ease-in-out infinite;
+/* splash: the emblem owns the screen alone first, then fades to reveal the
+   page already rendered underneath. CSS-driven so it resolves even if
+   fx.js never runs; fx.js only adds skip-on-first-interaction. The inline
+   script in page() adds .skip immediately when this session has already
+   seen it, before first paint. */
+#splash {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center;
+  justify-content: center; background: var(--bg);
+  animation: splash-out 0.5s 1.15s forwards;
 }
-@keyframes mark-pulse {
-  0%, 100% { filter: drop-shadow(0 0 42px rgba(47, 230, 255, 0.45)) drop-shadow(0 0 90px rgba(185, 140, 255, 0.2)); }
-  50% { filter: drop-shadow(0 0 60px rgba(47, 230, 255, 0.65)) drop-shadow(0 0 120px rgba(185, 140, 255, 0.32)); }
+#splash img {
+  width: clamp(280px, 42vw, 520px); height: auto; border-radius: 40px;
+  opacity: 0; transform: scale(0.85);
+  filter: drop-shadow(0 0 60px rgba(47, 230, 255, 0.55)) drop-shadow(0 0 130px rgba(185, 140, 255, 0.28));
+  animation: splash-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
-@media (prefers-reduced-motion: reduce) { .mark img { animation: none; } }
+@keyframes splash-in { to { opacity: 1; transform: scale(1); } }
+@keyframes splash-out { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+#splash.skip, #splash.skip img { animation: none !important; }
+#splash.skip { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  #splash { animation: none; opacity: 0; visibility: hidden; pointer-events: none; }
+}

@@ -372,8 +372,23 @@
     return true;
   }
 
+  /* ------------------------------------------------------------------ */
+  /* splash: skip early on the first click, key or touch                 */
+  /* ------------------------------------------------------------------ */
+  function splashSkip() {
+    var splash = document.getElementById('splash');
+    if (!splash || splash.className === 'skip') return;
+    var go = function () {
+      splash.className = 'skip';
+      document.removeEventListener('pointerdown', go);
+      document.removeEventListener('keydown', go);
+    };
+    document.addEventListener('pointerdown', go, { once: true, passive: true });
+    document.addEventListener('keydown', go, { once: true });
+  }
+
   function start() {
-    reveals(); typer(); tilt();
+    reveals(); typer(); tilt(); splashSkip();
     if (reduced) return;
     var running = false;
     if (!fxOff) { try { running = fluid(); } catch (e) { running = false; } }
