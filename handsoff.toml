@@ -27,7 +27,7 @@ commands = [
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval.
-live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'class=\"brand\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"64\" height=\"64\"'"]
+live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'class=\"brand\" href=\"/\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"64\" height=\"64\"'"]
 # Per-command timeout. A hanging check is killed and recorded as exit 124
 # rather than hanging the Supervisor indefinitely.
 timeout_seconds = 600
