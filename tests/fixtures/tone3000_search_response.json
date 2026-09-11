@@ -1,0 +1,137 @@
+{
+ "data": [
+  {
+   "id": 57410,
+   "title": "Mesa Boogie - Mark V [18dBu]",
+   "description": "Note: All captures are calibrated to 18dBu\n\nSIGNAL CHAIN:\n- Focusrite Clarett 4 Pre USB (Audio Interface)\n- Palmer trave: lvl max (Reamping Box)\n- Fryette ZMACS 4X4 (Amp/ Cab Switcher)\n--> grabbing the Power Amp Out from here (line level)\n- Boost Pedal (see title of the captures)\n- Mesa Boogie - Mark V (90W)\n- Trace Elliot 4x12 Cab [8 Ohm] (for Load only)\n\nBOOSTS:\nTS9 = Ibanez TS 9\nSD1 = Boss SD-1\n808 = Maxon OD808\n\nGAIN LEVELS:\nHG = High Gain\nMG = Mid Gain\nLG = Low Gain\nEOB = edge of Breakup\nCLN = Clean\n\nSOUND SETTINGS:\nbal = balanced\nscoop = less mids\nmids = mid forward",
+   "tags": [
+    {
+     "name": "clean"
+    },
+    {
+     "name": "crunch"
+    },
+    {
+     "name": "distortion"
+    },
+    {
+     "name": "guitar"
+    },
+    {
+     "name": "high-gain"
+    },
+    {
+     "name": "mesa boogie"
+    },
+    {
+     "name": "mesa boogie mark v"
+    },
+    {
+     "name": "metal"
+    },
+    {
+     "name": "metallica"
+    },
+    {
+     "name": "nam"
+    },
+    {
+     "name": "rock"
+    }
+   ],
+   "makes": [
+    {
+     "name": "Mesa Boogie Mark V"
+    }
+   ],
+   "models_count": 74,
+   "a1_models_count": 37,
+   "a2_models_count": 37,
+   "irs_count": 0,
+   "custom_models_count": 0,
+   "favorites_count": 162,
+   "downloads_count": 5882,
+   "is_favorite": false,
+   "created_at": "2026-03-12T18:29:23.686948+00:00",
+   "updated_at": "2026-04-05T15:01:14.735+00:00",
+   "published_at": "2026-03-12T18:29:23.634+00:00",
+   "license": "t3k",
+   "images": [
+    "https://api.tone3000.com/storage/v1/object/public/images/ku81u7u8xlh.jpg"
+   ],
+   "user_id": "e4ab8a9b-72f7-41da-ba9c-ed29357bbd3d",
+   "user": {
+    "id": "e4ab8a9b-72f7-41da-ba9c-ed29357bbd3d",
+    "username": "kenazmusic",
+    "avatar_url": "https://api.tone3000.com/storage/v1/object/public/avatars/nhv0a6z02d.jpg",
+    "display_name": null,
+    "is_verified": false,
+    "url": "https://www.tone3000.com/kenazmusic"
+   },
+   "url": "https://www.tone3000.com/tones/mesa-boogie-mark-v-18dbu-57410",
+   "format": "nam",
+   "gear": "amp"
+  },
+  {
+   "id": 59309,
+   "title": "Mesa Boogie Mark V",
+   "description": "Mesa Boogie Lonestar and Mark V",
+   "tags": [
+    {
+     "name": "clean"
+    },
+    {
+     "name": "crunch"
+    },
+    {
+     "name": "lead"
+    },
+    {
+     "name": "mesa boogie"
+    },
+    {
+     "name": "nam"
+    }
+   ],
+   "makes": [
+    {
+     "name": "Mesa Boogie Lonestar"
+    },
+    {
+     "name": "Mesa Boogie Mark V"
+    }
+   ],
+   "models_count": 6,
+   "a1_models_count": 3,
+   "a2_models_count": 3,
+   "irs_count": 0,
+   "custom_models_count": 0,
+   "favorites_count": 34,
+   "downloads_count": 4026,
+   "is_favorite": false,
+   "created_at": "2026-03-28T18:56:27.676304+00:00",
+   "updated_at": "2026-03-28T18:56:27.676304+00:00",
+   "published_at": "2026-03-28T18:56:27.639+00:00",
+   "license": "t3k",
+   "images": [
+    "https://api.tone3000.com/storage/v1/object/public/images/ogu9ei2oq28.jpg"
+   ],
+   "user_id": "bd170bed-e348-4f95-9c57-fe1c9eb624bd",
+   "user": {
+    "id": "bd170bed-e348-4f95-9c57-fe1c9eb624bd",
+    "username": "diecidueweb",
+    "avatar_url": null,
+    "display_name": null,
+    "is_verified": false,
+    "url": "https://www.tone3000.com/diecidueweb"
+   },
+   "url": "https://www.tone3000.com/tones/mesa-boogie-mark-v-59309",
+   "format": "nam",
+   "gear": "amp"
+  }
+ ],
+ "page": 1,
+ "page_size": 2,
+ "total": 489,
+ "total_pages": 245
+}

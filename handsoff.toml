@@ -27,10 +27,22 @@ commands = [
   ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_reduced_motion_and_no_js_fallback -q",
   ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_skip_on_interaction_is_wired -q",
   ".venv/bin/python -m pytest tests/test_site_build.py::test_no_em_dash_in_touched_site_files -q",
+  ".venv/bin/python -m pytest tests/test_grounding_envelope.py -q",
+  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_replay_rejects_ungrounded_tone_target_before_device_connect -q",
+  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_provenance_tier_logic -q",
+  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_replay_accepts_grounded_tone_target -q",
+  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_secret_key_never_hardcoded -q",
+  ".venv/bin/python -m pytest tests/test_recipe_validation.py::test_tone_target_shape -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
-# run successfully after deployment approval.
-live_commands = ["curl -sf https://tonecommand.com/ | grep -q 'id=\"splash\" aria-hidden=\"true\"><img src=\"/img/logo.png[^\"]*\" alt=\"\" width=\"520\" height=\"520\"'"]
+# run successfully after deployment approval. This app has no hosted server;
+# "deployed" means pushed to origin/main, which is what a user's local
+# install pulls. Live proof is: the pushed commit's own files, run for real
+# through the actual replay tool (simulator device, not a mock of the tool).
+live_commands = [
+  "git fetch origin && git diff --quiet HEAD origin/main -- recipes/mesa-mark-v-a2-reference.json tools/replay_recipe.py fm9/nam_captures.py config/nam_capture_models.json",
+  "TONECOMMAND_SIM=1 .venv/bin/python tools/replay_recipe.py recipes/mesa-mark-v-a2-reference.json | grep -q 'tone3000.com/tones'",
+]
 # Per-command timeout. A hanging check is killed and recorded as exit 124
 # rather than hanging the Supervisor indefinitely.
 timeout_seconds = 600

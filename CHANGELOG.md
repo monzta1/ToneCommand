@@ -41,6 +41,30 @@ Notable changes to ToneCommand. Dates are UTC.
   follows as the proof the reversal is safe, instead of standing alone.
 
 ### Added
+- **A recipe can cite a real NAM Architecture 2 (A2) capture as its tone
+  target (#18).** NAM A2 (TONE3000 + NAM's creator, launched June 2026) is
+  becoming a cross-vendor capture interchange format, and issue #18 asked
+  ToneCommand to speak it as data first: a recipe's new optional
+  `tone_target` (`{"source": "TONE3000", "capture_id": ..., "note": ...}`)
+  names the real capture a build approximates, honest about the direction
+  of the approximation: on an A2-capable device the capture IS the tone, on
+  the FM9 the recipe's own steps are the grounded approximation.
+
+  A citation is only as honest as what backs it, so `config/nam_capture_models.json`
+  is a new facts-only grounding sidecar (fm9/grounding.py's existing
+  envelope), harvested for real from TONE3000's own API by
+  `tools/build_nam_captures.py`: real title, the capture author's own
+  stated gear identity, creator and verification status, usage signals,
+  licence and a checkable URL. TONE3000 exposes no per-capture accuracy
+  metric (checked directly against their API), so the sidecar says that
+  rather than inventing one; ranking captures by evidence is future work,
+  this pass only refuses a citation that is not real. `tools/replay_recipe.py`
+  rejects an ungrounded `capture_id` before a device or simulator ever
+  connects, and `service/worker.js`'s public recipe-submission gate accepts
+  the same well-formed shape a stranger might submit. New example:
+  `recipes/mesa-mark-v-a2-reference.json`, citing FM9's own grounded "USA MK
+  V Green" (Mesa Boogie Mark V clean) against a real capture of that same
+  amp.
 - **Current is the permanent A side of the cab comparison, and you can
   choose a B.** The panel used to have a B side and no A: three candidates
   you could preview, and no way to hear or see the cab they were being

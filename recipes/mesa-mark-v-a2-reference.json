@@ -1,0 +1,75 @@
+{
+ "recipe_version": 1,
+ "name": "mesa-mark-v-a2-reference",
+ "title": "Mesa Boogie Mark V clean, with a real A2 capture as the reference",
+ "device": "FM9",
+ "author": "monzta1",
+ "summary": "The FM9's own grounded Mesa Mark V model, built to sit next to a real NAM A2 capture of the same amp: on an A2-capable device the capture IS this tone, here it is the reference the model is checked against.",
+ "tone_target": {
+  "source": "TONE3000",
+  "capture_id": 57410,
+  "note": "Real capture of a Mesa Boogie Mark V, calibrated 18dBu clean channel. On an A2-capable device this capture IS the tone; the steps below are the FM9's grounded approximation of the same real amp."
+ },
+ "steps": [
+  {
+   "kind": "set_type",
+   "block": "amp",
+   "instance": 1,
+   "type_name": "USA MK V Green",
+   "reason": "config/amp_models.json maps FM9's USA MK V Green to MESA/Boogie Mark V, Channel 1 (Clean); the tone_target above cites a real capture of that same amp's clean channel."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_DRIVE",
+   "value": 3,
+   "reason": "Mark V channel 1 is the clean channel; low gain keeps headroom rather than pushing into breakup."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_BASS",
+   "value": 5,
+   "reason": "Neutral low end; Mark V clean is not a bass-heavy voice."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_MID",
+   "value": 5.5,
+   "reason": "Even midrange so the clean channel stays articulate rather than scooped."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_TREBLE",
+   "value": 5.5,
+   "reason": "Slightly bright, matching the clarity of the cited capture's clean voicing."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_PRESENCE",
+   "value": 5,
+   "reason": "Neutral presence; adjust to taste for the room and cab in use."
+  },
+  {
+   "kind": "set_param",
+   "block": "amp",
+   "instance": 1,
+   "param": "DISTORT_MASTER",
+   "value": 5,
+   "reason": "A usable starting output level; balance against other scenes."
+  }
+ ],
+ "assumes": "an amp block (instance 1); no cab, reverb or delay assumed",
+ "sources": [
+  "config/amp_models.json: FM9 'USA MK V Green' models MESA/Boogie Mark V, Channel 1, Clean",
+  "TONE3000 capture 57410, 'Mesa Boogie - Mark V [18dBu]': author-stated gear 'Mesa Boogie Mark V', https://www.tone3000.com/tones/mesa-boogie-mark-v-18dbu-57410"
+ ]
+}

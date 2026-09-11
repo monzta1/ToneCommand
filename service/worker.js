@@ -54,8 +54,18 @@ const json = (obj, status = 200) =>
 const RECIPE_KEYS = new Set([
   "recipe_version", "name", "title", "device", "author", "tested_firmware",
   "sources", "assumes", "summary", "ear_checklist", "actions", "steps",
-  "submission_id",
+  "submission_id", "tone_target",
 ]);
+
+// The one source this build understands (#18); naming any other would claim
+// an integration nothing has built. Ids are small today; the ceiling is a
+// sanity bound against a typo or a hostile value, not a claim about their
+// real range. Whether an id is actually a REAL, harvested capture is checked
+// server-side in fm9/nam_captures.py at replay time, not here: this worker
+// has no access to that sidecar and only gates shape.
+const TONE_TARGET_SOURCE = "TONE3000";
+const TONE_TARGET_MAX_ID = 10_000_000;
+const TONE_TARGET_KEYS = new Set(["source", "capture_id", "note"]);
 
 // Kept in step with fm9/planner.py ACTION_KINDS by a test in the Python
 // suite, which reads this file. Two lists that must agree and cannot import
@@ -94,6 +104,23 @@ function readRecipe(body) {
       if (typeof line !== "string" || line.length > TEXT_MAX) {
         return `${key} must be short text`;
       }
+    }
+  }
+  if ("tone_target" in body) {
+    const t = body.tone_target;
+    if (!t || typeof t !== "object" || Array.isArray(t)) {
+      return "tone_target must be an object";
+    }
+    for (const key of Object.keys(t)) {
+      if (!TONE_TARGET_KEYS.has(key)) return `unknown field in tone_target: ${key}`;
+    }
+    if (t.source !== TONE_TARGET_SOURCE) return "tone_target.source must be 'TONE3000'";
+    if (!Number.isInteger(t.capture_id) || t.capture_id <= 0
+        || t.capture_id > TONE_TARGET_MAX_ID) {
+      return "tone_target.capture_id must be a positive integer";
+    }
+    if ("note" in t && (typeof t.note !== "string" || t.note.length > TEXT_MAX)) {
+      return "tone_target.note must be short text";
     }
   }
   const steps = body.steps || body.actions;

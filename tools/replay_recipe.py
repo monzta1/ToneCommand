@@ -12,17 +12,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from fm9 import nam_captures  # noqa: E402
+from fm9 import recipes as recipebook  # noqa: E402
+
 FORBIDDEN = {"store"}
 
 def main(path: str, apply: bool) -> int:
     rec = json.loads(Path(path).read_text())
     assert rec.get("recipe_version") == 1, "unknown recipe version"
-    bad = [a for a in rec["actions"] if a.get("kind") in FORBIDDEN]
+    steps = recipebook.steps_of(rec)
+    bad = [a for a in steps if a.get("kind") in FORBIDDEN]
     if bad:
         print("REFUSED: recipes may not contain store actions"); return 2
+    # A tone_target citation is checked here, before anything below opens a
+    # device or simulator: an invented citation is refused as a bad recipe,
+    # not as a failed action against hardware.
+    tone_target = rec.get("tone_target")
+    if tone_target is not None:
+        problem = nam_captures.validate_tone_target(tone_target)
+        if problem:
+            print(f"REFUSED: {problem}"); return 2
     print(f"recipe: {rec.get('title', rec['name'])}")
     for s in rec.get("sources", []):
         print(f"  source: {s}")
+    if tone_target is not None:
+        print(f"  tone target: {nam_captures.describe(tone_target['capture_id'])}")
+        print("    on an A2-capable device this capture IS the tone; "
+              "the steps below are this FM9's grounded approximation")
     import server
     from server import Action, validate_action, run_action
     if os.environ.get("TONECOMMAND_SIM") == "1":
@@ -34,7 +50,7 @@ def main(path: str, apply: bool) -> int:
     server._fm9 = dev
     dev.status_dump()
     print(f"device: {dev.current_preset()}")
-    actions = [Action(**a) for a in rec["actions"]]
+    actions = [Action(**a) for a in steps]
     problems = []
     for i, a in enumerate(actions):
         errs, warns = validate_action(a)

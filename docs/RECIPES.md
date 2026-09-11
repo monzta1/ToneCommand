@@ -56,6 +56,35 @@ set_bypass, set_channel, set_type, set_tempo, add_block, bind_pedal,
 rename_scene). `store` is FORBIDDEN in recipes: replay is edit-buffer
 only, and storing stays a human decision at the console.
 
+## Citing a real capture as the tone target (#18)
+
+An optional `tone_target` says which real, recorded sound a recipe is
+built to approximate:
+
+```json
+"tone_target": {
+  "source": "TONE3000",
+  "capture_id": 57410,
+  "note": "Real capture of a Mesa Boogie Mark V, clean channel."
+}
+```
+
+`source` is currently only ever `"TONE3000"`; no other capture source is
+wired up. On an A2-capable device the cited capture IS the tone; on the
+FM9 the recipe's own steps are the grounded approximation of the same
+real gear. `capture_id` must name a capture that is actually on file in
+`config/nam_capture_models.json`, the facts-only sidecar harvested from
+TONE3000's own API by `tools/build_nam_captures.py` (real title, the
+capture author's own stated gear identity, creator, licence and a
+checkable URL, nothing invented). Citing an id that is not in that
+sidecar is refused before replay does anything else: an AI never invents
+a citation.
+
+Recommending or ranking captures by evidence (accuracy, provenance tier,
+creator track record) is **not** part of this: this pass only checks
+that a citation someone already chose is real. Presenting ranked,
+evidence-backed candidates is future work.
+
 ## Replaying
 
     python tools/replay_recipe.py recipes/name.json            # dry-run: validate only

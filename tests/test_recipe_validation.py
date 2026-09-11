@@ -82,6 +82,33 @@ def test_what_must_be_refused(tmp_path, label, body):
     assert _check(tmp_path, body).startswith("REJECTED"), label
 
 
+# --- tone_target: a recipe citing a real TONE3000 A2 capture (#18) --------
+
+GOOD_TONE_TARGET = {"source": "TONE3000", "capture_id": 57410, "note": "reference"}
+
+
+def test_a_well_formed_tone_target_is_accepted(tmp_path):
+    assert _check(tmp_path, {**OK, "tone_target": GOOD_TONE_TARGET}) == "ACCEPTED"
+
+
+def test_a_recipe_with_no_tone_target_still_validates_as_before(tmp_path):
+    assert _check(tmp_path, OK) == "ACCEPTED"
+
+
+@pytest.mark.parametrize("label,tone_target", [
+    ("wrong source", {**GOOD_TONE_TARGET, "source": "ToneX"}),
+    ("non-integer capture_id", {**GOOD_TONE_TARGET, "capture_id": "57410"}),
+    ("zero capture_id", {**GOOD_TONE_TARGET, "capture_id": 0}),
+    ("negative capture_id", {**GOOD_TONE_TARGET, "capture_id": -5}),
+    ("absurdly large capture_id", {**GOOD_TONE_TARGET, "capture_id": 999999999}),
+    ("unknown sub-key", {**GOOD_TONE_TARGET, "extra": "x"}),
+    ("tone_target is a list", ["not", "an", "object"]),
+    ("a 3KB note", {**GOOD_TONE_TARGET, "note": "x" * 3000}),
+])
+def test_tone_target_shape(tmp_path, label, tone_target):
+    assert _check(tmp_path, {**OK, "tone_target": tone_target}).startswith("REJECTED"), label
+
+
 def test_a_shared_recipe_may_not_store_to_a_slot(tmp_path):
     """`store` is the one action that writes to flash. A recipe from a
     stranger has no business overwriting one of the owner's presets, and while
