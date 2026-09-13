@@ -20,25 +20,25 @@ url = "https://github.com/monzta1/ToneCommand/issues/73"
 [[tickets]]
 number = 85
 title = "Reject-everything path"
-status = "in_progress"
+status = "done"
 url = "https://github.com/monzta1/ToneCommand/issues/85"
 
 [[tickets]]
 number = 90
 title = "FM9 IR format handling from Tone3000"
-status = "in_progress"
+status = "done"
 url = "https://github.com/monzta1/ToneCommand/issues/90"
 
 [[tickets]]
 number = 92
 title = "Route capture type by target device"
-status = "in_progress"
+status = "done"
 url = "https://github.com/monzta1/ToneCommand/issues/92"
 
 [[tickets]]
 number = 93
 title = "ToneX NAM support verification"
-status = "in_progress"
+status = "done"
 url = "https://github.com/monzta1/ToneCommand/issues/93"
 
 [[tickets]]
