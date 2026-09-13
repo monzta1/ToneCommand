@@ -43,6 +43,13 @@ audition = [
     "numpy>=1.24",
 ]
 
+# Pure, local Sound Check measurements.  Kept optional so MIDI-only installs
+# do not acquire an audio stack.  Device capture remains a separate hardware
+# gate; this extra currently enables only in-memory/offline analysis.
+audio = [
+    "numpy>=1.24",
+]
+
 dev = [
     "pytest>=8",
     # The suite is dominated by the simulator's settle window, which is

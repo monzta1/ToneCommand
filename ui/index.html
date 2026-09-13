@@ -1963,6 +1963,17 @@
   .cabuse.on { border-color: var(--cyan); color: var(--cyan); }
   .cablinkpick { white-space: nowrap; }
   .cabfoot { color: var(--muted); font-size: var(--fs-hint); margin-top: 8px; }
+  .cabrecovery { margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--line); }
+  .cabrecoverline { display: flex; align-items: center; flex-wrap: wrap;
+    gap: 7px; }
+  .cabfeedback { border-radius: 999px; padding: 5px 11px;
+    min-height: 30px; color: var(--muted); background: transparent; }
+  .cabfeedback:hover { color: var(--text); border-color: var(--cyan-dim); }
+  .cabkeep { border-radius: 999px; }
+  .cabreject { border-radius: 999px; }
+  .cabresearch { margin-top: 8px; color: var(--muted);
+    font-size: var(--fs-hint); }
   .intentlist { display: grid; gap: 8px; margin-top: 16px; }
   .intentrow { display: grid; grid-template-columns: 180px minmax(0,1fr) 72px;
     gap: 14px; align-items: center; min-height: 54px; padding: 9px 12px;
@@ -9832,12 +9843,136 @@ function useCab(bank, ordinal, label) {
   revisePlan();               // re-validates, re-digests, re-renders
 }
 
+// Keeping Current is a choice too: remove the proposed cab change and send
+// the resulting action set through the same validation/revision gate. This
+// never calls /api/apply and never writes merely because it was selected.
+function keepCurrentCab() {
+  if (!currentPlan) return;
+  currentPlan.actions = (currentPlan.actions || []).filter(
+    a => a.kind !== 'set_cab');
+  revisePlan();
+}
+
+const CAB_FEEDBACK = [
+  'too dark', 'too bright', 'too boxy', 'too scooped', 'too fizzy', 'too dull',
+];
+
+function cabRecoveryMarkup(sel, alts) {
+  if (!sel || sel.target_unreadable) return '';
+  if (!sel.recovery_prompt && !sel.recovery_active) {
+    return alts.length
+      ? `<div class="cabrecovery"><button class="cabreject danger">
+           NONE OF THESE</button></div>`
+      : '';
+  }
+  const fallback = sel.factory_fallback;
+  const status = sel.recovery_why
+    ? `<div class="cabresearch">${esc(sel.recovery_why)}</div>` : '';
+  return `<div class="cabrecovery">
+    <div class="cabfoot">WHAT MISSED? I’ll widen the set and exclude every
+      cab you rejected.</div>
+    <div class="cabrecoverline">
+      ${CAB_FEEDBACK.map(value => `<button class="cabfeedback"
+          data-cab-feedback="${value}">${value.toUpperCase()}</button>`).join('')}
+      <button class="cabkeep" data-cab-keep>KEEP CURRENT</button>
+    </div>
+    ${fallback
+      ? `<div class="cabfoot">ELIGIBLE FACTORY FALLBACK</div>`
+        + cabRow(fallback, false, true)
+      : `<div class="cabresearch">No eligible factory slot is available in
+          this local catalog.</div>`}
+    ${status}</div>`;
+}
+
+function rejectCurrentCabs() {
+  const sel = currentPlan && currentPlan.cab_selection;
+  if (!sel) return;
+  sel.recovery_prompt = true;
+  renderCabPanel();
+}
+
+async function recoverCabs(feedback) {
+  const sel = currentPlan && currentPlan.cab_selection;
+  if (!sel || sel.recovery_loading) return;
+  // Accumulate rather than replace: a second "none" must not resurrect the
+  // first set. Only IRCommand's opaque identities cross the API boundary.
+  const now = (sel.candidates || []).map(row => row.asset_id)
+    .filter(value => /^asset_[0-9a-f]{8,64}$/.test(value || ''));
+  const rejected = [...new Set([...(sel.rejected_asset_ids || []), ...now])];
+  const nowFactorySlots = [
+    ...(sel.candidates || []),
+    ...(sel.factory_fallback ? [sel.factory_fallback] : []),
+  ]
+    .filter(row => row.factory === true && row.slot)
+    .map(row => `${Number(row.slot.bank)}:${Number(row.slot.ordinal)}`);
+  const rejectedFactorySlots = [...new Set([
+    ...(sel.rejected_factory_slots || []), ...nowFactorySlots])];
+  if (rejected.length > 12 || rejectedFactorySlots.length > 12) {
+    // The service's closed contract caps the exclusion set at twelve. Never
+    // drop an old id to squeeze through: that would let a cab the player
+    // already rejected reappear and falsely call the result wider.
+    sel.rejected_asset_ids = rejected;
+    sel.rejected_factory_slots = rejectedFactorySlots;
+    sel.candidates = [];
+    sel.factory_fallback = null;
+    sel.recovery_active = true;
+    sel.recovery_prompt = false;
+    sel.recovery_why = 'The bounded wider search is exhausted. Keep Current; '
+      + 'no rejected cab will be recycled.';
+    renderCabPanel();
+    return;
+  }
+  sel.recovery_loading = true;
+  $('cabfoot').textContent = 'Looking for a wider set...';
+  try {
+    const response = await fetch('/api/ir/recover', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target: sel.target || currentPlan.cab_need || '',
+        request: sel.request || '', feedback, rejected_asset_ids: rejected,
+        rejected_factory_slots: rejectedFactorySlots,
+        whole_rig: !!sel.whole_rig}),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || 'recovery failed');
+    // Defense in depth if a mismatched service repeats a rejected id.
+    sel.candidates = (data.candidates || []).filter(
+      row => !rejected.includes(row.asset_id)).slice(0, 5);
+    sel.rejected_asset_ids = data.rejected_asset_ids || rejected;
+    sel.rejected_factory_slots = data.rejected_factory_slots
+      || rejectedFactorySlots;
+    // Null means the bounded local catalog is exhausted. Never preserve and
+    // redisplay the fallback that this request just rejected.
+    sel.factory_fallback = data.factory_fallback || null;
+    sel.recovery_why = data.why || (sel.candidates.length
+      ? 'A wider set is ready. Nothing has been sent.'
+      : 'No new local candidates remain. Keep Current or try the factory fallback.');
+    sel.recovery_active = true;
+    sel.recovery_prompt = false;
+  } catch (error) {
+    // The displayed shortlist and fallback were part of this rejection
+    // attempt. A failed request cannot make any of them eligible again.
+    sel.rejected_asset_ids = rejected;
+    sel.rejected_factory_slots = rejectedFactorySlots;
+    sel.candidates = [];
+    sel.factory_fallback = null;
+    sel.recovery_active = true;
+    sel.recovery_why = 'The wider search is unavailable. Keep Current; '
+      + 'nothing was sent and no rejected cab will be recycled.';
+  } finally {
+    sel.recovery_loading = false;
+    renderCabPanel();
+  }
+}
+
 function cabRow(r, chosen, canUse) {
-  const why = (r.why || []).join(', ');
+  const why = Array.isArray(r.why) ? r.why.join(', ') : String(r.why || '');
   const playable = /\.wav$/i.test(r.path || '');
   const me = r.measured || null;
   const bits = [];
   if (r.match != null) bits.push(`${matchWord(r.match)} ${Math.round(r.match * 100)}%`);
+  if (r.match == null && r.intent_fit && r.intent_fit !== 'unknown') {
+    bits.push(`${r.intent_fit} intent fit`);
+  }
   if (me && me.brightness != null) bits.push(`${Math.round(me.brightness)} Hz`);
   // ONLY `distance_from_current`, which the server nulls out for a
   // gear-anchored or unresolved Current because there is no curve to be a
@@ -10033,7 +10168,10 @@ async function renderCabPanel() {
   const hasSet = !!(currentPlan && currentPlan.cab_selection
                     && ((currentPlan.cab_selection.candidates || []).length
                         || currentPlan.cab_selection.why
-                        || currentPlan.cab_selection.linkable));
+                        || currentPlan.cab_selection.linkable
+                        || currentPlan.cab_selection.recovery_prompt
+                        || currentPlan.cab_selection.recovery_active
+                        || currentPlan.cab_selection.factory_fallback));
   if (!acts.length) {
     if (!hasSet && (!voiced || lastCab.ordinal == null || lastCab.ordinal < 0)) {
       panel.hidden = true; return;
@@ -10115,7 +10253,7 @@ async function renderCabPanel() {
                audible.">NOTHING TO PLAY</span>`}</div>`
     : '';
 
-  $('cabalts').innerHTML = alts.length
+  $('cabalts').innerHTML = (alts.length
     ? `<div class="cabfoot">${sel && sel.target_unreadable
          ? 'NAME MATCHES ONLY, not an answer to the request &middot; drive:'
          : 'ALTERNATIVES &middot; drive:'}
@@ -10123,7 +10261,7 @@ async function renderCabPanel() {
            `<button class="cabplay cabdrive${d === cabDrive ? ' on' : ''}"
                     data-drive="${d}">${d}</button>`).join(' ')}</div>`
       + alts.map(r => cabRow(r, false, chosenSlot(r))).join('')
-    : '';
+    : '') + cabRecoveryMarkup(sel, alts);
 
   for (const b of panel.querySelectorAll('.cabplay[data-path]')) {
     b.onclick = () => playCab(b, b.dataset.path);
@@ -10134,6 +10272,15 @@ async function renderCabPanel() {
   }
   for (const b of panel.querySelectorAll('.cabdrive')) {
     b.onclick = () => { cabDrive = b.dataset.drive; stopCabAudio(); renderCabPanel(); };
+  }
+  for (const b of panel.querySelectorAll('.cabreject')) {
+    b.onclick = () => rejectCurrentCabs();
+  }
+  for (const b of panel.querySelectorAll('[data-cab-feedback]')) {
+    b.onclick = () => recoverCabs(b.dataset.cabFeedback);
+  }
+  for (const b of panel.querySelectorAll('[data-cab-keep]')) {
+    b.onclick = () => keepCurrentCab();
   }
   const firstWav = (alts.find(a => /\.wav$/i.test(a.path || '')) || {}).path;
   if (firstWav) renderBlend(firstWav); else if ($('cabblend')) $('cabblend').innerHTML = '';

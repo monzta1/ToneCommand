@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -145,6 +146,9 @@ def test_validate_tone_target_rejects_non_object():
 # --- c7: the secret key is never hardcoded in tracked source --------------
 
 def test_secret_key_never_hardcoded():
+    # The public key-family prefix belongs in validation and documentation.
+    # Only flag a credential-shaped value following that prefix.
+    secret_pattern = re.compile(re.escape("t3k_" + "cs_") + r"[A-Za-z0-9_-]{16,}")
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.splitlines()
@@ -159,6 +163,6 @@ def test_secret_key_never_hardcoded():
             text = path.read_text(errors="ignore")
         except OSError:
             continue
-        if "t3k_cs_" in text:
+        if secret_pattern.search(text):
             offenders.append(rel)
     assert offenders == []

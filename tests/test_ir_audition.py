@@ -153,12 +153,16 @@ def test_ir_context_is_empty_when_service_off(monkeypatch):
     assert server.ir_context("soldano lead") == ""
 
 
-def test_ir_context_lists_the_library_hits(monkeypatch):
+def test_ir_context_reports_library_shape_not_ranked_hits(monkeypatch):
+    """Brief 19.5/21.3: pre-plan, ir_context gives the planner the library's
+    unranked SHAPE, never a scored list built from the raw prompt. The
+    ranked search moved to run once, post-plan, in cab_listening_set."""
     monkeypatch.setattr(ir_service, "enabled", lambda: True)
-    monkeypatch.setattr(ir_service, "recommend", lambda *a, **k: [
-        {"name": "Soldano SLO30.wav", "pack": "t3k", "why": ["Soldano"]}])
+    monkeypatch.setattr(ir_service, "library_shape", lambda: {
+        "cab_irs": 3, "unique_irs": 2, "speakers": {"Celestion V30": 2}})
     got = server.ir_context("soldano lead")
-    assert "Soldano SLO30.wav" in got and "t3k" in got and "set_cab" in got
+    assert "Celestion V30" in got
+    assert "<ir_candidates>" not in got
 
 
 def test_ir_context_survives_a_broken_service(monkeypatch):
@@ -168,7 +172,7 @@ def test_ir_context_survives_a_broken_service(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("service exploded")
 
-    monkeypatch.setattr(ir_service, "recommend", boom)
+    monkeypatch.setattr(ir_service, "library_shape", boom)
     assert server.ir_context("anything") == ""
 
 

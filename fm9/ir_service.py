@@ -213,6 +213,34 @@ def _get(path: str, timeout: int = 3):
         return None
 
 
+def _post(path: str, body: dict, timeout: int = 3) -> tuple[int | None, dict | None]:
+    """POST JSON to IRCommand without turning its availability into an error.
+
+    The status is kept because a 404 has a useful, non-failing meaning for
+    optional versioned features: IRCommand is alive, but it predates that
+    contract. Redirects still go through ``_opener`` and are refused by the
+    same loopback security boundary as GETs.
+    """
+    url = base_url()
+    if not url:
+        return None, None
+    request = urllib.request.Request(
+        url + path, data=json.dumps(body).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json"})
+    try:
+        with _opener.open(request, timeout=timeout) as response:
+            return response.status, json.loads(
+                response.read(300_000).decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.loads(exc.read(300_000).decode("utf-8", "replace"))
+        except (OSError, ValueError):
+            payload = None
+        return exc.code, payload
+    except (urllib.error.URLError, OSError, ValueError):
+        return None, None
+
+
 def status() -> dict:
     """Whether the IR feature is on, and if so whether the service answers.
     Always reports the saved url and whether the environment pins it, so
@@ -480,27 +508,49 @@ def intent(text: str) -> dict:
     return _get(f"/ir/intent?q={quote(text)}", timeout=2) or {}
 
 
-def gaps_online(need: str, target: str = "fm9", k: int = 3):
-    """Captures on TONE3000 for a need the OWNED library cannot answer.
+def reject_all(request_text: str, feedback: str,
+               rejected_asset_ids: list[str], *,
+               operation: str = "amp_cab_replacement",
+               max_candidates: int = 3) -> dict:
+    """Ask IRCommand for one bounded, wider shortlist after explicit rejection.
 
-    IRCommand decides whether to look outward at all: it only searches when
-    the request parsed into real gear terms AND the best owned match is still
-    weak, because a low score on an artist name means the request was not
-    understood rather than that the shelf is empty.
-
-    Returns [] rather than None when there is simply nothing to add, so a
-    caller can treat it as "checked, no gap" instead of "did not check".
+    This is advisory only. It carries opaque ids, never local paths, and the
+    IRCommand contract has no install, FM9, MIDI, transmit or store operation.
+    ``available`` is false for an older service (404), a stopped service, or
+    an unreadable response so Review can keep Current and offer its local
+    factory fallback instead of raising a 500.
     """
-    if not enabled() or not (need or "").strip():
-        return []
-    # 3 seconds, not 8. This runs BEFORE the planner starts, so every second
-    # here is a second added to a build, and a cab the player does not own yet
-    # is the most optional thing in the request. Measured: 0.88s when it fires
-    # and 0.03s when it does not. A miss is silent, so a slow or dead TONE3000
-    # costs three seconds once rather than holding up the build.
-    d = _get(f"/ir/recommend?need={quote(need)}&target={quote(target)}"
-             f"&k={int(k)}", timeout=3)
-    return (d or {}).get("online") or []
+    if not enabled():
+        return {"available": False,
+                "why": "the IR library is not connected"}
+    request_id = "tonecommand-" + hashlib.sha256(
+        (request_text + "\0" + feedback + "\0" +
+         "\0".join(rejected_asset_ids)).encode("utf-8", "surrogatepass")
+    ).hexdigest()[:20]
+    body = {
+        "schema_version": 1,
+        "request_id": request_id,
+        "request_text": request_text,
+        "operation": operation,
+        "target_profile": "fm9-offline-v1",
+        "source_policy": "auto",
+        "max_candidates": max_candidates,
+        "feedback": feedback,
+        "rejected_asset_ids": rejected_asset_ids,
+    }
+    status, response = _post("/v1/recommendations/reject-all", body,
+                             timeout=3)
+    if status == 404:
+        return {"available": False, "legacy": True,
+                "why": "IRCommand is an older build without wider recovery"}
+    if status != 200 or not isinstance(response, dict):
+        return {"available": False,
+                "why": "the IR library did not answer the wider search"}
+    if response.get("schema_version") != 1 \
+            or not isinstance(response.get("candidates"), list):
+        return {"available": False,
+                "why": "the IR library sent an unreadable recovery answer"}
+    return {"available": True, "response": response}
 
 
 def blend_partners(path: str, k: int = 5):

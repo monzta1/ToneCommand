@@ -4,6 +4,27 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Review can recover when every cab candidate misses (#85).** NONE OF THESE
+  collects bounded tonal feedback, excludes every rejected opaque asset and
+  physical factory slot across rounds, and requests a wider IRCommand set.
+  Keep Current and a registry-validated factory fallback remain available;
+  every choice still becomes a plan revision and nothing is sent to the FM9.
+- **IRCommand now routes assets by a dated target capability record
+  (#90, #92, #93).** Eligibility is filtered before ranking for FM9, TONEX,
+  and separately declared NAM players. FM9 preparation resolves only a
+  catalog-classified, content-bound cabinet WAV, preserves its full tail at
+  48 kHz, records provenance, and produces a manual FM9-Edit or Cab-Lab
+  handoff. The record cites official IK and Fractal sources and fails closed
+  when stale; TONEX is not represented as a direct NAM host.
+- **Fixture-only Sound Check analysis is implemented (#101, #102, #103,
+  #105).** Pure local modules report frequency balance, gated loudness and
+  scene relationships, stereo/dynamics evidence, and frequency-balance
+  reference deltas. Invalid audio and incomplete policy coverage fail closed,
+  any proposed EQ direction is confirmation-required and unsent, and every
+  report explicitly says that no FM9 capture or sound check was performed.
+  These four issues remain open pending the real capture path in #100.
+
 ### Changed
 - **The persistent 152px hero emblem is now a full-screen loading splash at
   520px.** The header logo bump to 64px (below) still read as too small

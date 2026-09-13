@@ -5,6 +5,66 @@ acceptance_file = "handsoff-acceptance.json"
 event_log = "handsoff-events.jsonl"
 verification_log = "handsoff-verifications.jsonl"
 
+[[tickets]]
+number = 18
+title = "NAM A2 data-first integration"
+status = "done"
+url = "https://github.com/monzta1/ToneCommand/issues/18"
+
+[[tickets]]
+number = 73
+title = "Epic B: local collection intelligence closeout"
+status = "done"
+url = "https://github.com/monzta1/ToneCommand/issues/73"
+
+[[tickets]]
+number = 85
+title = "Reject-everything path"
+status = "in_progress"
+url = "https://github.com/monzta1/ToneCommand/issues/85"
+
+[[tickets]]
+number = 90
+title = "FM9 IR format handling from Tone3000"
+status = "in_progress"
+url = "https://github.com/monzta1/ToneCommand/issues/90"
+
+[[tickets]]
+number = 92
+title = "Route capture type by target device"
+status = "in_progress"
+url = "https://github.com/monzta1/ToneCommand/issues/92"
+
+[[tickets]]
+number = 93
+title = "ToneX NAM support verification"
+status = "in_progress"
+url = "https://github.com/monzta1/ToneCommand/issues/93"
+
+[[tickets]]
+number = 101
+title = "Measure EQ shape (spectrum) - implementation complete; FM9 capture and integration pending #100"
+status = "blocked"
+url = "https://github.com/monzta1/ToneCommand/issues/101"
+
+[[tickets]]
+number = 102
+title = "Measure loudness and scene balance - implementation complete; FM9 capture and integration pending #100"
+status = "blocked"
+url = "https://github.com/monzta1/ToneCommand/issues/102"
+
+[[tickets]]
+number = 103
+title = "Measure stereo width and dynamics - implementation complete; FM9 capture and integration pending #100"
+status = "blocked"
+url = "https://github.com/monzta1/ToneCommand/issues/103"
+
+[[tickets]]
+number = 105
+title = "Reference tone-match by measurement - implementation complete; FM9 capture and integration pending #100"
+status = "blocked"
+url = "https://github.com/monzta1/ToneCommand/issues/105"
+
 [workflow]
 max_design_rounds = 3
 max_review_rounds = 3
@@ -18,30 +78,29 @@ implementer = "configure-me"
 reviewer = "configure-me"
 
 [checks]
-# Shell commands the supervisor actually runs via `handsoff_supervisor.py verify`.
-# Each criterion's evidence should point at one of these having run, not a
-# free-text claim. Example: commands = ["pytest tests/ -q", "npm test"]
+# Focused evidence commands for this two-repository tranche. The four Sound
+# Check commands prove algorithms against deterministic fixtures only; they do
+# not claim an FM9 capture or hardware validation.
 commands = [
-  ".venv/bin/python -m pytest tests/test_site_build.py::test_header_logo_is_64px -q",
-  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_logo_is_520px -q",
-  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_reduced_motion_and_no_js_fallback -q",
-  ".venv/bin/python -m pytest tests/test_site_build.py::test_splash_skip_on_interaction_is_wired -q",
-  ".venv/bin/python -m pytest tests/test_site_build.py::test_no_em_dash_in_touched_site_files -q",
-  ".venv/bin/python -m pytest tests/test_grounding_envelope.py -q",
-  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_replay_rejects_ungrounded_tone_target_before_device_connect -q",
-  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_provenance_tier_logic -q",
-  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_replay_accepts_grounded_tone_target -q",
-  ".venv/bin/python -m pytest tests/test_nam_captures.py::test_secret_key_never_hardcoded -q",
-  ".venv/bin/python -m pytest tests/test_recipe_validation.py::test_tone_target_shape -q",
+  ".venv/bin/python -m pytest tests/test_nam_captures.py tests/test_recipe_validation.py::test_tone_target_shape -q",
+  ".venv/bin/python -m pytest tests/test_cab_recovery.py -q",
+  "../ir-command/.venv/bin/python -m pytest ../ir-command/tests/test_reject_flow.py -q",
+  "../ir-command/.venv/bin/python -m pytest ../ir-command/tests/test_target_routing.py::test_fm9_preparation_preserves_source_and_uses_truthful_profile -q",
+  "../ir-command/.venv/bin/python -m pytest ../ir-command/tests/test_target_routing.py::test_same_request_routes_by_target_capability -q",
+  "../ir-command/.venv/bin/python -m pytest ../ir-command/tests/test_target_routing.py::test_tonex_rejects_every_nam_architecture -q",
+  ".venv/bin/python -m pytest tests/test_audio_metrics.py::test_frequency_balance_reports_named_bands_and_policy_status -q",
+  ".venv/bin/python -m pytest tests/test_audio_metrics.py::test_scene_loudness_uses_rhythm_baseline_and_unknowns -q",
+  ".venv/bin/python -m pytest tests/test_audio_metrics.py::test_stereo_and_dynamics_metrics_are_coverage_aware -q",
+  ".venv/bin/python -m pytest tests/test_reference_compare.py -q",
+  ".venv/bin/python -m pytest tests/test_offline_tranche_compat.py -q",
 ]
-# Commands that verify the deployed system. Phase 8 is blocked until these
-# run successfully after deployment approval. This app has no hosted server;
-# "deployed" means pushed to origin/main, which is what a user's local
-# install pulls. Live proof is: the pushed commit's own files, run for real
-# through the actual replay tool (simulator device, not a mock of the tool).
+# This run has no hardware authority. Live verification means executing the
+# shipped local entry points against deterministic WAVs and the simulator while
+# retaining explicit `hardware_verified = false` coverage in every report.
 live_commands = [
-  "git fetch origin && git diff --quiet HEAD origin/main -- recipes/mesa-mark-v-a2-reference.json tools/replay_recipe.py fm9/nam_captures.py config/nam_capture_models.json",
-  "TONECOMMAND_SIM=1 .venv/bin/python tools/replay_recipe.py recipes/mesa-mark-v-a2-reference.json | grep -q 'tone3000.com/tones'",
+  "TONECOMMAND_SIM=1 .venv/bin/python tools/replay_recipe.py recipes/mesa-mark-v-a2-reference.json",
+  "../ir-command/.venv/bin/python -m pytest ../ir-command/tests/test_reject_flow.py ../ir-command/tests/test_target_routing.py -q",
+  ".venv/bin/python -m pytest tests/test_audio_metrics.py tests/test_reference_compare.py -q",
 ]
 # Per-command timeout. A hanging check is killed and recorded as exit 124
 # rather than hanging the Supervisor indefinitely.
