@@ -179,8 +179,8 @@ def test_the_fm9_declares_what_hardware_sessions_proved():
     assert caps.read_path is ReadPath.DEVICE
     assert caps.can_verify
     assert caps.why_unverified() == ""      # nothing to excuse
-    assert caps.reads_by_slot and caps.has_scenes and caps.stores_presets
-    assert not caps.split_transport
+    assert caps.reads_slot_names and caps.has_scenes and caps.stores_presets
+    assert not caps.observes_foreign_writes
 
 
 def test_a_read_path_on_a_separate_channel_still_counts_as_evidence():
@@ -188,7 +188,7 @@ def test_a_read_path_on_a_separate_channel_still_counts_as_evidence():
     a serial port. That is weaker than the FM9's same-channel read but it is
     still evidence, and it must not be lumped in with having no read path."""
     from fm9.adapter import Capabilities, ReadPath
-    tonex = Capabilities(read_path=ReadPath.OBSERVED, split_transport=True,
+    tonex = Capabilities(read_path=ReadPath.OBSERVED, observes_foreign_writes=True,
                          verifies_writes=True)
     assert tonex.can_verify
     assert ReadPath.NONE < tonex.read_path < ReadPath.DEVICE

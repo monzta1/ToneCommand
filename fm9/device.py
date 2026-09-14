@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import mido
 
 from . import protocol as p
-from .adapter import Capabilities, ReadPath
+from .adapter import Capabilities, ReadPath, Topology
 from .registry import Registry, ParamSpec
 from .safety import sysex_guard
 from .signal_path import scene_alive
@@ -231,11 +231,22 @@ class FM9:
     # reads back before reporting.
     CAPABILITIES = Capabilities(
         read_path=ReadPath.DEVICE,
-        split_transport=False,
-        reads_by_slot=True,
+        observes_foreign_writes=False,
+        reads_slot_names=True,
+        reads_slot_state=True,
         verifies_writes=True,
         has_scenes=True,
         stores_presets=True,
+        topology=Topology.CONSTRUCTED,   # arbitrary cables, drawn by the caller
+        has_modifiers=True,
+        installs_files=True,
+        can_rename=True,
+        # False on measurement, not on omission. The FM9 stores bypass and
+        # channel PER SCENE, so every scene fully determines every block and
+        # there is no wire encoding for "leave this slot alone". Claiming the
+        # capability and swallowing a NO_CHANGE write would be the exact
+        # dishonesty Capabilities exists to prevent (#109, #33).
+        composable_scene_slots=False,
     )
 
     def capabilities(self) -> Capabilities:
@@ -766,6 +777,21 @@ class FM9:
             time.sleep(0.03)
         time.sleep(1.0)
         return cf, idx, tag
+
+    def set_tempo(self, bpm: int):
+        """Set the global tempo. Fire and forget, and it says so.
+
+        Public since #109 only so `server.py` stops reaching into `_send` to
+        build this frame itself. The behaviour is unchanged and is deliberately
+        NOT device-general: a global tempo is a Fractal concept here, so this
+        stays off the adapter contract rather than forcing a device without one
+        to invent it.
+
+        No read-back. There is no known tempo read on this firmware, so this
+        returns nothing rather than implying a verified write. The caller
+        reporting `ok` for an unverified send is a separate defect, #110.
+        """
+        self._send(p.build_set_tempo(int(bpm)))
 
     def rename_preset(self, name: str):
         self._drain()

@@ -54,3 +54,4 @@ handsoff-verifications.jsonl
 .handsoff-event-head.json
 .handsoff-writeahead.json
 .handsoff-archive/
+.venv

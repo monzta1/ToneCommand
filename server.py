@@ -21,6 +21,7 @@ from fastapi.responses import (FileResponse, JSONResponse, Response,
                                StreamingResponse)
 from pydantic import BaseModel
 
+from fm9.adapter import DeviceAdapter
 from fm9.device import FM9, FM9NotFound, get_cab_slots
 from fm9.registry import Registry
 from fm9 import (acquire, ai_settings, bundlefile, cabfile, describe, designs, editbuffer, health,
@@ -51,7 +52,7 @@ _lock = threading.Lock()
 # Held for the whole planner call, and a save that cannot get it says so
 # rather than hanging for the length of a plan.
 _settings_lock = threading.Lock()
-_fm9: FM9 | None = None
+_fm9: DeviceAdapter | None = None
 
 FRIENDLY = {"DISTORT": "Amp", "CABINET": "Cab", "FUZZ": "Drive", "GATE": "Gate",
             "INPUT": "Input", "OUTPUT": "Output", "COMP": "Compressor",
@@ -99,7 +100,7 @@ INTEREST = {
 MOD_SOURCES = {10: "Pedal 1", 11: "Pedal 2"}   # kept in step by test
 
 
-def read_modifiers(fm9: FM9) -> dict:
+def read_modifiers(fm9: DeviceAdapter) -> dict:
     """Which parameters are driven by something other than their own value.
 
     A modifier takes the parameter over: the FM9 sources it from the pedal,
@@ -139,7 +140,7 @@ def read_modifiers(fm9: FM9) -> dict:
     return out
 
 
-def _safe_modifiers(fm9: FM9) -> dict:
+def _safe_modifiers(fm9: DeviceAdapter) -> dict:
     """read_modifiers, but never the reason a poll fails."""
     try:
         return read_modifiers(fm9)
@@ -154,7 +155,7 @@ _last_rescan = {"at": 0.0}
 RESCAN_EVERY = 2.0
 
 
-def get_fm9() -> FM9:
+def get_fm9() -> DeviceAdapter:
     global _fm9
     if _fm9 is None:
         import os
@@ -903,7 +904,7 @@ def ir_context(prompt: str, anchor: dict = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def shared_scenes(fm9: FM9) -> dict:
+def shared_scenes(fm9: DeviceAdapter) -> dict:
     """For each block, the scenes currently using each of its channels.
 
     The FM9 stores bypass and channel per scene, but block PARAMETERS live on
@@ -937,7 +938,7 @@ def shared_scenes(fm9: FM9) -> dict:
     return by_block
 
 
-def scene_names(fm9: FM9) -> list[dict]:
+def scene_names(fm9: DeviceAdapter) -> list[dict]:
     """Names of all eight scenes, for labelling the UI's scene buttons.
 
     Queried by number, so the loaded scene is untouched. A scene that does
@@ -954,7 +955,7 @@ def scene_names(fm9: FM9) -> list[dict]:
     return out
 
 
-def snapshot(fm9: FM9) -> dict:
+def snapshot(fm9: DeviceAdapter) -> dict:
     preset = fm9.current_preset()
     if preset is None:
         # Nothing came back. An open port is not a connected device: pulling
@@ -994,7 +995,7 @@ def snapshot(fm9: FM9) -> dict:
         if fname == "CABINET" and "cab" not in values:
             vals = fm9.bulk_read(b.effect_id)
             if vals:
-                chans = max(1, fm9._channels.get(b.effect_id, 1))
+                chans = max(1, b.channels_supported)
                 stride = len(vals) // chans if chans > 1 else len(vals)
                 base = min(b.channel, chans - 1) * stride
                 bank, slot = vals[base + 0], vals[base + 4]
@@ -1009,7 +1010,7 @@ def snapshot(fm9: FM9) -> dict:
             seen_fams.add(fname)
             vals = fm9.bulk_read(reg.effect_id(fname, inst))
             if vals:
-                chans = max(1, fm9._channels.get(reg.effect_id(fname, inst), 1))
+                chans = max(1, b.channels_supported)
                 stride = len(vals) // chans if chans > 1 else len(vals)
                 base = min(b.channel, chans - 1) * stride
                 if fname == "DISTORT" and base + 10 < len(vals):
@@ -2360,7 +2361,7 @@ def _no_placement_detail(a: Action, pos: str, cells: list | None) -> str:
 AMP_FAMILY = "DISTORT"
 
 
-def _amp_cell(fm9: FM9, cells):
+def _amp_cell(fm9: DeviceAdapter, cells):
     """The first amp on the grid, alias-aware.
 
     Grid ids alias mod 128, so FX Return (186) reads as 58 and would pass for
@@ -2380,7 +2381,7 @@ def _amp_cell(fm9: FM9, cells):
     return min(amps, key=lambda c: c.col) if amps else None
 
 
-def _splice_plan_for(fm9: FM9, a: Action) -> dict | None:
+def _splice_plan_for(fm9: DeviceAdapter, a: Action) -> dict | None:
     """What add_block would have to displace, or None if it need not.
 
     Called at plan time so the consequences are visible BEFORE anyone
@@ -2413,7 +2414,7 @@ def _splice_plan_for(fm9: FM9, a: Action) -> dict | None:
     return intent
 
 
-def _add_block(fm9: FM9, a: Action) -> dict:
+def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
     """Insert a block onto a free shunt cell. Refuses when no sane placement
     exists rather than guessing (no cable drawing in the planner path)."""
     fam, eid = reg.resolve_block(a.block or "", a.instance)
@@ -2527,7 +2528,7 @@ def _synthetic_for(preset: int | None) -> set:
     return _synthetic_slots["slots"]
 
 
-def _bind_pedal(fm9: FM9, a: Action) -> dict:
+def _bind_pedal(fm9: DeviceAdapter, a: Action) -> dict:
     """Put a continuous parameter under an expression pedal (a.pedal 1 or 2,
     default 2).
 
@@ -2605,7 +2606,7 @@ def _bind_pedal(fm9: FM9, a: Action) -> dict:
             "unverifiable": True}
 
 
-def _unbind_pedal(fm9: FM9, a: Action) -> dict:
+def _unbind_pedal(fm9: DeviceAdapter, a: Action) -> dict:
     """Take a parameter back off its modifier, so its own value governs again.
 
     The way back from a bind. Refuses to detach a source this project cannot
@@ -2644,7 +2645,7 @@ def _unbind_pedal(fm9: FM9, a: Action) -> dict:
     return {"ok": False, "detail": f"{spec.name} has no modifier on it"}
 
 
-def run_action(fm9: FM9, a: Action) -> dict:
+def run_action(fm9: DeviceAdapter, a: Action) -> dict:
     if a.kind == "rename_preset":
         name = a.type_name.strip()
         if not name.upper().startswith("FM9AI"):
@@ -2688,8 +2689,7 @@ def run_action(fm9: FM9, a: Action) -> dict:
         return {"ok": got == scene_no,
                 "detail": f"scene {got}" + (f" \"{name[1]}\"" if name else "")}
     if a.kind == "set_tempo":
-        from fm9 import protocol as p
-        fm9._send(p.build_set_tempo(int(a.value)))
+        fm9.set_tempo(int(a.value))
         return {"ok": True, "detail": f"tempo {int(a.value)} bpm sent"}
 
     fam, eid = reg.resolve_block(a.block or "", a.instance)

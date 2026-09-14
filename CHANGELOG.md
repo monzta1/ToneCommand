@@ -5,6 +5,69 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Changed
+- **The device contract stopped being decorative, so a second device can
+  finally be written against it.** ToneCommand declared a `DeviceAdapter`
+  Protocol and a `Capabilities` mechanism whose whole purpose was to let a
+  device say what it cannot do, and then consulted neither at runtime:
+  `server.py` did not import `Capabilities` at all, and `conformance()`
+  checked the FM9 against a contract derived from the FM9, since `SimFM9` is a
+  factory returning a real `FM9`. Passing therefore proved self-consistency,
+  not portability. Measured on the way in: routes reached 35 distinct names on
+  the device across 96 call sites, 24 of them absent from the 14-method
+  contract, three of those private. `fm9/adapter.py` now promotes the five
+  that were plain asymmetries (`get_param_display` had a setter and no getter,
+  `scan_slots` is the bulk form of `slot_name`, plus `set_params_batch`,
+  `scene_name` and `firmware_label`), and puts the rest behind five capability
+  sub-Protocols (`ChainEditing`, `Modifiers`, `FileInstall`, `Renaming`,
+  `SceneSlots`) because `typing.Protocol` cannot express a conditionally
+  required member and requiring them of every adapter would force a device to
+  implement a grid it does not have. `conformance()` now also checks the
+  gates, so declaring a capability you cannot honour fails instead of
+  surfacing when a user tries it. `tests/stub_device.py` is a second,
+  structurally distinct implementation that opts into some sub-Protocols and
+  declines others. Runtime enforcement of the gates is #111.
+- **Chain control is ranked, not a boolean.** `edits_chain: bool` was true
+  for the FM9 and for a HeadRush while describing operations that share almost
+  nothing, which is the same defect as `has_scenes: bool` and was caught by
+  @bschmalz81401 before it shipped (#109). `Topology` is now ranked the way
+  `ReadPath` is, so `min()` across a plan's devices gives the weakest link:
+  `FIXED` has no say, `SELECTED` chooses from an enumerated set, `CONSTRUCTED`
+  draws arbitrary connections. He measured the difference on a HeadRush Core
+  at fw `5.1.0.2a63755`: there are no cables on that device at all, the chain
+  is fourteen linear slots, and topology is one integer picked from ten
+  prebuilt routings. Writing all ten and reading the chain back left every
+  slot byte-identical, so the unit publishes the routing names and never their
+  shapes, which is why `TopologySelection` promises enumerate, name and
+  choose, and deliberately does not promise to describe. `connect_cells` moved
+  to `ChainWiring`, gated on `CONSTRUCTED` and absent below it rather than
+  present and refusing, because on a device that picks prebuilt routings the
+  primitive does not exist. `splice_block`, `plan_splice`, `find_donor_slot`
+  and `read_grid` left the contract at any flag level: splice is a workaround
+  for two FM9 facts (no free pass-through cell before the amp, cables reaching
+  only the next column) and `GridCell` is FM9 geometry, so behind a flag every
+  future adapter would have had to answer a question it does not have.
+- **Scene state is tri-state and slots are addressed by name.** Measured on
+  HeadRush hardware by @bschmalz81401 (#33): `has_scenes: bool` was true for
+  both devices and described almost nothing they share. `NO_CHANGE` is what
+  makes scenes composable, and a boolean model has to invent "absent means no
+  change", which loses the difference between a slot nobody touched and one
+  deliberately left alone; matching slots by index re-points a scene at the
+  wrong block the moment a chain is reordered. The FM9 declares
+  `composable_scene_slots=False` and implements none of `SceneSlots`, because
+  it stores bypass and channel per scene and has no wire encoding for "leave
+  this slot alone". Declining is the honest answer. In the same pass
+  `reads_by_slot` split into `reads_slot_names` and `reads_slot_state`, which
+  a HeadRush answers differently, and `split_transport` became
+  `observes_foreign_writes`, naming what callers need to know rather than the
+  mechanism.
+- **`server.py` holds a device handle instead of the FM9 class.** The accessor
+  and all 11 helper annotations plus the module global named the concrete
+  class, so the indirection existed in name only. Private reach-through is
+  gone too: the tempo action called `fm9._send` with a frame it built itself
+  and now calls a public `FM9.set_tempo`, and the `/api/state` poll path read
+  the private `_channels` cache when `b.channels_supported`, the value that
+  cache is built from, was already in scope. The one remaining private access
+  is in the `TONECOMMAND_DEBUG=1` endpoint and is allowlisted by name.
 - **The persistent 152px hero emblem is now a full-screen loading splash at
   520px.** The header logo bump to 64px (below) still read as too small
   against the ask to make the site's logo genuinely big, and a nav icon

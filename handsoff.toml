@@ -33,6 +33,18 @@ commands = [
   ".venv/bin/python -m pytest tests/test_nam_captures.py::test_replay_accepts_grounded_tone_target -q",
   ".venv/bin/python -m pytest tests/test_nam_captures.py::test_secret_key_never_hardcoded -q",
   ".venv/bin/python -m pytest tests/test_recipe_validation.py::test_tone_target_shape -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_a_non_fm9_implementation_satisfies_the_contract_and_conformance_certifies_it -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_scene_state_is_tri_state_and_slots_are_addressed_by_name -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_chain_control_is_ranked_not_a_boolean -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_conformance_rejects_a_stub_whose_signature_drifted -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_conformance_rejects_a_capability_declared_true_without_its_sub_protocol -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_set_tempo_action_still_reports_what_it_reported_before -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_every_method_a_route_calls_has_exactly_one_documented_home -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_routes_do_not_reach_into_private_device_methods -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_promoted_methods_and_sub_protocols_are_declared_and_satisfied -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_get_device_returns_the_contract_type_not_the_fm9_class -q",
+  ".venv/bin/python -m pytest tests/test_device_handle.py::test_changelog_entry_exists_and_touched_files_have_no_em_dash -q",
+  ".venv/bin/python -m pytest tests/test_validation.py tests/test_modifiers.py -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval. This app has no hosted server;
@@ -40,8 +52,9 @@ commands = [
 # install pulls. Live proof is: the pushed commit's own files, run for real
 # through the actual replay tool (simulator device, not a mock of the tool).
 live_commands = [
-  "git fetch origin && git diff --quiet HEAD origin/main -- recipes/mesa-mark-v-a2-reference.json tools/replay_recipe.py fm9/nam_captures.py config/nam_capture_models.json",
-  "TONECOMMAND_SIM=1 .venv/bin/python tools/replay_recipe.py recipes/mesa-mark-v-a2-reference.json | grep -q 'tone3000.com/tones'",
+  "git fetch origin && git diff --quiet HEAD origin/main -- server.py fm9/adapter.py fm9/device.py tests/test_device_handle.py",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_handle.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_validation.py tests/test_modifiers.py -q",
 ]
 # Per-command timeout. A hanging check is killed and recorded as exit 124
 # rather than hanging the Supervisor indefinitely.
