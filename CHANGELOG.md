@@ -4,6 +4,10 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+(nothing yet)
+
+## 1.5.2 (2026-09-21)
+
 ### Fixed (the bundled app's CI build died on import, 2026-09-20: #175 follow-up)
 - `numpy` was an optional extra (`audition`) while `fm9/reamp.py`,
   `capture.py`, `measure.py`, `sound_check.py` and `tone_match.py` import
@@ -28,6 +32,15 @@ Notable changes to ToneCommand. Dates are UTC.
 - A self-contained unsigned macOS `ToneCommand.app` bundle with Python inside,
   a simulator smoke test, and a tag/manual GitHub Actions packaging workflow.
   Windows builds, signing, and notarisation remain later chunks.
+
+### Docs
+- `docs/HEADRUSH-HARDWARE-FINDINGS.md` Finding 5: the unit snaps the display
+  value to the published grid and stores the result as float32, so a
+  read-back equals the write only when the display value was already on the
+  grid (#167, #173, #174).
+- AGENTS.md and CLAUDE.md: main is protected and lanes land through a PR
+  (#178); step 2 points at the engine's own `handsoff playbook` before the
+  local KB (#180).
 
 ## 1.5.1 (2026-09-20)
 
