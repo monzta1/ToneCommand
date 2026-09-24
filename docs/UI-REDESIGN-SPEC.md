@@ -1,4 +1,4 @@
-# ToneCommand desktop control surface — implementation specification
+# ToneCommand desktop control surface: implementation specification
 
 Status: design specification only  
 Experience north star: `NEXT-LEVEL-PRODUCT-DESIGN.md`  
@@ -95,11 +95,11 @@ No current function is removed. Each is assigned a stable home and a disclosure 
 
 The application has five persistent layers, ordered by operational importance:
 
-1. **Hardware bar** — device, preset, mode, and irreversible-state awareness.
-2. **Command progress rail** — the five-stage workflow and its current gate.
-3. **Live context strip** — scenes and compact routing; the physical state being acted on.
-4. **Stage workspace** — one focused task: Request, Plan, Review, Confirm, or Send.
-5. **Command shelf** — Undo, Compare, Diagnostics, Library, Storage, Activity, Settings.
+1. **Hardware bar**: device, preset, mode, and irreversible-state awareness.
+2. **Command progress rail**: the five-stage workflow and its current gate.
+3. **Live context strip**: scenes and compact routing; the physical state being acted on.
+4. **Stage workspace**: one focused task: Request, Plan, Review, Confirm, or Send.
+5. **Command shelf**: Undo, Compare, Diagnostics, Library, Storage, Activity, Settings.
 
 The first three layers do not scroll. The stage workspace has an internal scroll region. The command shelf stays fixed at the bottom. The browser document itself must not scroll at the reference viewport.
 
@@ -152,9 +152,9 @@ The stage workspace uses this column grid:
 | Column | Width | Purpose |
 |---|---:|---|
 | Stage navigator/context | 224 | Stage-specific summary, counts, filters |
-| Gap | 12 | — |
+| Gap | 12 | none |
 | Primary work canvas | flexible; 804 at reference | Conversation, plan, change table, progress |
-| Gap | 12 | — |
+| Gap | 12 | none |
 | Inspector/impact rail | 356 | Hardware target, impact, validation, block parameters |
 
 At 1180 px viewport width, columns become `184 / 12 / minmax(560, 1fr) / 12 / 320`. At widths below 1180, show a deliberate unsupported-width screen rather than collapsing into a mobile layout; this is a professional desktop surface.
@@ -176,7 +176,7 @@ When the edit buffer differs from stored state, show `EDIT BUFFER · MODIFIED` i
 
 The rail is a single centered sequence, maximum width `920`, height `52`. Each stage is `168 × 36`, connected by a `20px` line:
 
-`01 REQUEST — 02 PLAN — 03 REVIEW — 04 CONFIRM — 05 SEND`
+`01 REQUEST -> 02 PLAN -> 03 REVIEW -> 04 CONFIRM -> 05 SEND`
 
 States:
 
@@ -225,7 +225,7 @@ Conversation bubbles use at most `680px` line width. Operator messages align rig
 
 Source mode replaces the text composer with one input and **ANALYZE SOURCE**. Accept YouTube URL, web page, or pasted transcript. While analyzing, show progress in the global operation strip above the command shelf, not inside scrolled content. The stop control is always visible there.
 
-After analysis, show three compact evidence counts: `STATED`, `INFERRED`, `QUOTED`. Detailed evidence stays in a drawer. Questions that materially alter the build—scene count and preset name—appear as required fields before **GENERATE PLAN** enables.
+After analysis, show three compact evidence counts: `STATED`, `INFERRED`, `QUOTED`. Detailed evidence stays in a drawer. Questions that materially alter the build (scene count and preset name) appear as required fields before **GENERATE PLAN** enables.
 
 #### Empty-slot mode
 
@@ -287,8 +287,8 @@ Use a sticky header and virtual/internal scrolling. Columns:
 | Status | 32 | validated/warning/error icon |
 | Target | 156 | block instance + channel or preset metadata |
 | Parameter/action | flexible, min 220 | human-readable name |
-| Before | 132 | existing value or `—` for create |
-| After | 132 | proposed value or `—` for remove |
+| Before | 132 | existing value or `-` for create |
+| After | 132 | proposed value or `-` for remove |
 | Impact | 92 | affected-scene count or topology tag |
 | Detail | 32 | disclosure chevron |
 
@@ -317,10 +317,10 @@ Confirm occupies the full center canvas and right rail; background context remai
 
 Show exactly four confirmation facts in a `2 × 2` matrix:
 
-- **TARGET** — `FM9 · Preset 265 BASSGUY`
-- **SCOPE** — `24 changes across 3 scenes`
-- **DESTINATION** — `EDIT BUFFER · NOT STORED`
-- **RECOVERY** — `Automatic snapshot ready · Undo available`
+- **TARGET**: `FM9 · Preset 265 BASSGUY`
+- **SCOPE**: `24 changes across 3 scenes`
+- **DESTINATION**: `EDIT BUFFER · NOT STORED`
+- **RECOVERY**: `Automatic snapshot ready · Undo available`
 
 Below, show a high-prominence blast-radius line: `SCENES 1, 3, AND 5 WILL CHANGE BECAUSE THEY SHARE CHANNEL A.`
 
@@ -623,7 +623,7 @@ An edit-buffer dirty badge persists after any direct edit or Send. Changing pres
 3. Show all errors and warnings without requiring disclosure.
 4. Show blast radius whenever a plan or direct edit affects shared channels.
 5. Collapse safe repetitive changes; expand warnings, topology edits, modifier assignments, and irreversible actions.
-6. Keep infrequent systems—Recipes, Designs, Profiles, Diagnostics, Storage, Activity, Settings—in drawers, never stacked in the primary page.
+6. Keep infrequent systems (Recipes, Designs, Profiles, Diagnostics, Storage, Activity, Settings) in drawers, never stacked in the primary page.
 7. Block selection reveals parameters; no block selection means no parameter wall.
 8. Advanced parameters are one additional disclosure from primary controls, not a separate navigation destination.
 9. Destructive storage actions require two levels: enter Danger Zone, then explicit target confirmation.

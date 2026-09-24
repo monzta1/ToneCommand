@@ -308,8 +308,10 @@ def test_the_ui_does_not_show_backend_or_model_ids_on_a_plan():
 def test_no_em_dashes_in_the_ui_or_the_settings_module():
     from pathlib import Path
     root = Path(__file__).resolve().parent.parent
+    em_dash = chr(0x2014)          # spelled, so this file is not a hit itself
     for rel in ("ui/index.html", "fm9/ai_settings.py"):
-        assert "—" not in (root / rel).read_text(encoding="utf-8"), f"em dash in {rel}"
+        assert em_dash not in (root / rel).read_text(encoding="utf-8"), \
+            f"em dash in {rel}"
 
 
 # --- every control must map to a variable the chosen backend actually reads ---
