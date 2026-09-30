@@ -4,7 +4,52 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- NO EM DASH REPO-WIDE, WHICH THE RULE ALREADY SAID. CLAUDE.md bans it
+  everywhere, but enforcement was seven separate guards each carrying a
+  hardcoded list of "the files this phase touched". Between them they never
+  covered `docs/UI-REDESIGN-SPEC.md` (17) or
+  `docs/CLAUDE-CODE-UI-IMPLEMENTATION-PROMPT.md` (5), and nothing would have
+  covered the next new file either. Both docs are rewritten: label separators
+  become colons, two parentheticals become parentheses, the stage rail becomes
+  an arrow, and the two table placeholders become `-` and `none`.
+- SOME OF THOSE ARE GLYPH CHANGES IN SPECIFIED ON-SCREEN TEXT, not only
+  punctuation in prose: the stage rail, the TARGET / SCOPE / DESTINATION /
+  RECOVERY rows and the Before/After placeholders all specify what a surface
+  shows. That surface is proposed rather than built, and the shipped
+  `ui/index.html` contains no em dash and renders an arrow between values, so
+  the change contradicts nothing in the build. It is still a change to
+  specified output and is recorded as one.
+- THREE GUARDS WERE THEMSELVES THE VIOLATION. `test_ai_settings.py`,
+  `test_site_build.py` and `test_splice_consent.py` asserted against a literal
+  `"em dash"` character, so each one contained the thing it banned and a
+  repo-wide check would flag the checks. They now spell it `chr(0x2014)`, as
+  the four other guards and the inline assertion in `test_capture_intent.py`
+  already did.
+
 ### Added
+- `tests/test_no_em_dash.py`: one guard over every tracked text file, so a new
+  file is covered by existing rather than by somebody remembering to extend a
+  list. Verified by planting an em dash in a file none of the seven per-phase
+  guards covered.
+- IT FAILS RATHER THAN SKIPS ON ANYTHING IT CANNOT READ. A tracked file that
+  is not valid UTF-8, or is tracked but not a readable file, is reported
+  instead of passed over, because "we could not read it" and "it is clean" are
+  different answers. That immediately surfaced three `.bin` fixtures the
+  first, skipping version had been quietly dropping. Same reason `git` missing
+  raises instead of skipping.
+- THE THIRD-PARTY EXEMPTION IS THE QUOTED REGION, NOT THE FILE.
+  `THIRD_PARTY_NOTICES.md` is scanned; only the fenced block under
+  "Reproduction of that project's NOTICE (as required by Apache-2.0)" is
+  exempt, because Apache-2.0 section 4 requires that NOTICE be reproduced and
+  reproducing it means reproducing it. Excluding the whole file left this
+  project's own prose in it unguarded. A test fails if the heading or fence
+  moves, if the quoted block stops containing one, or if an em dash appears
+  outside it.
+- `config/fm9_catalog.json` is exempt whole, because it is copied verbatim
+  from mcp-midi-control and `config/README.md` says to refresh from upstream
+  rather than hand-edit. A test fails if that stops being true.
+
 - `docs/WINDOWS.md`, the step-by-step Windows guide, is its own page with its
   own short link to share: **tonecommand.com/windows**. It was the Windows
   section of `docs/SETUP.md`, which now points at it, so there is one place to

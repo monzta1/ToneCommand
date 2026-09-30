@@ -20,11 +20,11 @@ ToneCommand is not a chat application or a generic SaaS dashboard. Treat the FM9
 
 Read these completely before changing code:
 
-1. `docs/UI-REDESIGN-SPEC.md` — authoritative information architecture, dimensions, states, component hierarchy, terminology, safety rules, and acceptance criteria.
-2. `docs/img/ui-redesign-review-mockup.png` — visual direction for the Review stage and overall application shell.
-3. `docs/INTERFACE.md` — explanation of all existing interface behavior.
-4. `README.md` — product principles and safety model.
-5. `ARCHITECTURE.md` — backend boundaries and device safety architecture.
+1. `docs/UI-REDESIGN-SPEC.md`: authoritative information architecture, dimensions, states, component hierarchy, terminology, safety rules, and acceptance criteria.
+2. `docs/img/ui-redesign-review-mockup.png`: visual direction for the Review stage and overall application shell.
+3. `docs/INTERFACE.md`: explanation of all existing interface behavior.
+4. `README.md`: product principles and safety model.
+5. `ARCHITECTURE.md`: backend boundaries and device safety architecture.
 
 If the mockup conflicts with the written specification, follow `docs/UI-REDESIGN-SPEC.md`. The mockup communicates appearance and hierarchy, not exact behavior.
 
