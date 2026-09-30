@@ -430,6 +430,11 @@
    "function": "_sound_check_state",
    "ordinal": 1,
    "disposition": "unreachable: wraps only current_preset on a handle the caller already obtained through get_fm9, and its callers run under the same gate that would have raised the decline before reaching here; a unit that does not answer means the state is not reset, never an error page (#104)"
+  },
+  {
+   "function": "_ir2_port_present",
+   "ordinal": 1,
+   "disposition": "unreachable: wraps MIDI port enumeration only; no adapter method and so no CapabilityDeclined can arise. A missing rtmidi binding must mean 'no IR-2 here', not a failed page."
   }
  ]
 }

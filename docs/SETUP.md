@@ -185,6 +185,11 @@ project's regression runs; nothing below is assumed.
 | Empty-slot detection (`<EMPTY>` marker) | Untested | Verified | Modeled |
 | Preset built from scratch in an empty slot | Untested | Verified | Modeled |
 
+Other supported devices, and what each can actually do, are in
+[DEVICES.md](DEVICES.md): the BOSS IR-2 (full control of all seven
+parameters, verified by read-back, decoded on hardware 2026-09-29), the
+HeadRush, and the ToneX (read-only by design).
+
 Hardware: developed and regression-tested on an FM9 Mk II Turbo. Other
 FM9 variants share the model byte and should behave identically, but are
 untested. Axe-Fx III and FM3 use different model bytes and are not

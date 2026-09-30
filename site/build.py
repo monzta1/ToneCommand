@@ -75,7 +75,8 @@ def merch_card(key: str) -> str:
 
 
 #: Doc pages that live at a short URL of their own rather than under /docs/.
-DOC_PAGE_PATHS = {"setup": "/install/", "windows": "/windows/"}
+DOC_PAGE_PATHS = {"setup": "/install/", "windows": "/windows/",
+                  "devices": "/devices/"}
 
 # Documentation pages, in the order the docs index lists them. The one-line
 # descriptions are the README's own documentation table, verbatim.
@@ -86,6 +87,10 @@ DOC_PAGES = [
     # to hand to a Windows user who has never opened a terminal.
     ("windows", DOCS / "WINDOWS.md", "Windows, step by step",
      "Five steps, ten minutes, no terminal experience needed"),
+    # Its own short URL (/devices/): the page to answer "does it work with
+    # my rig?", which is the first question anyone arriving here asks.
+    ("devices", DOCS / "DEVICES.md", "Supported devices",
+     "Every supported device and what each one can actually do"),
     ("ai-backends", DOCS / "AI-BACKENDS.md", "Bring your own AI",
      "ChatGPT, Gemini, Grok, DeepSeek, Kimi, subscriptions, local models"),
     ("interface", DOCS / "INTERFACE.md", "The interface",
@@ -117,6 +122,7 @@ ROUTES = {
     "README.md": "/",
     "SETUP.md": "/install/",
     "WINDOWS.md": "/windows/",
+    "DEVICES.md": "/devices/",
     "AI-BACKENDS.md": "/docs/ai-backends/",
     "INTERFACE.md": "/docs/interface/",
     "RECIPES.md": "/docs/recipes/",
@@ -537,7 +543,7 @@ def build_home(readme: str, release: dict) -> None:
       <a class="btn" href="#watch-it-happen">Watch it happen</a>
       <a class="btn" href="/recipes/">Browse recipes</a>
     </p>
-    <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · current release <a href="/download/">{html.escape(release['version'])}</a></p>
+    <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · <a href="/devices/">FM9, BOSS IR-2, HeadRush, ToneX</a> · current release <a href="/download/">{html.escape(release['version'])}</a></p>
   </div>
   <figure class="hero-panel">
     <img src="{img_url('ui-full.png')}" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="2000" height="1299" fetchpriority="high">
