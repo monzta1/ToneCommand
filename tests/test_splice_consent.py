@@ -80,4 +80,6 @@ def test_transmit_asks_before_spending_a_shunt():
 
 
 def test_no_em_dashes_in_the_new_copy():
-    assert "—" not in UI
+    # Spelled with chr() rather than written out, so this file does not become
+    # the thing it is checking for. Five other guards already do it this way.
+    assert chr(0x2014) not in UI
