@@ -2,7 +2,10 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
-## Unreleased
+## 1.5.4 (2026-09-30)
+
+**If you are on any version from 1.4.0 onward, update. The interface has been
+dead in a browser since 1.4.0: the page renders and nothing on it works.**
 
 ### Fixed
 - NO EM DASH REPO-WIDE, WHICH THE RULE ALREADY SAID. CLAUDE.md bans it
