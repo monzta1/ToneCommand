@@ -1743,9 +1743,24 @@
     letter-spacing: 0.28em; white-space: nowrap; }
   .hwtarget { display: flex; align-items: center; gap: 12px;
     margin: 0 auto; min-width: 0; }
-  /* Fixed field: the preset selector must not resize with preset names. */
-  .hwtarget #preset { width: 420px; max-width: 420px; justify-content:
-    flex-start; overflow: hidden; }
+  /* Fixed field: the preset selector must not resize with preset NAMES, which
+     is what this width is for. It must still yield when the window runs out
+     of room, or it overlaps GIG LOCK: measured at 1280px with the device
+     picker showing, which any IR-2 owner sees, since a second reachable
+     device puts a fourth pill in this row. min-width:0 lets it compress and
+     the name inside already ellipsises. */
+  .hwtarget #preset { width: 420px; max-width: 420px; min-width: 0;
+    justify-content: flex-start; overflow: hidden; }
+  /* The preset sits inside .pillwrap (its popover anchor), and THAT is the
+     flex child of .hwtarget. A flex item defaults to min-width:auto, so the
+     wrapper refused to shrink however small the pill inside it was allowed
+     to get, and the row overlapped instead of compressing. */
+  .hwtarget > .pillwrap { min-width: 0; }
+  /* A second reachable device puts a FOURTH pill in this row, and at 1280px
+     the preset field then ran into GIG LOCK by 29px (measured, not guessed).
+     Scoped to the picker actually showing, so a single-device rig keeps the
+     full 420px field and nothing moves for existing users. */
+  body:has(#devwrap:not([hidden])) .hwtarget #preset { width: min(420px, 26vw); }
   .hwtarget #preset b { overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; }
   .dirty { font-size: var(--fs-badge); letter-spacing: 0.1em;
@@ -6410,7 +6425,7 @@ $('gridbig').addEventListener('click', e => {
 // always has. `deviceGen` is bumped by a selection; a poll that started
 // before the bump leaves the device block alone (a stale answer must never
 // revert a fresh choice).
-const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH' };
+const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', ir2: 'IR-2' };
 let deviceGen = 0;
 let deviceState = null;
 function deviceShort(dev) {
@@ -8578,6 +8593,9 @@ async function runArtistInstall(id, button) {
     chatNote(`Could not install that pack: ${e.message}`);
   } finally {
     if (button) { button.disabled = false; button.textContent = 'INSTALL'; }
+  }
+  renderChat();
+}
 
 async function runAxeChange(url) {
   chatNote('Reading that Axe-Change page...');

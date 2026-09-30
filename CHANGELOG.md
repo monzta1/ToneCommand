@@ -27,6 +27,117 @@ Notable changes to ToneCommand. Dates are UTC.
   the four other guards and the inline assertion in `test_capture_intent.py`
   already did.
 
+### Fixed (the intermittent that failed two unrelated PRs today: #181)
+- `test_repoint_reads_back_after_the_settle_window_not_inside_it` raced the
+  wall clock. It sets the simulator's settle window to 0.4 s, writes, then
+  asserts the very next read still returns the OLD value, which holds only if
+  under 0.4 s of real time passes between two Python statements. On a loaded
+  `-n auto` worker it does not, the window closes, the simulator correctly
+  answers the new value, and the test fails for exactly the reason it exists
+  to catch. It passed alone and on an idle machine every time, which is how it
+  survived; CLAUDE.md is explicit that a test which passes on timing is not a
+  pass. Today it failed PR #192 (a two-file Handsoff config change with no
+  Python in it) and PR #194, on both Ubuntu and Windows.
+- `fm9/sim.py` now measures that window against `SETTLE_CLOCK`, defaulting to
+  `time.monotonic`. The product path is unchanged and nothing but a test ever
+  replaces it. The test injects a clock that advances one tick per simulator
+  message, so the product's own settle-and-retry crosses the window where it
+  would on hardware, and both `time.sleep(0.45)` calls are gone.
+- The tick is derived from the window rather than being a second magic
+  number, and the test ASSERTS the headroom it depends on. A first attempt
+  used `READ_BACK_SETTLE` as the tick and failed, because `set_param_ordinal`
+  sends six frames rather than one and leaves exactly two ticks before the
+  window shuts. That was measured, not reasoned about. If the frame count
+  ever changes, the test now fails on that assertion naming the reason
+  instead of further down looking like a behaviour change.
+- A second test proves an unsettled read still returns the old value, so a
+  deterministic clock cannot be quietly tuned until everything passes for the
+  wrong reason. Verified 20 of 20 under `-n auto` with the full suite running
+  alongside as load, which is what the issue asked for.
+- `tests/test_device_picker.py` pinned the exact source line
+  `const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH' };`, which the
+  IR-2 entry changed. Caught by CI rather than locally: the targeted subset
+  run before pushing did not include the one test file named after the
+  feature being changed.
+
+### Fixed (CRITICAL: the whole UI was dead in a browser since 1.4.0)
+- **`ui/index.html`'s script did not parse, so nothing in the page ran.** On
+  2026-09-19, commit `03bc118` pasted `runAxeChange` inside
+  `runArtistInstall`'s `finally` block, leaving that block and its function
+  unclosed. A browser threw `SyntaxError: Unexpected end of input` at the
+  closing `</script>` and executed none of the 7,400 lines: no polling, no
+  link indicator, no buttons, no chat. The page still rendered, because HTML
+  and CSS do not care whether the script parsed, so it looked correct in a
+  screenshot and in the diff. It first shipped in v1.4.0 and every release
+  since carried it: v1.4.0, v1.4.1, v1.5.0, v1.5.1, v1.5.2 and v1.5.3, ten
+  days in all. A user reported it as "I can open it but cannot interact with
+  anything", which was an exact description and was not a platform-specific
+  or device-specific problem: it was every user, on every operating system,
+  since v1.4.0.
+- `tests/test_ui_syntax.py` parses the page script with node on every run and
+  fails loudly rather than skipping on CI. Every existing test read the file
+  as text or drove the server through TestClient, so a whole-file syntax
+  error was invisible to a fully green suite. A brace-counting fallback for
+  machines without node was written and then deleted: it reported an
+  imbalance in a file node parses cleanly, because telling a regex literal
+  from a division sign needs a real tokenizer, and a guard that cries wolf
+  gets muted.
+- The header overlapped once a second device was reachable. With four pills
+  in the row the preset field ran into GIG LOCK by 29px at 1280px wide,
+  measured in a real browser rather than read off the diff. The field now
+  narrows only while the device picker is showing, so a single-device rig
+  keeps the full 420px field and nothing moves for existing users.
+
+### Added (a fourth device: the BOSS IR-2, decoded on hardware)
+- **BOSS IR-2 support.** Plug the pedal in by USB and it appears in the device
+  picker. No environment variable, no port to choose. ToneCommand controls all
+  seven of its parameters: the amp voicing (one of CLEAN, TWN, TWEED, DIAMOND,
+  CRUNCH, BRIT, HI-GAIN, SLDN, BROWN, MODDED, RFIER) plus GAIN, BASS, MIDDLE,
+  TREBLE, LEVEL and AMBIENCE over 0 to 127. `devices/ir2/` carries the codec,
+  the parameter registry, the transport and a simulator; `docs/DEVICES.md` is
+  the new public page for what every supported device can actually do.
+- The protocol was decoded on the unit rather than guessed. Roland addressed
+  SysEx, device 0x10, model `01 05 09`, RQ1 `0x11` to read and DT1 `0x12` to
+  write, four-byte address and size, standard Roland checksum. The frame shape
+  came from BOSS's own IR-2 IR Loader captured with MIDI Monitor's
+  spy-on-destination mode, the same method `kb/HARDWARE_RULES.md` records for
+  FM9-Edit, and `tests/test_ir2_protocol.py` pins the codec against that
+  captured frame byte for byte. The spy was validated with a known-positive
+  control before any silence from it was believed.
+- The IR-2 declares `observes_foreign_writes=True`, which no other device here
+  does: it announces every knob turn and footswitch press unprompted, so
+  `observed_changes()` reports what the player did by hand without polling.
+  Reads were proven to match those pushes byte for byte before
+  `read_path=ReadPath.DEVICE` was claimed.
+- Three refusals earned on hardware rather than assumed. The pedal clamps an
+  out-of-range value silently instead of rejecting it (writing `0x0B` to AMP
+  reads back `0x0A`), which a naive read-back would report as a successful
+  write, so ranges are validated before anything is sent. Its identity reply
+  carries an all-zero revision field, so `firmware_label()` returns empty
+  rather than inventing a version. It publishes no taper behind its panel
+  markings, so `set_param_display` and `get_param_display` refuse instead of
+  converting.
+- Invariant 0 is structural here, not a habit: `devices/ir2/protocol.py`
+  refuses any command that is not RQ1 or DT1 before a frame exists, so no
+  firmware or bootloader operation has a code path out of the process. The
+  twelve IR slots are listed by name but the transfer path is undecoded, so
+  `install_capture` refuses in one line and sends nothing, as the ToneX
+  adapter's does.
+
+### Fixed
+- Device discovery probes the MIDI bus for an IR-2, which made
+  `available_devices()` depend on what is plugged into the machine: the
+  existing ToneX picker test passed in CI, where there is no pedal, and failed
+  on the maintainer's desk, where there is one. An autouse fixture in
+  `tests/conftest.py` now turns the probe off for every test, and the two
+  tests that care about it patch it back on explicitly, so a test opting into
+  hardware is visible and a test accidentally depending on it is impossible.
+- The `except Exception` audit is 87 blocks, 35 re-raising `CapabilityDeclined`
+  first and 52 stating why a decline cannot reach them. The one added block
+  wraps MIDI port enumeration only: a missing binding has to mean "no IR-2
+  here" rather than a failed device list, since discovery runs on every poll of
+  the header.
+
 ### Added
 - `tests/test_no_em_dash.py`: one guard over every tracked text file, so a new
   file is covered by existing rather than by somebody remembering to extend a

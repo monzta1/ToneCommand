@@ -16,6 +16,13 @@ require_live_verification = true
 deployment_requires_explicit_approval = false
 require_design_approval = false
 
+[execution]
+# These waivers are deliberate for a solo, unattended project. Since the rule
+# landed, configuration load refuses a waiver on any profile but dogfood, so
+# declaring it here is what makes the existing [workflow] waivers legal. Before
+# this, every Handsoff command on this project refused at config load.
+profile = "dogfood"
+
 [agents]
 architect = "host"
 supervisor = "host"

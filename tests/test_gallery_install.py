@@ -202,30 +202,103 @@ def test_execute_order_is_cabs_then_buffer_then_repoint_then_one_store(sim, monk
         assert sim.get_param_wire(reg.spec("CABINET", gi.MODE_PARAM, 1), channel=ch) == gi.MODE_LEGACY
 
 
+#: The settle window these two tests run under. Wide relative to the clock's
+#: tick so "inside the window" has room, and the tick is derived from it so
+#: the relationship between the two is visible rather than a pair of magic
+#: numbers that drift apart.
+SETTLE_TEST = 0.4
+
+
+class _Clock:
+    """A clock the test owns (#181).
+
+    The simulator's settle window is measured against whatever
+    `fm9.sim.SETTLE_CLOCK` returns. Using the wall clock made this test a
+    race: under `-n auto` more than SETTLE seconds can pass between a write
+    and the statement after it, the window closes, the simulator correctly
+    answers the new value, and the test fails for the reason it exists to
+    catch. It passed alone and on an idle machine every time.
+
+    Every message the simulator handles moves this clock by one `tick`, so
+    the product's own settle-and-retry crosses the window exactly where it
+    would on hardware, and the test needs no `time.sleep` at all. Whether a
+    read lands inside the window is now a fact about this object.
+    """
+
+    def __init__(self, tick):
+        self.t = 0.0
+        self.tick = tick
+
+    def __call__(self):
+        self.t += self.tick
+        return self.t
+
+    def jump(self, seconds):
+        """Settle everything outstanding, explicitly."""
+        self.t += seconds
+
+
 def test_repoint_reads_back_after_the_settle_window_not_inside_it(sim, monkeypatch):
     """#169: the repoint read-back passed here only because parsing a
     CABINET bulk read (2,043 frames) took longer than the sim's 80 ms
     settle window, and failed on a faster machine every time. With the
     window widened past any host's parse time, an unsettled read-back
     returns the OLD value deterministically; the settle-and-retry reads
-    the new one."""
+    the new one.
+
+    #181: the widened window was still wall-clock time, so a loaded runner
+    could cross it between two statements and the test failed on CI for a
+    markdown-only commit. The clock is injected now, so "inside the window"
+    is arranged rather than hoped for. The behaviour under test is
+    unchanged: an unsettled read must return the old value, and
+    `gi._read_back` must settle and retry until it sees the new one.
+    """
     import fm9.sim as simmod
-    import time
-    monkeypatch.setattr(simmod, "SETTLE", 0.4)
+    clock = _Clock(tick=SETTLE_TEST / 4)
+    monkeypatch.setattr(simmod, "SETTLE_CLOCK", clock)
+    monkeypatch.setattr(simmod, "SETTLE", SETTLE_TEST)
+
     _point_cab_block(sim, 11, 12)
-    time.sleep(0.45)                                        # the pointing has settled
+    clock.jump(1.0)                                         # the pointing has settled
+
     # the defect, reproduced on purpose: write, then read inside the window
     spec = server.reg.spec("CABINET", 5, 1)
     sim.set_param_ordinal(spec, 512)
+    # Measured, and asserted so it cannot drift silently: the write leaves
+    # exactly two ticks before the window shuts. The read below is one tick
+    # in, so it is inside; the first settle-and-retry is the second tick, so
+    # it is outside. If set_param_ordinal ever sends a different number of
+    # frames this fails here, naming the reason, rather than further down
+    # looking like the behaviour changed.
+    headroom = round((sim.outp.core._snapshot_expire - clock.t) / clock.tick, 6)
+    assert 1 < headroom <= 2, f"the window now leaves {headroom} ticks, not 2"
     assert sim.get_param_wire(spec, channel=0) == 11        # what the unit answers too soon
     assert gi._read_back(sim, spec, 0, 512) == 512          # what the product reads
+
     # and the whole repoint, under the wide window, lands on every channel
     sim.set_param_ordinal(spec, 11)
-    time.sleep(0.45)
+    clock.jump(1.0)
     changed = gi.repoint(sim, {11: 512, 12: 513})
     assert sorted((c["channel"], c["to"]) for c in changed if "ir_slot" in c) == \
         [("A", 512), ("B", 512), ("C", 513), ("D", 513)]
     assert gi.READ_BACK_SETTLE * gi.READ_BACK_TRIES > 0.4
+
+
+def test_the_settle_window_test_still_fails_without_the_settle_and_retry(sim, monkeypatch):
+    """The guard on the guard (#181 acceptance 1). If `_read_back` stopped
+    settling and retrying, the test above must go red rather than quietly
+    keep passing. A deterministic clock could otherwise be tuned until
+    everything passes for the wrong reason."""
+    import fm9.sim as simmod
+    clock = _Clock(tick=SETTLE_TEST / 4)
+    monkeypatch.setattr(simmod, "SETTLE_CLOCK", clock)
+    monkeypatch.setattr(simmod, "SETTLE", SETTLE_TEST)
+    _point_cab_block(sim, 11, 12)
+    clock.jump(1.0)
+    spec = server.reg.spec("CABINET", 5, 1)
+    sim.set_param_ordinal(spec, 512)
+    # one read, no settle, no retry: this is what removing the fix looks like
+    assert sim.get_param_wire(spec, channel=0) == 11
 
 
 def test_execute_leaves_an_untouched_preset_alone(sim, monkeypatch):

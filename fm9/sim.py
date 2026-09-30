@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import copy
 import struct
+import time
 from types import SimpleNamespace
 
 from . import protocol as p
@@ -675,6 +676,18 @@ WRITE_SUBS = {0x09, 0x52, 0x28, 0x2B, 0x26, 0x30, 0x32, 0x35}
 READ_SUBS = {0x2E, 0x1F}
 SETTLE = 0.08          # hardware settle window: reads inside it see OLD state
 
+#: The clock that window is measured against (#181). Injectable because the
+#: test proving "a read inside the window sees the old value" otherwise races
+#: the scheduler: under `-n auto` more than SETTLE seconds can pass between a
+#: write and the very next statement, the window closes, the simulator
+#: correctly answers the new value, and the test fails for the reason it
+#: exists to catch. It passed alone and on an idle machine every time, which
+#: is how it survived. CLAUDE.md is explicit that a test which passes on
+#: timing is not a pass, so the test owns the clock instead.
+#:
+#: The product path is unchanged: nothing but a test ever replaces this.
+SETTLE_CLOCK = time.monotonic
+
 
 def _classify(d):
     """'write' | 'read' | None for a mido-style frame body."""
@@ -731,11 +744,10 @@ class _SimOut:
 
     def send(self, msg):
         if msg.type == "sysex":
-            import time as _time
             frame = [0xF0, *msg.data, 0xF7]
             d = frame[1:-1]
             kind = _classify(d) if len(d) > 5 else None
-            now = _time.monotonic()
+            now = SETTLE_CLOCK()
             if kind == "write":
                 self._note_undecoded(d)
                 # hardware applies writes asynchronously: snapshot the

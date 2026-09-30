@@ -456,6 +456,7 @@ testing and FM9-Edit coexistence notes are in [docs/SETUP.md](docs/SETUP.md).
 |---|---|
 | [tonecommand.com](https://tonecommand.com) | All of the below, rendered, plus screenshots and the recipe gallery |
 | [docs/SETUP.md](docs/SETUP.md) | Install, video extras, testing, compatibility matrix |
+| [docs/DEVICES.md](docs/DEVICES.md) | Every supported device and what each one can actually do |
 | [docs/AI-BACKENDS.md](docs/AI-BACKENDS.md) | ChatGPT, Gemini, Grok, DeepSeek, Kimi, subscriptions, local models |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | Every panel, with screenshots |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The adapter contract and the safety layer |

@@ -91,6 +91,46 @@ claim, is [PROTOCOL.md](PROTOCOL.md).
     clears only the named source bit. Prior belief, ours included, was that
     removal was a different and unknown message.
 
+## BOSS IR-2 (decoded 2026-09-29)
+
+A second device family, decoded here and written down because no
+third-party MIDI specification for this pedal appears to be published.
+Verified on hardware; nothing below is inferred from another Roland
+product.
+
+13. **The IR-2 speaks Roland addressed SysEx**, model ID `01 05 09`,
+    device `0x10`, with RQ1 (`0x11`) to read and DT1 (`0x12`) for data,
+    a four-byte address, a four-byte size and the standard Roland
+    checksum. Its Universal Identity Reply is
+    `F0 7E 10 06 02 41 09 05 00 00 00 00 00 00 F7`, so the model ID is
+    NOT the identity reply's family bytes in the order they appear
+    there, which is the obvious wrong guess.
+14. **It announces its own panel.** Moving any knob emits an unsolicited
+    DT1 at `20 00 00 0N` roughly every 40 ms, and a footswitch press
+    emits three frames: the switch event at `7F 00 01 04`, the whole
+    seven-byte patch block, and the active-patch flag at `00 00 00 00`
+    toggling between `00` and `01`. An RQ1 read afterwards returns
+    exactly what was pushed, byte for byte, so reads and pushes agree
+    and the device has a genuine read path rather than local tracking.
+15. **Over-requesting a size returns the block's real length**, which
+    makes the address map discoverable without ever writing: `00 00 00 00`
+    is 1 byte, `10 00 00 00` is 12, `20 00 00 00` is 7 and
+    `30 00 00 00` is 32.
+16. **Out-of-range writes clamp silently rather than failing.** Writing
+    `0x0B` to the AMP parameter (range 0 to 10) reads back as `0x0A`.
+    A naive write-then-read-back would report that as a successful
+    write of `0x0B`, so ranges must be checked before sending, not
+    after.
+17. **Documented dead end:** the identity reply's software revision
+    field is all zeros on this unit, so there is no firmware version to
+    read there. Report none rather than inventing one.
+
+The pedal's own parameter table, including names and ranges, ships as
+readable JavaScript inside BOSS's IR-2 IR Loader
+(`Contents/Resources/html/js/config/address_map.js`). Where that table
+and the hardware overlapped they agreed, including the AMP range, which
+had already been found by watching writes clamp.
+
 ## Grounding data
 
 The planner grounds Fractal's model names in the real-world gear they

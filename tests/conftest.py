@@ -1,4 +1,5 @@
 import os
+import pytest
 import sys
 from pathlib import Path
 
@@ -19,7 +20,6 @@ if str(ROOT) not in sys.path:
 os.environ.setdefault("TONECOMMAND_STORE_SLOTS", "133-148")
 
 
-import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -111,3 +111,20 @@ def signed():
         body.update(extra)
         return body
     return build
+
+
+@pytest.fixture(autouse=True)
+def _no_hardware_in_device_discovery(monkeypatch):
+    """The device list must not depend on what is plugged into the machine.
+
+    `server.available_devices()` probes the MIDI bus for a BOSS IR-2, because
+    a player who plugs a pedal in should not also have to set an environment
+    variable. That probe makes discovery environment-dependent, which would
+    pass in CI (no pedal) and fail on the maintainer's desk (pedal), or the
+    reverse once someone else contributes. Every test therefore runs with the
+    probe off, and the two tests that care about it patch it back on
+    explicitly. A test opting in is visible; a test accidentally depending on
+    hardware is not.
+    """
+    import server
+    monkeypatch.setattr(server, "_ir2_port_present", lambda: False)

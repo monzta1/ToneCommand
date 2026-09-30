@@ -138,6 +138,7 @@ DEVICE_KINDS = {
     "fm9": "Fractal FM9",
     "headrush": "HeadRush",
     "tonex": "IK Multimedia ToneX",
+    "ir2": "BOSS IR-2",
 }
 #: Chosen explicitly, by kind, through /api/device/select. None means no
 #: choice has been made, which is only a problem when there is a choice.
@@ -154,7 +155,23 @@ def available_devices() -> list[dict]:
     if os.environ.get("TONECOMMAND_TONEX_PORT") or \
             os.environ.get("TONECOMMAND_TONEX_SIM") == "1":
         out.append({"kind": "tonex", "label": DEVICE_KINDS["tonex"]})
+    # The IR-2 announces itself: it is listed when its MIDI port is present,
+    # so a plugged-in pedal needs no environment variable. The simulator is
+    # opt-in the same way the others are.
+    if os.environ.get("TONECOMMAND_IR2_SIM") == "1" or _ir2_port_present():
+        out.append({"kind": "ir2", "label": DEVICE_KINDS["ir2"]})
     return out
+
+
+def _ir2_port_present() -> bool:
+    """True when a BOSS IR-2 is on the MIDI bus. Cheap and never raises: a
+    missing MIDI binding means no IR-2, not a broken device list."""
+    try:
+        import rtmidi
+        from devices.ir2.client import PORT_HINT
+        return any(PORT_HINT in n.lower() for n in rtmidi.MidiIn().get_ports())
+    except Exception:      # noqa: BLE001  device discovery must never fail the page
+        return False
 
 
 def device_target() -> tuple[str | None, list[dict]]:
@@ -190,6 +207,16 @@ def _build_context(kind: str) -> DeviceContext:
         return DeviceContext("headrush", registry,
                              HeadrushAdapter(client, registry),
                              DEVICE_KINDS["headrush"])
+    if kind == "ir2":
+        from devices.ir2.adapter import IR2Adapter
+        from devices.ir2.sim import SimIR2
+        client = SimIR2() if os.environ.get("TONECOMMAND_IR2_SIM") == "1" else None
+        # No registry of its own in the FM9's shape: the pedal's surface is
+        # seven named knobs, not blocks and grid positions. The FM9 registry
+        # is lent so the device-blind code above has something to answer
+        # with, exactly as the ToneX context does; nothing reads it here.
+        return DeviceContext("ir2", FM9_REGISTRY, IR2Adapter(client=client),
+                             DEVICE_KINDS["ir2"])
     if kind == "tonex":
         # No registry of its own yet: the pedal's surface is captures, not
         # blocks and parameters. The FM9 registry is lent so the device-blind
