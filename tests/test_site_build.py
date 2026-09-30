@@ -69,9 +69,10 @@ def test_splash_skip_on_interaction_is_wired():
 
 
 def test_no_em_dash_in_touched_site_files():
+    em_dash = chr(0x2014)          # spelled, so this file is not a hit itself
     for rel in ("build.py", "theme.css", "fx.js"):
         text = (SITE_DIR / rel).read_text(encoding="utf-8")
-        assert "—" not in text, f"em dash in site/{rel}"
+        assert em_dash not in text, f"em dash in site/{rel}"
 
 
 # --- every link the site writes has to land somewhere real (#184) ---
