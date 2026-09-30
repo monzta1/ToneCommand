@@ -38,9 +38,19 @@ SYSTEM = 0x10000000
 PATCH = 0x20000000          # the live/edit patch
 PATCH_1 = 0x21000000        # stored memory 1
 PATCH_2 = 0x22000000        # stored memory 2
-IRDATA = 0x30000000         # IR slot 0; slots 1..11 are +0x01000000 each
+#: NOT a user slot. The vendor config declares `numOfIrData = 11` and its
+#: editor addresses them as IRDATA(1) to IRDATA(11); this bare IRDATA region
+#: appears in neither list. It accepts a write and reads it back (proven on
+#: hardware 2026-09-29) but nothing in BOSS's own software writes here, so
+#: neither does this. Named so the address is not mistaken for slot zero,
+#: which is what an earlier version of this file called it.
+IRDATA_STAGING = 0x30000000
 
-IR_SLOTS = 12
+#: The user slots, numbered as the pedal and its editor number them: USER 1
+#: through USER 11 at 0x31000000 through 0x3B000000. There is no USER 0.
+IR_SLOT_BASE = 0x31000000
+IR_SLOTS = 11
+IR_FIRST_SLOT = 1
 IR_NAME = 0x00000000        # offset within an IRDATA slot, 32 bytes
 IR_SIZE = 0x00100000
 IR_FILE = 0x00200000
@@ -70,6 +80,26 @@ def addr_bytes(addr: int) -> list[int]:
             raise ProtocolError(f"address {addr:#010x} has a byte above 0x7F; "
                                 "that is not a valid Roland address")
     return out
+
+
+def addr_offset(addr: int, delta: int) -> int:
+    """`addr` advanced by `delta` units, in Roland's base-128 arithmetic.
+
+    Every byte of a Roland address is 7-bit, so the bytes carry at 0x80 and
+    not at 0x100. Plain integer addition looks right for small offsets and
+    then silently produces an illegal address: 0x31300000 + 240 gives
+    0x313000F0, whose low byte is above 0x7F. `addr_bytes` refuses that
+    rather than masking it away, which is how this was found.
+
+    Confirmed against the vendor's own map: IRDATA DATA entry 3400 sits at
+    0x00015438, which is 3399 * 8 in base 128 exactly.
+    """
+    n = (((addr >> 24) & 0x7F) << 21 | ((addr >> 16) & 0x7F) << 14
+         | ((addr >> 8) & 0x7F) << 7 | (addr & 0x7F)) + int(delta)
+    if n < 0:
+        raise ProtocolError("address offset goes below zero")
+    return (((n >> 21) & 0x7F) << 24 | ((n >> 14) & 0x7F) << 16
+            | ((n >> 7) & 0x7F) << 8 | (n & 0x7F))
 
 
 def build(cmd: int, addr: int, payload: list[int]) -> list[int]:
@@ -117,7 +147,18 @@ def parse(raw: list[int]) -> tuple[int, list[int]] | None:
 
 
 def ir_slot_addr(slot: int, offset: int = IR_NAME) -> int:
-    """The address of one field inside IR slot `slot` (0 to 11)."""
-    if not 0 <= slot < IR_SLOTS:
-        raise ProtocolError(f"IR slot {slot} is outside 0..{IR_SLOTS - 1}")
-    return IRDATA + (slot << 24) + offset
+    """The address of one field inside USER slot `slot`.
+
+    `slot` is the number the pedal and its editor use, 1 to 11, so what a
+    caller types matches what the player sees. Slot 0 is refused rather than
+    quietly resolving to IRDATA_STAGING, which is not a user slot and which
+    an earlier version of this module wrongly presented as one.
+    """
+    if not IR_FIRST_SLOT <= slot < IR_FIRST_SLOT + IR_SLOTS:
+        raise ProtocolError(
+            f"the IR-2 has USER slots {IR_FIRST_SLOT} to "
+            f"{IR_FIRST_SLOT + IR_SLOTS - 1}, not {slot}"
+            + (". There is no slot 0: the region below USER 1 is a staging "
+               "area the vendor's own editor never writes to"
+               if slot == 0 else ""))
+    return IR_SLOT_BASE + ((slot - IR_FIRST_SLOT) << 24) + offset
