@@ -4,6 +4,39 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed (the intermittent that failed two unrelated PRs today: #181)
+- `test_repoint_reads_back_after_the_settle_window_not_inside_it` raced the
+  wall clock. It sets the simulator's settle window to 0.4 s, writes, then
+  asserts the very next read still returns the OLD value, which holds only if
+  under 0.4 s of real time passes between two Python statements. On a loaded
+  `-n auto` worker it does not, the window closes, the simulator correctly
+  answers the new value, and the test fails for exactly the reason it exists
+  to catch. It passed alone and on an idle machine every time, which is how it
+  survived; CLAUDE.md is explicit that a test which passes on timing is not a
+  pass. Today it failed PR #192 (a two-file Handsoff config change with no
+  Python in it) and PR #194, on both Ubuntu and Windows.
+- `fm9/sim.py` now measures that window against `SETTLE_CLOCK`, defaulting to
+  `time.monotonic`. The product path is unchanged and nothing but a test ever
+  replaces it. The test injects a clock that advances one tick per simulator
+  message, so the product's own settle-and-retry crosses the window where it
+  would on hardware, and both `time.sleep(0.45)` calls are gone.
+- The tick is derived from the window rather than being a second magic
+  number, and the test ASSERTS the headroom it depends on. A first attempt
+  used `READ_BACK_SETTLE` as the tick and failed, because `set_param_ordinal`
+  sends six frames rather than one and leaves exactly two ticks before the
+  window shuts. That was measured, not reasoned about. If the frame count
+  ever changes, the test now fails on that assertion naming the reason
+  instead of further down looking like a behaviour change.
+- A second test proves an unsettled read still returns the old value, so a
+  deterministic clock cannot be quietly tuned until everything passes for the
+  wrong reason. Verified 20 of 20 under `-n auto` with the full suite running
+  alongside as load, which is what the issue asked for.
+- `tests/test_device_picker.py` pinned the exact source line
+  `const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH' };`, which the
+  IR-2 entry changed. Caught by CI rather than locally: the targeted subset
+  run before pushing did not include the one test file named after the
+  feature being changed.
+
 ### Fixed (CRITICAL: the whole UI was dead in a browser since 1.4.0)
 - **`ui/index.html`'s script did not parse, so nothing in the page ran.** On
   2026-09-19, commit `03bc118` pasted `runAxeChange` inside

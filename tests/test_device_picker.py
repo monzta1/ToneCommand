@@ -31,7 +31,8 @@ def test_one_device_state_block_and_the_exact_link_text(client):
     assert s["device"] == {"active": "fm9", "label": "Fractal FM9", "selected": "fm9",
                            "available": [{"kind": "fm9", "label": "Fractal FM9"}], "ambiguous": False}
     # the link text is built from the fixed short-name map, never the API label
-    assert "const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH' };" in PAGE
+    assert ("const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', "
+            "ir2: 'IR-2' };") in PAGE
     assert "$('linktext').textContent = `${deviceShort(freshDevice ? s.device : deviceState)} · LINKED`;" in PAGE
     assert "return DEVICE_SHORT[kind] || (kind ? String(kind).toUpperCase() : 'FM9');" in PAGE
     # with one device the pill stays hidden
