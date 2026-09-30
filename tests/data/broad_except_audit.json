@@ -63,8 +63,8 @@
   },
   {
    "function": "api_state",
-   "ordinal": 1,
-   "disposition": "re-raises CapabilityDeclined: wraps snapshot(get_fm9()), a device read path"
+   "ordinal": 2,
+   "disposition": "re-raises CapabilityDeclined: wraps snapshot(get_fm9()), a device read path. Ordinal 2 since #198: the named-parameter branch above it is the first block in this function now"
   },
   {
    "function": "api_describe_read",
