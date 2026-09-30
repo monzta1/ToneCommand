@@ -62,6 +62,9 @@ class IR2Adapter:
         can_rename=False,
         composable_scene_slots=False,
         plays_captures=True,          # twelve IR slots, listed; none installable yet
+        # #198: seven parameters named on the enclosure, and no published
+        # taper, so the planner and the apply path address them by name.
+        has_named_params=True,
     )
 
     def __init__(self, client=None):
@@ -166,6 +169,29 @@ class IR2Adapter:
         got = reg.decode_nibbles([0] * spec.offset + list(back), spec)
         return {"param": spec.name, "value": got,
                 "label": spec.options[got] if spec.is_enum and got < len(spec.options) else None}
+
+    # --- NamedParams (#198): the device's own vocabulary ------------------
+
+    def named_params(self) -> list:
+        """Every parameter this pedal has, as the planner is told about it.
+
+        AMP carries its options AND the factory cab each voicing ships with,
+        because "which amp" is the one choice that decides the sound here and
+        the cab is half of it. The names are the vendor's own, verbatim, so
+        they can be matched against a real IR library rather than paraphrased
+        into something unsearchable.
+        """
+        out = []
+        for spec in reg.PATCH_PARAMS:
+            row = {"name": spec.name, "lo": spec.lo, "hi": spec.hi,
+                   "init": spec.init, "options": list(spec.options)}
+            if spec.name == "AMP":
+                row["option_cabs"] = {n: cab for n, cab in reg.AMPS}
+            out.append(row)
+        return out
+
+    def set_named_param(self, name: str, value: Any) -> dict:
+        return self.set_param(name, value)
 
     def set_amp(self, name_or_ordinal: Any) -> dict:
         """The one action worth naming on this device."""

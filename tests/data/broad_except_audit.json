@@ -435,6 +435,11 @@
    "function": "_ir2_port_present",
    "ordinal": 1,
    "disposition": "unreachable: wraps MIDI port enumeration only; no adapter method and so no CapabilityDeclined can arise. A missing rtmidi binding must mean 'no IR-2 here', not a failed page."
+  },
+  {
+   "function": "api_state",
+   "ordinal": 1,
+   "disposition": "re-raises CapabilityDeclined: wraps _named_param_state, whose named_params() is itself a gated method (#198). Everything else answers 200 with the reason rather than 500, because the page polls this every second and a device that cannot be read is an OFFLINE pill, not a broken page."
   }
  ]
 }

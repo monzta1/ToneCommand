@@ -1809,15 +1809,23 @@ def repair_action(refused: dict, reason: str, param_reference: str,
     return acts[0] if acts else None
 
 
-def plan(prompt: str, device_state: str, param_reference: str) -> dict:
+def plan(prompt: str, device_state: str, param_reference: str,
+         system: str = "", shape: str = "", schema: dict | None = None,
+         validate=None) -> dict:
     """Ask each candidate backend in turn until one produces a plan.
 
     Returns the plan with `backend`, `model`, `plan_quality`, and the full
     `attempts` record attached. Raises only when every candidate failed at the
     transport level, with one aggregate message naming each attempt.
+
+    `system`, `shape`, `schema` and `validate` default to the FM9's, and a
+    device with a different surface passes its own (#198). The BOSS IR-2 has
+    no blocks, no scenes and no roster, so a prompt about those would be
+    asking a model to propose actions that `validate_action` will refuse.
     """
     plan_obj, name, model, attempts = _ask_backends(
-        prompt, device_state, param_reference, validate=_validate)
+        prompt, device_state, param_reference, system=system, shape=shape,
+        schema=schema, validate=validate or _validate)
     plan_obj["backend"] = name
     plan_obj["model"] = model
     plan_obj["plan_quality"] = _plan_quality(plan_obj)

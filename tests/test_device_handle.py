@@ -272,7 +272,8 @@ def test_promoted_methods_and_sub_protocols_are_declared_and_satisfied():
     names = [p.__name__ for _, _, p in CAPABILITY_PROTOCOLS]
     assert names == ["ChainEditing", "TopologySelection", "ChainWiring",
                      "Modifiers", "FileInstall", "Renaming", "SceneSlots",
-                     "CaptureSlots"]   # #162
+                     "CaptureSlots",    # #162
+                     "NamedParams"]     # #198
 
     # Splice and its helpers are in NO sub-Protocol, at any flag level.
     everywhere = set().union(*(_protocol_members(p) for _, _, p in CAPABILITY_PROTOCOLS))

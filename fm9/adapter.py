@@ -181,6 +181,11 @@ class Capabilities:
     #: addressable slots. Gate for `CaptureSlots`. False until a device's
     #: firmware and protocol actually do; the FM9 flips it with Epic I.
     plays_captures: bool = False
+    #: #198: parameters are named rather than addressed by block, and the
+    #: device publishes no taper. Gate for `NamedParams`. The FM9 declines
+    #: it: its parameters live at (block, instance, id) and its registry does
+    #: publish a taper, so `set_param_display` is the honest path there.
+    has_named_params: bool = False
 
     @property
     def can_verify(self) -> bool:
@@ -479,6 +484,39 @@ class CaptureSlots(Protocol):
 
 
 @runtime_checkable
+class NamedParams(Protocol):
+    """A device whose parameters are named rather than addressed by block.
+
+    Gate: `has_named_params`.
+
+    The FM9 model is (block, instance, parameter) plus a published taper, so
+    a caller can ask for "Gain 7.5" and the registry converts. A compact
+    pedal has neither: the BOSS IR-2 is one amp, one cab and one ambience,
+    its parameters are named on the enclosure, and it publishes no curve
+    behind those markings at all.
+
+    `set_param_display` cannot serve such a device without inventing a taper,
+    which would put a made-up number in front of the player at the confirm
+    step. That is the dishonesty the read-back invariant exists to prevent,
+    so it declines and this exists instead: a name and the wire value, with
+    the same read-back verification.
+
+    `named_params` is what the planner is told the device has. It is the
+    device's own vocabulary, not a translation of the FM9's.
+    """
+
+    def named_params(self) -> list:
+        """[{name, lo, hi, init, options}], the device's whole surface."""
+        ...
+
+    def set_named_param(self, name: str, value: Any) -> Any:
+        """Set one by name. An enum may be given by name or ordinal. Out of
+        range is refused BEFORE anything is sent, because a device that
+        clamps silently would report a clamped write as a success."""
+        ...
+
+
+@runtime_checkable
 class SceneSlots(Protocol):
     """Composable per-slot scene state. Gate: `composable_scene_slots`.
 
@@ -515,6 +553,7 @@ CAPABILITY_PROTOCOLS = (
     ("can_rename", lambda c: c.can_rename, Renaming),
     ("composable_scene_slots", lambda c: c.composable_scene_slots, SceneSlots),
     ("plays_captures", lambda c: c.plays_captures, CaptureSlots),
+    ("has_named_params", lambda c: c.has_named_params, NamedParams),
 )
 
 
