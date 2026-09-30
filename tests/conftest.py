@@ -128,3 +128,13 @@ def _no_hardware_in_device_discovery(monkeypatch):
     """
     import server
     monkeypatch.setattr(server, "_ir2_port_present", lambda: False)
+
+    # /api/tests/runs reads CI through the `gh` CLI. A test must not depend on
+    # the network, on a signed-in CLI, or on what GitHub happens to say today,
+    # so the fetch is stubbed and its cache cleared. A test that wants CI
+    # behaviour patches _ci_fetch itself.
+    from fm9 import test_runs
+    monkeypatch.setattr(test_runs, "_ci_fetch",
+                        lambda: {"available": False, "reason": "stubbed in tests"})
+    monkeypatch.setitem(test_runs._CI_CACHE, "value", None)
+    monkeypatch.setitem(test_runs._CI_CACHE, "at", 0.0)

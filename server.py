@@ -2063,6 +2063,55 @@ def index():
     return FileResponse(resource_path("ui", "index.html"))
 
 
+# --- the test console (#196) ------------------------------------------------
+#
+# A local admin page. Starting a suite is the only thing in this server that
+# spawns a process on request, so the rules are narrow and live in
+# fm9/test_runs.py: a caller names a KEY, the key maps to a fixed argument
+# list, and nothing a caller types reaches a command line. The page is served
+# to anyone who can reach the server, which is loopback by default.
+
+
+@app.get("/admin/tests")
+def admin_tests():
+    """The test console. Live progress, coverage, CI and history."""
+    return FileResponse(resource_path("ui", "tests.html"))
+
+
+@app.get("/api/tests/runs")
+def api_tests_runs():
+    from fm9 import test_runs
+    recs = test_runs.runs()
+    return {"kinds": test_runs.kinds(), "runs": recs,
+            "current": test_runs.current(),
+            "coverage": test_runs.latest_coverage(recs),
+            "ci": test_runs.ci_status()}
+
+
+@app.post("/api/tests/run")
+def api_tests_run(body: dict):
+    """Start one named run. Refused while another is live, because two
+    suites at once make each other slower and make timing-sensitive tests
+    lie, which is the defect class #181 already records."""
+    from fm9 import test_runs
+    try:
+        run = test_runs.start(str(body.get("kind") or ""))
+    except test_runs.RunRefused as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    test_runs.prune()
+    return {"ok": True, "run": run}
+
+
+@app.post("/api/tests/stop")
+def api_tests_stop():
+    """Stop the live run. SIGTERM, so pytest writes its own ending."""
+    from fm9 import test_runs
+    try:
+        return {"ok": True, "run": test_runs.stop()}
+    except test_runs.RunRefused as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+
+
 @app.get("/logo.png")
 def logo():
     """The mark, for the page header and the browser tab."""
