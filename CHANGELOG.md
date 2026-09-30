@@ -2,6 +2,8 @@
 
 Notable changes to ToneCommand. Dates are UTC.
 
+## Unreleased
+
 ## 1.5.4 (2026-09-30)
 
 **If you are on any version from 1.4.0 onward, update. The interface has been
