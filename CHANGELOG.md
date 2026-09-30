@@ -4,6 +4,44 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed (the IR slot numbering did not match the pedal)
+- `list_captures()` reported twelve slots starting at zero. The vendor's own
+  configuration declares `numOfIrData = 11` and its editor addresses them
+  `IRDATA(1)` to `IRDATA(11)`. The extra region at `0x30000000` is a staging
+  area that appears in neither list and that nothing in BOSS's software
+  writes to, so it was being presented as an empty user slot while every real
+  slot's number ran out by one at the top. Confirmed on the unit: all eleven
+  are occupied, named USER 1 to USER 11. Asking for slot 0 is now refused and
+  says why, rather than quietly resolving to the staging region.
+- Roland addresses carry at 128 per byte, not 256. `addr_offset` does that
+  arithmetic; plain addition produced `0x313000F0`, whose low byte is above
+  0x7F, which `addr_bytes` refused rather than masking away. Found while
+  reading an IR in 240-nibble chunks. Checked against the vendor map: entry
+  3400 sits at `0x00015438`, which is 3399 * 8 in base 128 exactly.
+
+### Added (the IR transfer path, read and write, proven on hardware)
+- The IR-2's IR format is decoded, and it needed no MIDI capture: reading one
+  loaded slot gave all of it. `NAME` is 32 ASCII bytes, `SIZE` is the source
+  filename's length, `FILE` is that filename as nibble pairs, and `DATA` is
+  the samples as big-endian float32, eight nibbles each. Slot USER 1 read
+  back as `V-Type 112 C R-121 Balanced Celestion.wav` with samples
+  `0.005995, 0.017614, 0.052998, 0.105695`, matching the loader's own factory
+  IR 00 to five decimals.
+- A complete IR reads off in about 3 seconds and writes in about 15, every
+  240-nibble chunk read back and compared before the next is sent. Proven by
+  copying a whole IR between regions on the unit and confirming the
+  destination matched the source nibble for nibble.
+- A dropped SysEx reply must not be read as end-of-data: an early dump
+  truncated an IR at 690 of 3400 samples because a timeout ended the loop.
+  Reads retry.
+
+### Still not done
+- Words 3280 to 3353 of the sample array are a trailer that differs per IR
+  and ramps steeply. Until that is understood, ToneCommand can move an IR the
+  pedal produced but must not synthesise one, so `install_capture` still
+  refuses. Guessing it would most likely produce a wrong sound rather than a
+  refusal, which is worse.
+
 ### Added (#198: a sentence now reaches the BOSS IR-2)
 - The IR-2 adapter could read and write every parameter and the product
   still could not drive it. `run_action` resolved a block through the FM9

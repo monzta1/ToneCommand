@@ -223,8 +223,15 @@ class IR2Adapter:
         return CaptureCapabilities((".wav",), p.IR_SLOTS, frozenset())
 
     def list_captures(self) -> list:
+        """USER 1 to USER 11, numbered as the pedal numbers them.
+
+        An earlier version listed twelve slots starting at zero, which put a
+        staging region the vendor's editor never touches at the top of the
+        list looking like an empty user slot, and pushed every real slot's
+        number out by one at the far end.
+        """
         rows = []
-        for slot in range(p.IR_SLOTS):
+        for slot in range(p.IR_FIRST_SLOT, p.IR_FIRST_SLOT + p.IR_SLOTS):
             raw = self.io.read(p.ir_slot_addr(slot, p.IR_NAME), 32)
             name = bytes(raw).decode("ascii", "replace").rstrip()
             rows.append(CaptureSlot(slot=slot, occupied=bool(name),
@@ -237,15 +244,24 @@ class IR2Adapter:
     def remove_capture(self, slot: int):
         raise NotImplementedError(INSTALL_REFUSED)
 
+    def _slot_row(self, slot: int):
+        for c in self.list_captures():
+            if c.slot == int(slot):
+                return c
+        raise KeyError(f"the IR-2 has USER slots {p.IR_FIRST_SLOT} to "
+                       f"{p.IR_FIRST_SLOT + p.IR_SLOTS - 1}, not {slot}")
+
     def slot_name(self, preset: int) -> str:
-        return self.list_captures()[int(preset)].name or ""
+        return self._slot_row(preset).name or ""
 
     def is_slot_empty(self, preset: int) -> bool:
-        return not self.list_captures()[int(preset)].occupied
+        return not self._slot_row(preset).occupied
 
-    def scan_slots(self, start: int = 0, end: int = p.IR_SLOTS - 1) -> list:
+    def scan_slots(self, start: int = p.IR_FIRST_SLOT,
+                   end: int = p.IR_FIRST_SLOT + p.IR_SLOTS - 1) -> list:
         return [{"slot": c.slot, "name": c.name or "", "empty": not c.occupied}
-                for c in self.list_captures()[start:end + 1]]
+                for c in self.list_captures()
+                if start <= c.slot <= end]
 
     # --- what this device has no concept of, stated rather than faked -----
 
