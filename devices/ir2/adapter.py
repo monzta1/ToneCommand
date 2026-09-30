@@ -62,6 +62,9 @@ class IR2Adapter:
         can_rename=False,
         composable_scene_slots=False,
         plays_captures=True,          # twelve IR slots, listed; none installable yet
+        # #198: seven parameters named on the enclosure, and no published
+        # taper, so the planner and the apply path address them by name.
+        has_named_params=True,
     )
 
     def __init__(self, client=None):
@@ -167,6 +170,29 @@ class IR2Adapter:
         return {"param": spec.name, "value": got,
                 "label": spec.options[got] if spec.is_enum and got < len(spec.options) else None}
 
+    # --- NamedParams (#198): the device's own vocabulary ------------------
+
+    def named_params(self) -> list:
+        """Every parameter this pedal has, as the planner is told about it.
+
+        AMP carries its options AND the factory cab each voicing ships with,
+        because "which amp" is the one choice that decides the sound here and
+        the cab is half of it. The names are the vendor's own, verbatim, so
+        they can be matched against a real IR library rather than paraphrased
+        into something unsearchable.
+        """
+        out = []
+        for spec in reg.PATCH_PARAMS:
+            row = {"name": spec.name, "lo": spec.lo, "hi": spec.hi,
+                   "init": spec.init, "options": list(spec.options)}
+            if spec.name == "AMP":
+                row["option_cabs"] = {n: cab for n, cab in reg.AMPS}
+            out.append(row)
+        return out
+
+    def set_named_param(self, name: str, value: Any) -> dict:
+        return self.set_param(name, value)
+
     def set_amp(self, name_or_ordinal: Any) -> dict:
         """The one action worth naming on this device."""
         return self.set_param("AMP", name_or_ordinal)
@@ -197,8 +223,15 @@ class IR2Adapter:
         return CaptureCapabilities((".wav",), p.IR_SLOTS, frozenset())
 
     def list_captures(self) -> list:
+        """USER 1 to USER 11, numbered as the pedal numbers them.
+
+        An earlier version listed twelve slots starting at zero, which put a
+        staging region the vendor's editor never touches at the top of the
+        list looking like an empty user slot, and pushed every real slot's
+        number out by one at the far end.
+        """
         rows = []
-        for slot in range(p.IR_SLOTS):
+        for slot in range(p.IR_FIRST_SLOT, p.IR_FIRST_SLOT + p.IR_SLOTS):
             raw = self.io.read(p.ir_slot_addr(slot, p.IR_NAME), 32)
             name = bytes(raw).decode("ascii", "replace").rstrip()
             rows.append(CaptureSlot(slot=slot, occupied=bool(name),
@@ -211,15 +244,24 @@ class IR2Adapter:
     def remove_capture(self, slot: int):
         raise NotImplementedError(INSTALL_REFUSED)
 
+    def _slot_row(self, slot: int):
+        for c in self.list_captures():
+            if c.slot == int(slot):
+                return c
+        raise KeyError(f"the IR-2 has USER slots {p.IR_FIRST_SLOT} to "
+                       f"{p.IR_FIRST_SLOT + p.IR_SLOTS - 1}, not {slot}")
+
     def slot_name(self, preset: int) -> str:
-        return self.list_captures()[int(preset)].name or ""
+        return self._slot_row(preset).name or ""
 
     def is_slot_empty(self, preset: int) -> bool:
-        return not self.list_captures()[int(preset)].occupied
+        return not self._slot_row(preset).occupied
 
-    def scan_slots(self, start: int = 0, end: int = p.IR_SLOTS - 1) -> list:
+    def scan_slots(self, start: int = p.IR_FIRST_SLOT,
+                   end: int = p.IR_FIRST_SLOT + p.IR_SLOTS - 1) -> list:
         return [{"slot": c.slot, "name": c.name or "", "empty": not c.occupied}
-                for c in self.list_captures()[start:end + 1]]
+                for c in self.list_captures()
+                if start <= c.slot <= end]
 
     # --- what this device has no concept of, stated rather than faked -----
 

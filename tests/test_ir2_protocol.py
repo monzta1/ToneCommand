@@ -66,11 +66,43 @@ def test_an_address_byte_above_7_bits_is_refused():
 
 # --- the IR slot map ------------------------------------------------------
 
-def test_ir_slot_addresses_step_by_one_high_byte():
-    assert p.ir_slot_addr(0) == 0x30000000
+def test_user_slots_are_numbered_the_way_the_pedal_numbers_them():
+    """Eleven, starting at one. The vendor config declares
+    `numOfIrData = 11` and its editor addresses them IRDATA(1) to
+    IRDATA(11); an earlier version of this module listed twelve starting at
+    zero, which presented a staging region as an empty user slot and put
+    every real slot's number out by one at the top."""
+    assert p.IR_SLOTS == 11 and p.IR_FIRST_SLOT == 1
+    assert p.ir_slot_addr(1) == 0x31000000
     assert p.ir_slot_addr(11) == 0x3B000000
 
 
+def test_there_is_no_slot_zero():
+    """0x30000000 accepts a write and reads it back, but nothing in BOSS's
+    own software writes there, so asking for it by number is a mistake worth
+    naming rather than quietly resolving."""
+    with pytest.raises(p.ProtocolError, match="no slot 0"):
+        p.ir_slot_addr(0)
+    assert p.IRDATA_STAGING == 0x30000000
+
+
 def test_ir_slot_out_of_range_is_refused():
+    with pytest.raises(p.ProtocolError, match="not 12"):
+        p.ir_slot_addr(12)
+
+
+# --- base-128 addressing --------------------------------------------------
+
+def test_addresses_carry_at_128_not_256():
+    """Every byte of a Roland address is 7-bit. Plain integer addition looks
+    right for small offsets and then produces an illegal address: this was
+    found when reading an IR in 240-nibble chunks walked off the end."""
+    assert p.addr_offset(0x31300000, 240) == 0x31300170
     with pytest.raises(p.ProtocolError):
-        p.ir_slot_addr(p.IR_SLOTS)
+        p.addr_bytes(0x31300000 + 240)
+
+
+def test_the_vendor_map_agrees_with_our_arithmetic():
+    """IRDATA DATA entry 3400 sits at 0x00015438 in BOSS's own address map,
+    which is 3399 * 8 in base 128 exactly."""
+    assert p.addr_offset(0, 3399 * 8) == 0x00015438

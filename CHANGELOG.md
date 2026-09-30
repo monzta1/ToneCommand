@@ -27,6 +27,87 @@ Notable changes to ToneCommand. Dates are UTC.
   the four other guards and the inline assertion in `test_capture_intent.py`
   already did.
 
+### Fixed (the IR slot numbering did not match the pedal)
+- `list_captures()` reported twelve slots starting at zero. The vendor's own
+  configuration declares `numOfIrData = 11` and its editor addresses them
+  `IRDATA(1)` to `IRDATA(11)`. The extra region at `0x30000000` is a staging
+  area that appears in neither list and that nothing in BOSS's software
+  writes to, so it was being presented as an empty user slot while every real
+  slot's number ran out by one at the top. Confirmed on the unit: all eleven
+  are occupied, named USER 1 to USER 11. Asking for slot 0 is now refused and
+  says why, rather than quietly resolving to the staging region.
+- Roland addresses carry at 128 per byte, not 256. `addr_offset` does that
+  arithmetic; plain addition produced `0x313000F0`, whose low byte is above
+  0x7F, which `addr_bytes` refused rather than masking away. Found while
+  reading an IR in 240-nibble chunks. Checked against the vendor map: entry
+  3400 sits at `0x00015438`, which is 3399 * 8 in base 128 exactly.
+
+### Added (the IR transfer path, read and write, proven on hardware)
+- The IR-2's IR format is decoded, and it needed no MIDI capture: reading one
+  loaded slot gave all of it. `NAME` is 32 ASCII bytes, `SIZE` is the source
+  filename's length, `FILE` is that filename as nibble pairs, and `DATA` is
+  the samples as big-endian float32, eight nibbles each. Slot USER 1 read
+  back as `V-Type 112 C R-121 Balanced Celestion.wav` with samples
+  `0.005995, 0.017614, 0.052998, 0.105695`, matching the loader's own factory
+  IR 00 to five decimals.
+- A complete IR reads off in about 3 seconds and writes in about 15, every
+  240-nibble chunk read back and compared before the next is sent. Proven by
+  copying a whole IR between regions on the unit and confirming the
+  destination matched the source nibble for nibble.
+- A dropped SysEx reply must not be read as end-of-data: an early dump
+  truncated an IR at 690 of 3400 samples because a timeout ended the loop.
+  Reads retry.
+
+### Still not done
+- Words 3280 to 3353 of the sample array are a trailer that differs per IR
+  and ramps steeply. Until that is understood, ToneCommand can move an IR the
+  pedal produced but must not synthesise one, so `install_capture` still
+  refuses. Guessing it would most likely produce a wrong sound rather than a
+  refusal, which is worse.
+
+### Added (#198: a sentence now reaches the BOSS IR-2)
+- The IR-2 adapter could read and write every parameter and the product
+  still could not drive it. `run_action` resolved a block through the FM9
+  registry and then called `set_param_display`, and the pedal has no blocks
+  and publishes no curve behind its panel markings, so all three action
+  kinds raised. The refusals were correct; the loop was wrong.
+- `NamedParams` is a new capability sub-Protocol (gate `has_named_params`)
+  for a device whose parameters are named rather than addressed by block and
+  which publishes no taper. The FM9 declines it: its parameters live at
+  (block, instance, id) and its registry does publish a taper, so
+  `set_param_display` stays the honest path there.
+- A `set_device_param` action carries a parameter NAME and a WIRE value, or
+  `type_name` for an enum chosen by name. It is validated against the
+  device's own vocabulary, read from the device through `named_params()`, so
+  the planner is told exactly the names and ranges the apply path will check.
+  Out of range is refused before anything is sent, because the IR-2 clamps
+  silently and a clamped write would read back as a success.
+- `devices/ir2/planning.py` gives the pedal its own planner prompt, schema
+  and validator rather than a translation layer over the FM9's. The prompt
+  NAMES what the device does not have (no blocks, no scenes, no grid, no
+  drives, no modulation) instead of staying silent about it, because a model
+  told only what exists will still reach for a delay block. The eleven
+  voicings are listed with the factory cab IR each one ships with, verbatim,
+  since that is what says what a voicing is modelled on.
+- **No taper was invented to make this work.** `set_param_display` still
+  refuses on the IR-2. A made-up display number would land in front of the
+  player at the confirm step, which is the dishonesty the read-back
+  invariant exists to prevent. The wire-value action is what any device
+  without a published curve needs, the Axe-Fx III (#190) included.
+
+### Fixed
+- `GET /api/state` answered 500 with an IR-2 selected, so the page read
+  OFFLINE for a pedal that was plugged in and answering. `snapshot` reads a
+  preset, eight scenes and a block grid, and the IR-2 declines all three. It
+  now reports what the device actually has: named parameters, their values
+  and ranges, and the live patch number. It claims no scenes, because
+  claiming them would be inventing them.
+- The capability audit is nine gates and twenty-two methods, and the
+  `except Exception` audit is 88 blocks. The one added wraps the
+  named-parameter state read and answers 200 with the reason rather than
+  500: the page polls it every second, and a device that cannot be read is
+  an OFFLINE pill, not a broken page.
+
 ### Fixed (the intermittent that failed two unrelated PRs today: #181)
 - `test_repoint_reads_back_after_the_settle_window_not_inside_it` raced the
   wall clock. It sets the simulator's settle window to 0.4 s, writes, then

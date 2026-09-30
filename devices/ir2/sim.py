@@ -24,7 +24,7 @@ class SimIR2:
             p.SYSTEM: [0, 0, 0, 0, 1, 6, 4, 6, 4, 0, 6, 4],
             p.PATCH: [pa.init for pa in reg.PATCH_PARAMS],
         }
-        for slot in range(p.IR_SLOTS):
+        for slot in range(p.IR_FIRST_SLOT, p.IR_FIRST_SLOT + p.IR_SLOTS):
             self.blocks[p.ir_slot_addr(slot, p.IR_NAME)] = [0x20] * 32
         self.writes: list[tuple[int, list[int]]] = []
         self._events: list[tuple[int, list[int]]] = []

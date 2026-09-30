@@ -152,8 +152,10 @@ def test_a_footswitch_press_is_observed_as_the_patch_number(dev):
 
 # --- IR slots: listed, never written -------------------------------------
 
-def test_all_twelve_ir_slots_are_listed(dev):
-    assert len(dev.list_captures()) == p.IR_SLOTS
+def test_the_eleven_user_slots_are_listed_as_the_pedal_numbers_them(dev):
+    rows = dev.list_captures()
+    assert [c.slot for c in rows] == list(range(1, 12))
+    assert len(rows) == p.IR_SLOTS == 11
 
 
 def test_installing_an_ir_refuses_in_one_line_and_sends_nothing(dev):
@@ -168,9 +170,18 @@ def test_removing_an_ir_refuses_the_same_way(dev):
         dev.remove_capture(3)
 
 
+def test_slot_lookups_use_the_pedals_numbering(dev):
+    """slot_name(1) is USER 1, not the second row of a zero-based list."""
+    assert dev.slot_name(1) == ""            # empty on the simulator
+    assert dev.is_slot_empty(11) is True
+    with pytest.raises(KeyError, match="not 0"):
+        dev.slot_name(0)
+    assert [r["slot"] for r in dev.scan_slots()] == list(range(1, 12))
+
+
 def test_the_capture_whitelist_is_empty_so_nothing_is_writable_by_declaration(dev):
     assert dev.capture_capabilities().whitelist == frozenset()
-    assert dev.capture_capabilities().slots == p.IR_SLOTS
+    assert dev.capture_capabilities().slots == p.IR_SLOTS == 11
 
 
 # --- concepts this device does not have, stated rather than faked --------

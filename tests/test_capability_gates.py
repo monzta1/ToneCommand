@@ -71,14 +71,16 @@ REACHABLE_GATES = {"topology>=SELECTED", "has_modifiers", "installs_files",
 
 
 def test_gate_matrix_is_derived_from_the_contract():
-    """Eight gates, twenty methods (#162 added plays_captures with four), all
+    """Nine gates, twenty-two methods (#162 added plays_captures with
+    four, #198 added has_named_params with two), all
     read off CAPABILITY_PROTOCOLS. The server's own table and the sentinel's
     must be the same derivation."""
     assert GATE_LABELS == ["topology>=SELECTED", "topology==SELECTED",
                            "topology==CONSTRUCTED", "has_modifiers",
                            "installs_files", "can_rename",
-                           "composable_scene_slots", "plays_captures"]   # #162
-    assert sum(len(v) for v in GATE_MATRIX.values()) == 20
+                           "composable_scene_slots", "plays_captures",  # #162
+                           "has_named_params"]                          # #198
+    assert sum(len(v) for v in GATE_MATRIX.values()) == 22
     assert set(GATED_METHODS) == set(server.GATED_METHODS)
     for name, label in GATED_METHODS.items():
         assert server.GATED_METHODS[name][0] == label
@@ -684,8 +686,8 @@ def test_audit_counts_are_reported_honestly():
     blocks = _except_exception_blocks(ast.parse(SERVER.read_text(encoding="utf-8")))
     reraised = sum(1 for _h, before, _b in blocks.values()
                    if _handles_decline_first(before))
-    assert len(blocks) == 87
-    assert reraised == 35
+    assert len(blocks) == 88
+    assert reraised == 36
     assert len(blocks) - reraised == 52
 
 
