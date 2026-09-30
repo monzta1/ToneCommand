@@ -59,6 +59,9 @@ audition = []
 
 dev = [
     "pytest>=8",
+    # Line coverage for the test console at /admin/tests. Only the
+    # Coverage run needs it; every other run works without it.
+    "pytest-cov>=5",
     # The suite is dominated by the simulator's settle window, which is
     # deliberate: it models the FM9 applying writes asynchronously and has
     # caught real read-after-write races. The window cannot be shortened

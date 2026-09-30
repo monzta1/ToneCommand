@@ -4,6 +4,58 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (a test console at /admin/tests)
+- **Watching a suite meant watching dots in a terminal.** There is now a live
+  admin page at `http://127.0.0.1:8909/admin/tests`: a segmented progress bar
+  by outcome, the percentage, counts, elapsed and a rate-based estimate of
+  what is left, the test currently executing, failures listed as they happen
+  rather than at the end, a coverage ring, GitHub CI status and run history.
+  It polls once a second while something is moving and every six when nothing
+  is. `tools/gen_test_report.py` still exists and still renders an
+  after-the-fact report; this is the thing that shows a run in flight.
+- Five run kinds: Sanity (the three files CLAUDE.md requires before a
+  commit), Full regression, Coverage, Devices and Interface. A caller names a
+  KEY; the key maps to a fixed argument list in `fm9/test_runs.py` and
+  nothing a caller types reaches a command line. Every launch is `Popen` with
+  a list and no shell.
+- `tools/pytest_progress.py` publishes the progress as JSON after every test,
+  written atomically so a reader never catches a half-written file. It counts
+  setup and teardown failures too, since a broken fixture never reaches
+  `call` and would otherwise shrink the total silently. Without
+  `TONECOMMAND_RUN_ID` it does nothing, so it is inert for an ordinary pytest
+  run.
+- A STOP button, and `POST /api/tests/stop`. SIGTERM, never SIGKILL, so
+  pytest writes its own ending and the page shows where it stopped.
+
+### Fixed (four defects the console found in itself, all under -n auto)
+- Runs were SERIAL while CI has used `-n auto` for months, so the console was
+  roughly three times slower than CI and a full regression projected 45
+  minutes against CI's 4m 54s. Parallelism is now declared per kind: on for
+  the long runs, off for the short ones where worker startup costs more than
+  it saves.
+- Under `-n auto` every xdist worker registered the progress plugin and all
+  of them wrote the same file, each with its own slice of the tests. The
+  controller alone registers now; it receives every worker's reports and so
+  has the whole picture.
+- The collected total was 0 under `-n auto`, so the bar sat at 0 percent
+  while the counter climbed. The controller collects nothing of its own, so
+  the total also comes from xdist's `pytest_xdist_node_collection_finished`.
+- **A run started from the console killed itself.** The capability-gate suite
+  drives every registered route, and one of them is now "stop the running
+  suite", so a regression found itself and sent itself SIGTERM at 199 of
+  2,534 tests. The page reported "stopped on request" with nobody having
+  asked. A request from inside a suite carries `TONECOMMAND_RUN_ID`, so a run
+  now refuses to stop itself and refuses to start a nested run, and
+  `tests/test_test_console.py` pins both.
+- A killed run read as live forever, because the plugin overwrote the seed
+  record that carried the process id and the stall check had nothing to
+  check. The pid is written on every flush, and a run whose process is gone
+  reports as stalled rather than leaving a bar frozen with no explanation.
+- The failure column showed pytest's own advice ("Use -v to get more diff")
+  instead of the assertion, because the extractor walked the traceback
+  backwards. Found by looking at the rendered page, which is the only way it
+  could have been found.
+
 ### Fixed (the intermittent that failed two unrelated PRs today: #181)
 - `test_repoint_reads_back_after_the_settle_window_not_inside_it` raced the
   wall clock. It sets the simulator's settle window to 0.4 s, writes, then

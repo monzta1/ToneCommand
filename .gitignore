@@ -64,3 +64,8 @@ handsoff-verifications.jsonl
 .handsoff-preflight.json
 .handsoff-analysis/
 .handsoff-digests/
+
+# Test console run records (local only, never committed)
+.testruns/
+coverage.json
+.coverage

@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Console | ToneCommand</title>
+<link rel="icon" href="/logo.png">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #05070c;
+    --panel: #0b1018;
+    --panel-2: #10161f;
+    --line: rgba(120,160,220,0.18);
+    --line-hot: rgba(90,220,255,0.5);
+    --text: #c8d6e8;
+    --text-strong: #eaf2ff;
+    --muted: #7c8ca3;
+    --cyan: #5ae0ff;
+    --green: #35e08b;
+    --amber: #ffb454;
+    --red: #ff5f6b;
+    --violet: #b98bff;
+    --font: "SF Mono", "JetBrains Mono", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: var(--font); color: var(--text);
+    background:
+      radial-gradient(1100px 520px at 12% -10%, rgba(90,224,255,0.09), transparent 60%),
+      radial-gradient(900px 480px at 92% 0%, rgba(185,139,255,0.08), transparent 55%),
+      linear-gradient(180deg, #05070c 0%, #04050a 100%);
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 26px 22px 70px; }
+
+  header.top {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding-bottom: 16px; margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 13px; text-decoration: none; color: inherit; }
+  .brand img { width: 40px; height: 40px; border-radius: 11px;
+    filter: drop-shadow(0 0 20px rgba(90,140,255,0.4)); }
+  h1 { font-size: 15px; letter-spacing: 0.26em; margin: 0; color: var(--text-strong);
+       text-transform: uppercase; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; }
+  .spacer { flex: 1 1 auto; }
+  .backlink { color: var(--muted); text-decoration: none; font-size: 12px;
+    letter-spacing: 0.12em; border: 1px solid var(--line); border-radius: 3px;
+    padding: 7px 12px; }
+  .backlink:hover { color: var(--cyan); border-color: var(--line-hot); }
+
+  h2 { font-size: 11px; letter-spacing: 0.24em; color: var(--muted);
+       text-transform: uppercase; margin: 30px 0 13px; font-weight: 600; }
+
+  /* --- the live run ------------------------------------------------- */
+  .live {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+    padding: 20px 22px; position: relative; overflow: hidden;
+  }
+  .live.active { border-color: var(--line-hot);
+    box-shadow: 0 0 34px rgba(90,224,255,0.09) inset; }
+  .live-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .live-title { font-size: 17px; color: var(--text-strong); letter-spacing: 0.04em; }
+  .pct { margin-left: auto; font-size: 30px; color: var(--cyan); font-variant-numeric: tabular-nums; }
+  .live.done .pct { color: var(--green); }
+  .live.bad .pct { color: var(--red); }
+
+  .bar { height: 11px; border-radius: 6px; background: var(--panel-2);
+    border: 1px solid var(--line); margin: 15px 0 10px; overflow: hidden;
+    display: flex; }
+  .bar span { display: block; height: 100%; transition: width 420ms ease; }
+  .bar .ok { background: linear-gradient(90deg, #1d8f5a, var(--green)); }
+  .bar .no { background: linear-gradient(90deg, #9e2b34, var(--red)); }
+  .bar .sk { background: rgba(255,180,84,0.45); }
+  .live.active .bar .ok { background-image:
+      repeating-linear-gradient(115deg, rgba(255,255,255,0.16) 0 10px, transparent 10px 22px),
+      linear-gradient(90deg, #1d8f5a, var(--green));
+    animation: flow 900ms linear infinite; background-size: 40px 100%, 100% 100%; }
+  @keyframes flow { to { background-position: 40px 0, 0 0; } }
+
+  .counts { display: flex; gap: 20px; flex-wrap: wrap; color: var(--muted); font-size: 12.5px; }
+  .counts b { font-variant-numeric: tabular-nums; }
+  .c-ok b { color: var(--green); } .c-no b { color: var(--red); }
+  .c-sk b { color: var(--amber); } .c-tt b { color: var(--text-strong); }
+  .now { margin-top: 11px; color: var(--muted); font-size: 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now code { color: var(--cyan); }
+
+  /* --- run kind buttons ---------------------------------------------- */
+  .kinds { display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+  .kind { text-align: left; font: inherit; cursor: pointer; color: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+    padding: 14px 15px; transition: border-color 140ms, transform 140ms; }
+  .kind:hover:not(:disabled) { border-color: var(--line-hot); transform: translateY(-1px); }
+  .kind:disabled { opacity: 0.42; cursor: not-allowed; }
+  .kind .k { color: var(--text-strong); letter-spacing: 0.1em; text-transform: uppercase;
+    font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .kind .k::before { content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--cyan); box-shadow: 0 0 9px var(--cyan); }
+  .kind p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .kind .t { margin-top: 9px; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; }
+
+  /* --- coverage ring -------------------------------------------------- */
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+    padding: 18px; display: flex; gap: 16px; align-items: center; }
+  .ring { width: 92px; height: 92px; flex: 0 0 92px; position: relative; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .val { position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 19px; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .card .lbl { font-size: 11px; letter-spacing: 0.2em; color: var(--muted);
+    text-transform: uppercase; }
+  .card .big { font-size: 25px; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .card .note { color: var(--muted); font-size: 12px; margin-top: 5px; }
+
+  /* --- tables ---------------------------------------------------------- */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 10.5px;
+    letter-spacing: 0.18em; text-transform: uppercase; padding: 0 10px 9px; }
+  td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:hover td { background: rgba(255,255,255,0.016); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; border: 1px solid; }
+  .t-pass { color: var(--green); border-color: rgba(53,224,139,0.4); }
+  .t-fail { color: var(--red); border-color: rgba(255,95,107,0.4); }
+  .t-run { color: var(--cyan); border-color: rgba(90,224,255,0.45); }
+  .t-stall { color: var(--amber); border-color: rgba(255,180,84,0.45); }
+  .mono-dim { color: var(--muted); }
+  .fail-msg { color: var(--red); font-size: 12px; }
+  .nodeid { color: var(--text-strong); word-break: break-all; }
+
+  .empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 7px;
+    padding: 24px; text-align: center; font-size: 12.5px; }
+  .err { color: var(--red); border: 1px solid rgba(255,95,107,0.4);
+    border-radius: 6px; padding: 11px 13px; margin-top: 12px; font-size: 12.5px; }
+  .mini { height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden;
+    border: 1px solid var(--line); min-width: 96px; }
+  .mini span { display: block; height: 100%; background: var(--green); }
+  @media (max-width: 620px) {
+    .pct { font-size: 24px; }
+    .wrap { padding: 18px 16px 50px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <a class="brand" href="/">
+      <img src="/logo.png" alt="">
+      <span>
+        <h1>Test Console</h1>
+        <div class="sub">ToneCommand</div>
+      </span>
+    </a>
+    <span class="spacer"></span>
+    <a class="backlink" href="/">BACK TO THE RIG</a>
+  </header>
+
+  <div id="live"></div>
+  <div id="error"></div>
+
+  <h2>Start a run</h2>
+  <div class="kinds" id="kinds"></div>
+
+  <h2>Continuous integration</h2>
+  <div id="ci"></div>
+
+  <h2>Coverage</h2>
+  <div id="coverage"></div>
+
+  <h2>Recent runs</h2>
+  <div id="history"></div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let KINDS = [];
+let busy = false;
+
+function dur(sec) {
+  if (sec == null) return '';
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+}
+function ago(ts) {
+  if (!ts) return '';
+  const d = Math.max(0, Date.now() / 1000 - ts);
+  if (d < 60) return 'just now';
+  if (d < 3600) return Math.floor(d / 60) + ' min ago';
+  if (d < 86400) return Math.floor(d / 3600) + ' h ago';
+  return Math.floor(d / 86400) + ' d ago';
+}
+const kindLabel = k => (KINDS.find(x => x.key === k) || {}).label || k;
+
+function renderLive(run) {
+  const box = $('live');
+  if (!run) {
+    box.innerHTML = `<div class="empty">No run yet. Pick one below and it will
+      appear here, live, while it goes.</div>`;
+    return;
+  }
+  const running = run.state === 'running' || run.state === 'collecting';
+  const bad = run.failed > 0 || run.state === 'failed';
+  const total = run.total || 0;
+  const pass = total ? 100 * run.passed / total : 0;
+  const fail = total ? 100 * run.failed / total : 0;
+  const skip = total ? 100 * run.skipped / total : 0;
+  const cls = 'live' + (running ? ' active' : '') + (bad ? ' bad' : (run.state === 'passed' ? ' done' : ''));
+  const stateWord = run.state === 'collecting' ? 'collecting tests'
+    : run.state === 'running' ? 'running'
+    : run.state === 'stopped' ? 'stopped on request'
+    : run.state === 'stalled' ? 'stopped without finishing'
+    : run.state === 'passed' ? 'passed' : 'failed';
+  box.className = cls;
+  box.innerHTML = `
+    <div class="live-head">
+      <span class="live-title">${esc(kindLabel(run.kind))}</span>
+      <span class="mono-dim">${esc(stateWord)}</span>
+      <span class="pct">${(run.percent ?? 0).toFixed(1)}<span style="font-size:15px">%</span></span>
+    </div>
+    <div class="bar">
+      <span class="ok" style="width:${pass}%"></span>
+      <span class="no" style="width:${fail}%"></span>
+      <span class="sk" style="width:${skip}%"></span>
+    </div>
+    <div class="counts">
+      <span class="c-tt">${run.done ?? 0} of <b>${total || '?'}</b></span>
+      <span class="c-ok">passed <b>${run.passed ?? 0}</b></span>
+      <span class="c-no">failed <b>${run.failed ?? 0}</b></span>
+      <span class="c-sk">skipped <b>${run.skipped ?? 0}</b></span>
+      <span>elapsed <b>${dur(run.elapsed)}</b></span>
+      ${run.eta != null ? `<span>about <b>${dur(run.eta)}</b> left</span>` : ''}
+    </div>
+    ${run.current ? `<div class="now">now: <code>${esc(run.current)}</code></div>` : ''}
+    ${running ? `<p style="margin:15px 0 0"><button class="backlink" id="stopbtn"
+       style="cursor:pointer;background:none;font-family:inherit">STOP THIS RUN</button></p>` : ''}
+    ${run.stalled_reason ? `<div class="err">${esc(run.stalled_reason)}</div>` : ''}
+    ${(run.failures || []).length ? `
+      <h2 style="margin-top:20px">Failures</h2>
+      <table><tbody>${run.failures.map(f => `
+        <tr><td class="nodeid">${esc(f.nodeid)}</td>
+            <td class="fail-msg">${esc(f.message)}</td></tr>`).join('')}
+      </tbody></table>` : ''}`;
+}
+
+function renderKinds(runningNow) {
+  $('kinds').innerHTML = KINDS.map(k => `
+    <button class="kind" data-kind="${esc(k.key)}" ${runningNow || busy ? 'disabled' : ''}>
+      <span class="k">${esc(k.label)}</span>
+      <p>${esc(k.blurb)}</p>
+      <div class="t">${k.typical_minutes ? '~' + k.typical_minutes + ' min' : ''}</div>
+    </button>`).join('');
+  document.querySelectorAll('.kind').forEach(b =>
+    b.addEventListener('click', () => startRun(b.dataset.kind)));
+}
+
+function ring(pct, color) {
+  const r = 40, c = 2 * Math.PI * r;
+  const on = Math.max(0, Math.min(100, pct)) / 100 * c;
+  return `<div class="ring">
+    <svg width="92" height="92" viewBox="0 0 92 92">
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="8"/>
+      <circle cx="46" cy="46" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+        stroke-linecap="round" stroke-dasharray="${on} ${c}"/>
+    </svg>
+    <div class="val">${pct.toFixed(0)}%</div></div>`;
+}
+
+function renderCoverage(cov) {
+  if (!cov) {
+    $('coverage').innerHTML = `<div class="empty">No coverage run yet.
+      Start the Coverage run above and the number lands here, measured, never typed in.</div>`;
+    return;
+  }
+  const color = cov.percent >= 80 ? 'var(--green)' : cov.percent >= 60 ? 'var(--amber)' : 'var(--red)';
+  $('coverage').innerHTML = `<div class="cards"><div class="card">
+      ${ring(cov.percent, color)}
+      <div>
+        <div class="lbl">Line coverage</div>
+        <div class="note">${cov.covered ?? '?'} lines covered, ${cov.missing ?? '?'} missed
+          across ${cov.files ?? '?'} files.</div>
+        <div class="note">From ${esc(cov.from_kind || 'a coverage run')}, ${esc(ago(cov.at))}.</div>
+      </div></div></div>`;
+}
+
+function renderCI(ci) {
+  const box = $('ci');
+  if (!ci || ci.available === false) {
+    box.innerHTML = `<div class="empty">${esc((ci && ci.reason) ||
+      'GitHub CI status is unavailable here.')}</div>`;
+    return;
+  }
+  if (!ci.runs || !ci.runs.length) {
+    box.innerHTML = `<div class="empty">No recent CI runs found.</div>`;
+    return;
+  }
+  box.innerHTML = `<table><thead><tr>
+      <th>Workflow</th><th>Branch</th><th>Result</th><th>When</th><th></th>
+    </tr></thead><tbody>${ci.runs.map(r => {
+      const good = r.conclusion === 'success';
+      const running = !r.conclusion;
+      const cls = running ? 't-run' : good ? 't-pass' : 't-fail';
+      const word = running ? 'running' : (r.conclusion || 'unknown');
+      return `<tr>
+        <td class="nodeid">${esc(r.name)}</td>
+        <td class="mono-dim">${esc(r.branch || '')}</td>
+        <td><span class="tag ${cls}">${esc(word)}</span></td>
+        <td class="mono-dim">${esc(ago(r.at))}</td>
+        <td>${r.url ? `<a class="backlink" href="${esc(r.url)}" target="_blank" rel="noopener">open</a>` : ''}</td>
+      </tr>`; }).join('')}</tbody></table>`;
+}
+
+function renderHistory(runs) {
+  const past = runs.filter(r => r.state !== 'running' && r.state !== 'collecting');
+  if (!past.length) { $('history').innerHTML = `<div class="empty">Nothing yet.</div>`; return; }
+  $('history').innerHTML = `<table><thead><tr>
+      <th>Run</th><th>Result</th><th>Passed</th><th>Failed</th><th>Took</th><th>When</th>
+    </tr></thead><tbody>${past.map(r => {
+      const cls = r.state === 'passed' ? 't-pass' : r.state === 'stalled' ? 't-stall' : 't-fail';
+      const total = r.total || 0;
+      const pct = total ? 100 * r.passed / total : 0;
+      return `<tr>
+        <td class="nodeid">${esc(kindLabel(r.kind))}</td>
+        <td><span class="tag ${cls}">${esc(r.state)}</span></td>
+        <td><div class="mini"><span style="width:${pct}%"></span></div>
+            <span class="mono-dim">${r.passed ?? 0} / ${total || '?'}</span></td>
+        <td class="${r.failed ? 'fail-msg' : 'mono-dim'}">${r.failed ?? 0}</td>
+        <td class="mono-dim">${dur(r.elapsed)}</td>
+        <td class="mono-dim">${esc(ago(r.started))}</td>
+      </tr>`; }).join('')}</tbody></table>`;
+}
+
+async function stopRun() {
+  const b = $('stopbtn');
+  if (b) { b.disabled = true; b.textContent = 'STOPPING...'; }
+  try {
+    const r = await fetch('/api/tests/stop', {method: 'POST'});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+  } catch (e) {
+    $('error').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+  poll();
+}
+
+async function startRun(kind) {
+  busy = true; renderKinds(true); $('error').innerHTML = '';
+  try {
+    const r = await fetch('/api/tests/run', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kind})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderLive(d.run);
+  } catch (e) {
+    $('error').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    busy = false;
+    poll();
+  }
+}
+
+let timer = null;
+async function poll() {
+  try {
+    const r = await fetch('/api/tests/runs');
+    const d = await r.json();
+    KINDS = d.kinds || KINDS;
+    const live = d.current || (d.runs || [])[0] || null;
+    renderLive(live);
+    const sb = $('stopbtn');
+    if (sb) sb.addEventListener('click', stopRun);
+    renderKinds(!!d.current);
+    renderCoverage(d.coverage);
+    renderCI(d.ci);
+    renderHistory(d.runs || []);
+    // Fast while something is moving, slow when nothing is. A console that
+    // hammers the server it is reporting on is measuring itself.
+    schedule(d.current ? 1000 : 6000);
+  } catch (e) {
+    $('error').innerHTML = `<div class="err">Could not reach ToneCommand: ${esc(e.message)}</div>`;
+    schedule(5000);
+  }
+}
+function schedule(ms) { clearTimeout(timer); timer = setTimeout(poll, ms); }
+poll();
+</script>
+</body>
+</html>

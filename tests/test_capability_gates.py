@@ -282,6 +282,15 @@ def _table(sim) -> list[dict]:
     rows = [
         ("GET", "/", {}, None, None),
         ("GET", "/logo.png", {}, None, None),
+        ("GET", "/admin/tests", {}, None, None),
+        ("GET", "/api/tests/runs", {}, None, None),
+        # An unknown kind on purpose: the table drives every route twice, and
+        # a valid kind here would start two real pytest subprocesses from
+        # inside the suite. The refusal exercises the same route and proves
+        # the key never reaches a command line.
+        ("POST", "/api/tests/run", {}, {"kind": "not-a-run-kind"}, None),
+        # Nothing is running inside the suite, so this is the refusal path.
+        ("POST", "/api/tests/stop", {}, None, None),
         ("GET", "/api/link/stream", {}, None, None),
         ("POST", "/api/reconnect", {}, None, None),
         ("GET", "/api/state", {}, None, None),
