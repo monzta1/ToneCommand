@@ -4,6 +4,44 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.4 (2026-09-30)
+
+**If you are on any version from 1.4.0 onward, update. The interface has been
+dead in a browser since 1.4.0: the page renders and nothing on it works.**
+
+### The BOSS IR-2, and what to say to it
+
+Plug it in by USB and it appears in the device picker. No setup, no port to
+choose, no environment variable.
+
+    a brown sound, tight, not much room
+    give me the cleanest thing this pedal does
+    more gain
+    back the bass off
+    what is it set to right now?
+
+Every change is listed for review before anything is sent, and every write is
+verified by reading the pedal back. An out-of-range value is refused before it
+reaches the wire, because this pedal clamps silently and a clamped write would
+otherwise read back as a success. Turn a knob by hand and ToneCommand notices:
+the IR-2 announces its own panel changes, which the FM9 cannot do.
+
+All eleven user IR slots are listed by name. Installing an IR is not supported
+yet; see below.
+
+### Coming next
+
+- **Your own IRs on the IR-2.** The transfer path is decoded and works in both
+  directions, and a complete IR moves in about fifteen seconds with every
+  chunk verified. What remains is a per-IR trailer that is not understood, and
+  a wrong guess there would sound wrong rather than fail, so install still
+  refuses.
+- A test console at `/admin/tests`: live suite progress, coverage and CI.
+- Sharded CI, to take a pull request from five minutes to one or two.
+- Axe-Fx III and VP4 adapters. Both want an owner with the hardware; the
+  protocol work is largely done for the Axe-Fx III, since the specification
+  this project's codec was built from is that device's.
+
 ### Fixed
 - NO EM DASH REPO-WIDE, WHICH THE RULE ALREADY SAID. CLAUDE.md bans it
   everywhere, but enforcement was seven separate guards each carrying a
