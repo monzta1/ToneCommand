@@ -6555,13 +6555,14 @@ def api_version_check():
 
 
 @app.get("/api/diagnostics/share-package")
-def api_diagnostics_share_package(scope: str | None = None):
+def api_diagnostics_share_package(scope: str | None = None,
+                                  note: str | None = None):
     """Issue #108: the scrubbed local error log packaged as a pre-filled
     GitHub issue for the player to READ before deciding anything. This makes
     no network call and sends nothing: it returns text and a URL, and the only
     way anything leaves the machine is the player opening that URL themselves
     from the settings drawer's second, separate button."""
-    pkg = diagnostics.package_for_sharing(scope=scope)
+    pkg = diagnostics.package_for_sharing(scope=scope, note=note or "")
     return {"title": pkg["title"], "body": pkg["body"], "url": pkg["url"],
             "entries": pkg["entry_count"]}
 

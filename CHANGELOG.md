@@ -4,6 +4,42 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (#201: Report a problem, on every error)
+- Every error in the conversation now carries a "Report a problem" button.
+  Every error, not only the ones that look unexplainable: the one that
+  prompted this said "busy", which sounded self-explanatory and was wrong in
+  a way nobody could see from the user's end.
+- It opens a panel that BUILDS a report and shows all of it. Nothing is sent
+  from the app at any point; the only way anything leaves the machine is the
+  player pressing OPEN GITHUB ISSUE themselves, which is the model #108
+  established and this keeps. There is no duplicate search, because that
+  would need a network call from the app and would cost exactly that
+  property. Triage is a maintainer's job, not a player's.
+- The report now answers the questions that previously took a round of
+  correspondence: ToneCommand version and git SHA, OS and architecture,
+  Python version, whether the install is editable or a wheel (#177 makes
+  that change behaviour), the planner backend and model NAME, which backends
+  it would actually try, and the device and its firmware. Plus the recent
+  diagnostics, as before. The player's own first line becomes the issue
+  title, because an issue list full of "Diagnostics report (all, 10
+  entries)" is unreadable.
+- `environment()` cannot take a report down with it: every lookup falls back
+  to "could not be read", since a report from a half-broken install is the
+  one that matters most.
+
+### Fixed (a Google API key would have travelled in a shared report)
+- The scrubber masked Anthropic keys, OpenAI-style keys, Bearer headers and
+  KEY=VALUE pairs, and caught none of `AIza...`, which carries no `sk-`
+  prefix and appears bare inside a URL or an error. The report that prompted
+  all of this came from a Gemini user. GitHub tokens (`ghp_`, `github_pat_`)
+  are covered for the same reason: the publisher PAT would otherwise travel
+  in a log line.
+- A home directory is masked to `~`. It is not a credential, but it is a real
+  username on a public issue, and the path SHAPE is what diagnoses a problem.
+  A model name is deliberately kept: the name is the diagnosis, the key is
+  the credential, and conflating them either leaks a secret or throws away
+  the useful half.
+
 ### Fixed (every Gemini failure was reported to the player as congestion)
 - `plainPlanError` matched `rate` with no word boundary, and Gemini's API
   method is literally `generateContent`, so `generate` contains `rate` and
