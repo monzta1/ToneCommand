@@ -4,6 +4,26 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed (every Gemini failure was reported to the player as congestion)
+- `plainPlanError` matched `rate` with no word boundary, and Gemini's API
+  method is literally `generateContent`, so `generate` contains `rate` and
+  EVERY Gemini failure came out as "The AI helper is busy right now. Give it
+  a moment and try again." A bad key, an unavailable model, a 400: all of
+  them read as congestion. A user with a free Gemini key reported exactly
+  this, on every request rather than intermittently, which is itself the tell
+  that it was never a rate limit.
+- The message was wrong and its advice could not work, which is the worse
+  half: waiting does nothing about a model your key cannot reach. The pattern
+  now matches `rate limit`, `429`, `quota`, `overloaded`, `too many requests`
+  and `busy` as a whole word.
+- `tests/test_plain_errors.py` lifts the regex out of the shipped page rather
+  than copying it, so the test cannot drift from what users actually run, and
+  pins both directions: `generate`, `moderate` and `could not generate` are
+  not congestion; `429`, `quota` and `overloaded` are.
+- The real reason still only reaches the local diagnostic log, which is why
+  nobody could diagnose this from what the user was able to send. #201 is the
+  fix for that.
+
 ## 1.5.4 (2026-09-30)
 
 **If you are on any version from 1.4.0 onward, update. The interface has been
