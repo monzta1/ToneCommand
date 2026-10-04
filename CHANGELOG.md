@@ -4,6 +4,15 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.5 (2026-10-04)
+
+**If you use Gemini, this one is for you.** Every Gemini failure was being
+reported as "The AI helper is busy right now", whatever it actually was, and
+the advice that came with it could not work.
+
+**If you have ever shared diagnostics, update.** A Google API key would have
+survived the scrub and could have reached a public issue.
+
 ### Added (#201: Report a problem, on every error)
 - Every error in the conversation now carries a "Report a problem" button.
   Every error, not only the ones that look unexplainable: the one that
