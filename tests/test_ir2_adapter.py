@@ -11,7 +11,7 @@ import pytest
 from fm9.adapter import DeviceAdapter, ReadPath, Topology
 from devices.ir2 import protocol as p
 from devices.ir2 import registry as reg
-from devices.ir2.adapter import IR2Adapter, INSTALL_REFUSED
+from devices.ir2.adapter import IR2Adapter, IR2_SLOTS_ENV
 from devices.ir2.client import VerifyFailed
 from devices.ir2.sim import SimIR2
 
@@ -158,15 +158,20 @@ def test_the_eleven_user_slots_are_listed_as_the_pedal_numbers_them(dev):
     assert len(rows) == p.IR_SLOTS == 11
 
 
-def test_installing_an_ir_refuses_in_one_line_and_sends_nothing(dev):
-    with pytest.raises(NotImplementedError) as e:
-        dev.install_capture(None, b"\x00" * 16, 0)
-    assert "invariant 0" in str(e.value)
+def test_installing_refuses_until_the_owner_names_a_slot(dev, monkeypatch):
+    """#195 made install real, and it stays shut by default: a slot holds the
+    cabinet for one amp voicing, so which ones are expendable is the owner's
+    call. The full install path is covered in tests/test_ir2_install.py."""
+    monkeypatch.delenv(IR2_SLOTS_ENV, raising=False)
+    with pytest.raises(PermissionError, match="no IR-2 slot is writable"):
+        dev.install_capture("x.wav", b"\x00" * 16, 11)
     assert dev.io.writes == []
 
 
-def test_removing_an_ir_refuses_the_same_way(dev):
-    with pytest.raises(NotImplementedError, match="invariant 0"):
+def test_removing_an_ir_is_refused_with_a_reason(dev):
+    """It would leave that voicing with no speaker at all, which the pedal's
+    own editor does not offer."""
+    with pytest.raises(NotImplementedError, match="no cabinet at all"):
         dev.remove_capture(3)
 
 
@@ -179,7 +184,8 @@ def test_slot_lookups_use_the_pedals_numbering(dev):
     assert [r["slot"] for r in dev.scan_slots()] == list(range(1, 12))
 
 
-def test_the_capture_whitelist_is_empty_so_nothing_is_writable_by_declaration(dev):
+def test_the_capture_whitelist_is_empty_by_default(dev, monkeypatch):
+    monkeypatch.delenv(IR2_SLOTS_ENV, raising=False)
     assert dev.capture_capabilities().whitelist == frozenset()
     assert dev.capture_capabilities().slots == p.IR_SLOTS == 11
 

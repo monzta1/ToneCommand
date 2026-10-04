@@ -4,6 +4,45 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added (#195: load your own cabinet IRs onto the BOSS IR-2)
+- ToneCommand writes a cab IR from your own library into the pedal. Proven
+  end to end on hardware: `RKH 4x12 V30 SNH MD421W Center.wav`, 204 ms at
+  44.1 kHz, converted, written to USER 11 in 6.9 seconds, read back sample
+  for sample, played correctly, and **recognised by BOSS's own IR Loader as a
+  loaded IR**. That last part is the strongest evidence the format is right
+  rather than merely accepted: the vendor's software reads what we wrote.
+- **The slots are not a free list.** USER 1 to USER 11 hold the cabinets for
+  the eleven amp voicings in order, confirmed by matching every slot's stored
+  filename against its voicing's factory cab. Installing an IR therefore
+  replaces one amp's speaker, which is why nothing is writable until the
+  owner sets `TONECOMMAND_IR2_SLOTS`, and why a refusal names the voicing
+  whose cabinet was about to go.
+- **The pedal loads its cabinets at power-on.** Writes land in flash and the
+  DSP keeps playing what it loaded at boot, so an install looks like it did
+  nothing. Halving every sample, writing a different cab and writing outright
+  silence all produced no audible change; a power cycle then played the
+  silent slot as no cab at all. Switching voicings does not trigger a reload
+  and neither does toggling the stored patch. Every install says this in its
+  own result, because an install that stays quiet about it reads as a
+  failure. It cost an evening to find and should cost nobody else one.
+- The two quantised tables after the samples are left alone. The pedal does
+  not recompute them and does not need them recomputed: a cab written with
+  another cab's tables played correctly. Nothing here understands them and
+  nothing needs to, which is a better place to stop than a confident guess.
+- Conversion is dependency-free: any 16, 24 or 32-bit PCM wav, resampled to
+  44.1 kHz, truncated to the 37 ms the pedal holds with a 64-sample fade so
+  the cut does not click, peak-normalised because every factory cab peaks at
+  exactly 1.0 and a hotter one clips in the DSP. A float wav or a silent file
+  is refused by name rather than read as noise.
+- Removing an IR is refused: it would leave a voicing with no speaker at all,
+  which the pedal's own editor does not offer.
+
+### Fixed
+- `GET /api/diagnostics/share-package` and the capture-slot tests follow the
+  real signatures again after the IR work; `fm9/sim.py` and the IR-2
+  simulator model the four IRDATA regions so the suite exercises installs
+  without hardware.
+
 ## 1.5.5 (2026-10-04)
 
 **If you use Gemini, this one is for you.** Every Gemini failure was being

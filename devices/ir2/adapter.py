@@ -25,18 +25,57 @@ from __future__ import annotations
 
 from typing import Any
 
-from fm9.adapter import (Capabilities, CaptureCapabilities, CaptureSlot,
-                         ReadPath, Topology)
+from fm9.adapter import (Capabilities, CaptureCapabilities, CaptureInstall,
+                         CaptureSlot, ReadPath, Topology)
+
+from pathlib import Path
 
 from . import protocol as p
 from . import registry as reg
-from .client import MidiClient
+from .client import MidiClient, VerifyFailed
 
-#: One line, naming what owns the path and the rule that keeps it closed.
-INSTALL_REFUSED = (
-    "the IR-2 IR transfer path is not decoded yet and stays closed under "
-    "invariant 0, never brick; nothing was sent. Load IRs with the BOSS "
-    "IR-2 IR Loader for now")
+#: Which USER slots this tool may overwrite. EMPTY BY DEFAULT, like every
+#: other whitelist in this project: installing an IR replaces the cabinet
+#: for one of the eleven amp voicings, and which of them are expendable is
+#: the owner's call, never a default. Set TONECOMMAND_IR2_SLOTS to a list
+#: like "9,10,11".
+IR2_SLOTS_ENV = "TONECOMMAND_IR2_SLOTS"
+
+#: Said after every install, because the pedal CACHES. Writes land in flash
+#: and the DSP keeps playing what it loaded at power-on, so an install looks
+#: like it did nothing until the unit is restarted. Proven on hardware: a
+#: silent IR written to a slot changed nothing at all until a power cycle,
+#: and then played as no cab. Nobody should have to discover that twice.
+RELOAD_NOTICE = ("written and verified. The IR-2 loads its cabs at power-on, "
+                 "so unplug it and plug it back in to hear this one")
+
+NO_SLOTS = (
+    f"no IR-2 slot is writable: set {IR2_SLOTS_ENV} to the USER slots you are "
+    "willing to overwrite, for example \"9,10,11\". Installing an IR replaces "
+    "the cabinet for that slot's amp voicing, so this is deliberately empty "
+    "until you say which")
+
+#: The device caps a read at 240 nibbles; writes follow the same chunk so a
+#: failure lands on a chunk that can be named rather than on 13,056 bytes.
+CHUNK = 240
+
+
+def writable_slots() -> frozenset:
+    """The owner's list, from the environment. Empty unless they say.
+
+    Deliberately not a default. Installing an IR replaces the cabinet for
+    one of the eleven amp voicings, and which of those are expendable is not
+    something this tool can know.
+    """
+    import os
+    out = set()
+    for part in os.environ.get(IR2_SLOTS_ENV, "").replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            n = int(part)
+            if p.IR_FIRST_SLOT <= n < p.IR_FIRST_SLOT + p.IR_SLOTS:
+                out.add(n)
+    return frozenset(out)
 
 NO_SCENES = "the IR-2 has no scenes; it has two stored patches, 0 and 1"
 NO_BLOCKS = ("the IR-2 has no effect blocks to bypass or switch channels on; "
@@ -218,9 +257,7 @@ class IR2Adapter:
     # --- IR slots: listed, never written ----------------------------------
 
     def capture_capabilities(self) -> CaptureCapabilities:
-        # an empty whitelist: nothing may be written, by declaration as well
-        # as by construction
-        return CaptureCapabilities((".wav",), p.IR_SLOTS, frozenset())
+        return CaptureCapabilities((".wav",), p.IR_SLOTS, writable_slots())
 
     def list_captures(self) -> list:
         """USER 1 to USER 11, numbered as the pedal numbers them.
@@ -239,10 +276,81 @@ class IR2Adapter:
         return rows
 
     def install_capture(self, record: Any, raw: bytes, slot: int):
-        raise NotImplementedError(INSTALL_REFUSED)
+        """Write one IR into a USER slot. `record` is the source path.
+
+        Refused unless the slot is on the owner's whitelist, because this
+        overwrites the cabinet for that slot's amp voicing. Written in
+        verified chunks, read back whole, and the result SAYS the pedal must
+        be restarted, since it will otherwise look like nothing happened.
+        """
+        from . import irfile
+        allowed = writable_slots()
+        if not allowed:
+            raise PermissionError(NO_SLOTS)
+        slot = int(slot)
+        if slot not in allowed:
+            raise PermissionError(
+                f"USER {slot} is not on the writable list "
+                f"({', '.join(str(s) for s in sorted(allowed))}). It holds the "
+                f"cabinet for the {self.voicing_for(slot)} voicing.")
+        path = Path(str(record))
+        samples = irfile.prepare(path)
+        nib = irfile.to_nibbles(samples)
+        base = p.ir_slot_addr(slot, p.IR_DATA)
+        for i in range(0, len(nib), CHUNK):
+            self.io.write(p.addr_offset(base, i), nib[i:i + CHUNK])
+        label = path.stem[:32]
+        self.io.write(p.ir_slot_addr(slot, p.IR_NAME),
+                      irfile.name_nibbles(label, 32))
+        fname = irfile.file_nibbles(path.name)
+        fbase = p.ir_slot_addr(slot, p.IR_FILE)
+        for i in range(0, len(fname), CHUNK):
+            self.io.write(p.addr_offset(fbase, i), fname[i:i + CHUNK])
+        size = min(len(path.name), 0xFFFF)
+        self.io.write(p.ir_slot_addr(slot, p.IR_SIZE),
+                      [(size >> 12) & 0xF, (size >> 8) & 0xF,
+                       (size >> 4) & 0xF, size & 0xF])
+        # Read the whole thing back and compare. float32 round-trips exactly
+        # through this encoding, so this is equality, not a tolerance: a
+        # tolerance here would quietly accept a half-written IR.
+        landed = self._read_samples(slot)
+        wrote = irfile.from_nibbles(nib)
+        if landed != wrote:
+            bad = next(i for i, (a, b) in enumerate(zip(landed, wrote)) if a != b)
+            raise VerifyFailed(
+                f"USER {slot} does not read back what was written: sample "
+                f"{bad} is {landed[bad]!r}, expected {wrote[bad]!r}. The slot "
+                "is now in an unknown state; reinstall or use the BOSS loader.")
+        # verified=True is earned: every sample was read back and compared
+        # above, and a mismatch raised rather than reaching this line.
+        return CaptureInstall(
+            slot=slot, verified=True,
+            note=f"{path.name} -> USER {slot} ({self.voicing_for(slot)}): "
+                 f"{RELOAD_NOTICE}")
+
+    def _read_samples(self, slot: int) -> list:
+        from . import irfile
+        base = p.ir_slot_addr(slot, p.IR_DATA)
+        got = []
+        while len(got) < irfile.SAMPLES * 8:
+            got.extend(self.io.read(p.addr_offset(base, len(got)), CHUNK))
+        return irfile.from_nibbles(got[:irfile.SAMPLES * 8])
+
+    def voicing_for(self, slot: int) -> str:
+        """Which amp voicing's cabinet this slot holds.
+
+        The slots are not a free list: USER 1 to USER 11 are the cabinets for
+        the eleven voicings in order, confirmed on hardware by matching every
+        slot's stored filename against the voicing's factory cab.
+        """
+        i = int(slot) - p.IR_FIRST_SLOT
+        return reg.AMP_NAMES[i] if 0 <= i < len(reg.AMP_NAMES) else "?"
 
     def remove_capture(self, slot: int):
-        raise NotImplementedError(INSTALL_REFUSED)
+        raise NotImplementedError(
+            "removing an IR would leave that voicing with no cabinet at all, "
+            "which is not a state the pedal offers in its own editor. Install "
+            "a different IR over it instead.")
 
     def _slot_row(self, slot: int):
         for c in self.list_captures():
