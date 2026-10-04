@@ -152,6 +152,28 @@
      because a build will be refused until it is made. */
   .devwrap { position: relative; display: inline-block; }
   .devwrap[hidden] { display: none; }
+  /* #201: the report panel. Wide enough to read a log line without
+     wrapping, capped so it never runs off a laptop screen. */
+  /* Centred, and wide enough that a log line does not wrap. `.pop` is 340px
+     by design, which is right for a filter list and useless for a report:
+     at that width "model gpt-5.6-sol" broke across two lines. Overrides are
+     explicit rather than relying on source order. */
+  .pop.reportpop {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    right: auto; width: min(820px, 94vw); max-height: 80vh;
+    overflow: auto; z-index: 90; padding: 18px 20px;
+  }
+  .reportpop textarea { width: 100%; font: inherit; background: var(--panel-2);
+    color: var(--text); border: 1px solid var(--line); border-radius: 4px;
+    padding: 8px; }
+  .reportbody { white-space: pre-wrap; word-break: break-word; font-size: 12px;
+    background: rgba(0,0,0,0.3); border: 1px solid var(--line);
+    border-radius: 4px; padding: 10px; max-height: 38vh; overflow: auto; }
+  .cnote.cerr { border-left: 2px solid var(--amber); padding-left: 10px; }
+  .reportbtn { padding: 4px 10px; font-size: var(--fs-label);
+    margin-left: 8px; vertical-align: baseline; }
+  .reportacts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .reportgo { border-color: var(--cyan); color: var(--text-strong); }
   #device { font: inherit; cursor: pointer; }
   #device:hover { border-color: var(--cyan); color: var(--cyan); }
   #device.owed { border-color: var(--amber); color: var(--amber); }
@@ -3362,6 +3384,7 @@
       <!-- #139: the target device, shown only when more than one is reachable.
            With one device this stays hidden and the link pill is the whole
            story, exactly as before. -->
+      <div class="pop reportpop" id="reportpop" hidden></div>
       <span class="devwrap" id="devwrap" hidden>
         <button class="pill" id="device" title="which device this build is for">DEVICE</button>
         <div class="pop devpop" id="devpop" hidden></div>
@@ -7874,8 +7897,81 @@ let srcWork = null;
 // something either party said. Rendered, and NEVER sent back to the model:
 // "I proposed 3 changes" is our bookkeeping, and feeding it back as though
 // the model had said it would have it answering its own status notes.
-function chatNote(text) {
-  chatLog.push({role: 'note', content: text});
+// #201: Report a problem. One link on the error, one panel, one button.
+//
+// NOTHING LEAVES THIS MACHINE HERE. The panel asks the server to BUILD a
+// report and shows it in full; the only way it goes anywhere is the player
+// opening GitHub themselves from the second button. That is the property
+// that makes this safe to put on every error, and it is why the preview
+// shows the whole body rather than a summary of it: what you read is exactly
+// what a maintainer reads.
+//
+// No duplicate search. It would need a network call from the app, which
+// would cost exactly the property above, and triage is not a player's job.
+async function openReport() {
+  const pop = $('reportpop');
+  pop.hidden = false;
+  pop.innerHTML = `<div class="hint">Building the report...</div>`;
+  let pkg;
+  try {
+    const r = await fetch('/api/diagnostics/share-package');
+    pkg = await r.json();
+  } catch (e) {
+    pop.innerHTML = `<div class="hint">Could not build the report: ${esc(e.message)}</div>`;
+    return;
+  }
+  const draw = (note) => {
+    pop.innerHTML = `
+      <div class="navtitle">REPORT A PROBLEM</div>
+      <p class="hint">Nothing is sent from here. This builds a report you read
+         first, then open on GitHub yourself.</p>
+      <textarea id="reportnote" rows="3" placeholder="What were you doing? (optional)"
+                >${esc(note || '')}</textarea>
+      <div class="hint" style="margin-top:10px">What will be included</div>
+      <pre class="reportbody">${esc(pkg.body)}</pre>
+      <div class="reportacts">
+        <button id="reportopen" class="reportgo">OPEN GITHUB ISSUE</button>
+        <button id="reportcopy">COPY</button>
+        <button id="reportclose">CLOSE</button>
+      </div>`;
+    const ta = $('reportnote');
+    // Rebuild with the player's words in it, so the preview stays honest:
+    // what is on screen is what gets filed.
+    let t = null;
+    ta.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        const r = await fetch('/api/diagnostics/share-package?note='
+                              + encodeURIComponent(ta.value));
+        pkg = await r.json();
+        const keep = ta.value, pos = ta.selectionStart;
+        draw(keep);
+        const nta = $('reportnote');
+        nta.focus(); nta.setSelectionRange(pos, pos);
+      }, 400);
+    });
+    $('reportopen').addEventListener('click', () => window.open(pkg.url, '_blank', 'noopener'));
+    $('reportcopy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pkg.title + '\n\n' + pkg.body);
+        $('reportcopy').textContent = 'COPIED';
+      } catch (e) { $('reportcopy').textContent = 'COPY FAILED'; }
+    });
+    $('reportclose').addEventListener('click', () => { pop.hidden = true; });
+  };
+  draw('');
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('reportbtn'))
+    openReport();
+});
+
+function chatNote(text, isError) {
+  // #201: an error note carries a way to report itself. Every error, not
+  // only the ones we think we cannot explain: the one that prompted this
+  // said "busy", which sounded self-explanatory and was wrong.
+  chatLog.push({role: 'note', content: text, err: !!isError});
   renderChat();
 }
 
@@ -8161,7 +8257,8 @@ function renderChat() {
   if (!chatLog.length) { feed.innerHTML = ''; saveChat(); return; }
   feed.innerHTML = chatLog.map(m =>
     m.role === 'note'
-      ? `<div class="cnote">${esc(m.content)}</div>`
+      ? `<div class="cnote${m.err ? ' cerr' : ''}">${esc(m.content)}${
+          m.err ? ` <button class="reportbtn">Report a problem</button>` : ''}</div>`
       : m.role === 'offer'
       ? `<div class="cnote">${esc(m.content)} <button class="small" data-said="${esc(m.action)}">${esc(m.label)}</button></div>`
       : `<div class="cmsg ${m.role}"><span class="cwho">${
@@ -9065,8 +9162,8 @@ async function engage(prompt, name, scenes, wholeRig) {
     // Truthful now, not just reassuring: the server kills the planner
     // subprocess when the stream is abandoned, so nothing keeps burning in
     // the background and the next build starts clean.
-    chatNote(stopped ? 'Stopped. Nothing was built and nothing was sent.'
-                     : plainPlanError(e.message));
+    if (stopped) chatNote('Stopped. Nothing was built and nothing was sent.');
+    else chatNote(plainPlanError(e.message), true);
   } finally {
     chatWorking = '';
     if (document.body.contains(b)) { b.disabled = false; b.textContent = was; }
@@ -10011,7 +10108,7 @@ async function apply() {
     const plain = plainDeviceError(e.message);
     chatWorking = '';
     planResult(`<b>Nothing was sent.</b> ${esc(plain)}`, 'bad');
-    chatNote(`Nothing was sent. ${plain}`);
+    chatNote(`Nothing was sent. ${plain}`, true);
     workAnnounce(`NOTHING SENT: ${plain}`, 'bad');
     sendPhase('FAILED · NOTHING VERIFIED');
     $('sendfoot').hidden = false;

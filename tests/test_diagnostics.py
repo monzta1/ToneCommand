@@ -202,8 +202,8 @@ def _route_log_at(monkeypatch, tmp_path):
     log = tmp_path / "diag.jsonl"
     real = diag.package_for_sharing
     monkeypatch.setattr(server.diagnostics, "package_for_sharing",
-                        lambda scope=None, limit=10, path=None:
-                            real(scope=scope, limit=limit, path=log))
+                        lambda scope=None, limit=10, path=None, note="":
+                            real(scope=scope, limit=limit, path=log, note=note))
     return log
 
 

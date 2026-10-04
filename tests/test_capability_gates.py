@@ -164,8 +164,9 @@ def _stub_world(monkeypatch, tmp_path) -> list[str]:
     log = tmp_path / "diag.jsonl"
     real_pkg = diagnostics.package_for_sharing
     monkeypatch.setattr(server.diagnostics, "package_for_sharing",
-                        lambda scope=None, limit=10, path=None:
-                            real_pkg(scope=scope, limit=limit, path=log))
+                        lambda scope=None, limit=10, path=None, note="":
+                            real_pkg(scope=scope, limit=limit, path=log,
+                                     note=note))
     real_log = diagnostics.log_error
     monkeypatch.setattr(server.diagnostics, "log_error",
                         lambda scope, message, path=None, **kw:

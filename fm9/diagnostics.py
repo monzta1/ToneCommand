@@ -52,7 +52,23 @@ _SECRET_PATTERNS = [
                r'(["\']?\s*[:=]\s*["\']?)([^\s"\',}]{4,})'),
 ]
 
+#: Patterns that mask the whole match rather than keeping a key name.
+#: Google's keys are `AIza` plus 35 characters and carry no `sk-` prefix and
+#: no `API_KEY=` around them when they appear inside a URL or an error, so
+#: none of the four above caught them. The report that prompted all of this
+#: came from a Gemini user, which is as direct a warning as these things get.
+#: GitHub's tokens are here for the same reason: the publisher PAT would
+#: otherwise travel in a log line.
+_SECRET_PATTERNS += [
+    re.compile(r"\bAIza[A-Za-z0-9_\-]{30,}"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+]
+
 REDACTED = "[REDACTED]"
+
+#: Built once, at import, from this machine's own home directory.
+_HOME_PATTERN = re.compile(re.escape(str(Path.home())))
 
 
 def scrub_text(text: str) -> str:
@@ -65,6 +81,12 @@ def scrub_text(text: str) -> str:
         out = pat.sub(REDACTED, out)
     # the KEY=VALUE pattern keeps the key name, redacts only the value
     out = _SECRET_PATTERNS[3].sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", out)
+    for pat in _SECRET_PATTERNS[4:]:
+        out = pat.sub(REDACTED, out)
+    # A home directory is not a credential, but it is a real name and a real
+    # username on a public issue. The path shape is what diagnoses a problem,
+    # not whose machine it is.
+    out = _HOME_PATTERN.sub("~", out)
     return out
 
 
@@ -146,8 +168,98 @@ def read_recent(scope: str | None = None, limit: int = 20,
     return list(reversed(entries))[:limit]
 
 
+def environment() -> list[str]:
+    """The four questions a maintainer always has to ask, answered up front.
+
+    Every line here is free to collect and is the difference between a report
+    that can be acted on and one that starts a correspondence. The planner's
+    model NAME is included and its key never is: the name is the diagnosis,
+    the key is a credential, and conflating them is how a secret ends up on a
+    public issue.
+
+    Nothing in here raises. A report from a half-broken install is the one
+    that matters most, so every lookup falls back to saying it could not be
+    read rather than taking the report down with it.
+    """
+    import platform
+    import sys as _sys
+    lines = []
+
+    def safe(label, fn):
+        try:
+            value = fn()
+        except Exception:      # noqa: BLE001  a report must survive a broken install
+            value = "could not be read"
+        lines.append(f"{label}: {value}")
+
+    safe("ToneCommand", _version_line)
+    safe("OS", lambda: f"{platform.system()} {platform.release()} "
+                       f"({platform.machine()})")
+    safe("Python", lambda: _sys.version.split()[0])
+    safe("Install", _install_kind)
+    safe("Planner", _planner_line)
+    safe("Device", _device_line)
+    return lines
+
+
+def _version_line() -> str:
+    from importlib import metadata
+    try:
+        v = metadata.version("tonecommand")
+    except Exception:          # noqa: BLE001  not installed as a distribution
+        v = "unknown"
+    import subprocess
+    root = Path(__file__).resolve().parent.parent
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root,
+                             capture_output=True, text=True, timeout=5
+                             ).stdout.strip()
+    except Exception:          # noqa: BLE001  a wheel install has no git
+        sha = ""
+    return f"{v}" + (f" ({sha})" if sha else "")
+
+
+def _install_kind() -> str:
+    """#177: an editable install and a wheel behave differently, because
+    config/, ui/ and recipes/ are repo-root data the wheel does not carry."""
+    root = Path(__file__).resolve().parent.parent
+    return "editable (repo)" if (root / "pyproject.toml").is_file() else "wheel"
+
+
+def _planner_line() -> str:
+    """Backend and model NAME. Never the key."""
+    from fm9 import ai_settings, planner
+    cfg = ai_settings.load()
+    backend = cfg.backend or "auto"
+    model = cfg.model_for(cfg.backend or None) or "auto"
+    # Which backends the planner would actually try, in order. "configured"
+    # and "reachable" are different answers and the second is the useful one.
+    try:
+        order = ", ".join(planner.candidates())
+    except Exception:          # noqa: BLE001  the list is a courtesy
+        order = "could not be read"
+    return f"{backend}, model {model}; would try: {order}"
+
+
+def _device_line() -> str:
+    import server
+    ctx = server.device_context()
+    try:
+        connected = bool(server._fm9_handle()) if hasattr(server, "_fm9_handle") else None
+    except Exception:          # noqa: BLE001  not connected is a normal answer
+        connected = False
+    fw = ""
+    try:
+        fw = ctx.adapter.firmware_label() if ctx.adapter else ""
+    except Exception:          # noqa: BLE001  a device that declines is fine
+        fw = ""
+    return f"{ctx.kind}" + (f" firmware {fw}" if fw else "") + \
+           ("" if connected is None else f", connected={bool(connected)}")
+
+
 def package_for_sharing(scope: str | None = None, limit: int = 10,
-                         path: Path = DEFAULT_LOG_PATH) -> dict:
+                         path: Path = DEFAULT_LOG_PATH,
+                         note: str = "") -> dict:
     """Issue #108: build a pre-filled GitHub issue the player can REVIEW,
     never send. Every field here is already-scrubbed log content plus a
     defensive re-scrub, since a shared report is the one that leaves the
@@ -155,7 +267,14 @@ def package_for_sharing(scope: str | None = None, limit: int = 10,
     of any kind; sending only happens if the player opens `url` themselves.
     """
     entries = read_recent(scope=scope, limit=limit, path=path)
-    body_lines = ["Diagnostics shared voluntarily from ToneCommand.", ""]
+    body_lines = []
+    if (note or "").strip():
+        # The player's own words first. A maintainer reads this before the
+        # machine detail, and it is the only part the machine cannot supply.
+        body_lines += ["**What happened**", "", (note or "").strip(), ""]
+    body_lines += ["**Environment**", ""]
+    body_lines += [f"- {line}" for line in environment()]
+    body_lines += ["", "**Recent diagnostics**", ""]
     if not entries:
         body_lines.append("(no local diagnostics entries to include)")
     for e in entries:
@@ -164,7 +283,13 @@ def package_for_sharing(scope: str | None = None, limit: int = 10,
         if ctx:
             body_lines.append(f"  context: {json.dumps(ctx, sort_keys=True)}")
     body = scrub_text("\n".join(body_lines))
-    title = scrub_text(f"Diagnostics report ({scope or 'all'}, {len(entries)} entries)")
+    # The player's own first line makes a better title than a count of log
+    # entries ever did: an issue list full of "Diagnostics report (all, 10
+    # entries)" is unreadable.
+    first = (note or "").strip().splitlines()[0] if (note or "").strip() else ""
+    title = scrub_text(f"Problem report: {first[:72]}" if first
+                       else f"Problem report ({scope or 'all'}, "
+                            f"{len(entries)} diagnostics)")
     from urllib.parse import quote
     url = (f"https://github.com/{REPO}/issues/new"
            f"?title={quote(title)}&body={quote(body)}")
