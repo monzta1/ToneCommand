@@ -8080,7 +8080,11 @@ function plainPlanError(msg) {
          + 'or ask for a little less in one go.';
   if (/no key|api key|not set up|unauthor|401|403/.test(m))
     return 'The AI helper is not connected yet. Open Settings to set it up.';
-  if (/rate|\b429\b|quota|overload|busy/.test(m))
+  // `rate` without a boundary matched "generate", and Gemini's API method is
+  // literally generateContent, so EVERY Gemini failure read as "busy": a bad
+  // key, an unavailable model, a 400, all of them. A user reported exactly
+  // that and the real reason never reached them. Match the thing itself.
+  if (/rate[ _-]?limit|\b429\b|quota|overloaded|too many requests|\bbusy\b/.test(m))
     return 'The AI helper is busy right now. Give it a moment and try again.';
   return 'That did not come together. Give it another go.';
 }
