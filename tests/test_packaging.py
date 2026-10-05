@@ -131,3 +131,32 @@ def test_every_module_level_third_party_import_is_a_core_dependency():
                 if n.lower().replace("-", "_") not in core:
                     offenders.append(f"{p.relative_to(root)}: {n}")
     assert not offenders, offenders
+
+
+def test_every_repo_subpackage_the_app_imports_is_packaged():
+    """#209: the top-level check above passed while devices.ir2 and
+    devices.tonex were missing, because 'devices' was packaged. Every
+    directory with an __init__.py under a packaged root is a subpackage the
+    wheel must carry by name."""
+    import tomllib
+    cfg = tomllib.load(open(ROOT / "pyproject.toml", "rb"))
+    packaged = set(cfg["tool"]["setuptools"]["packages"])
+    needed = set()
+    for top in ("fm9", "devices", "tools"):
+        for init in (ROOT / top).rglob("__init__.py"):
+            if "__pycache__" in init.parts:
+                continue
+            needed.add(".".join(init.parent.relative_to(ROOT).parts))
+    missing = sorted(n for n in needed if n not in packaged)
+    assert not missing, f"subpackages not in [tool.setuptools] packages: {missing}"
+
+
+def test_the_device_catalog_ships_as_package_data():
+    import tomllib
+    cfg = tomllib.load(open(ROOT / "pyproject.toml", "rb"))
+    assert "catalog.json" in cfg["tool"]["setuptools"]["package-data"]["devices"]
+    assert (ROOT / "devices" / "catalog.json").is_file()
+    # and it is read the installed way, through the package, not a repo path
+    from devices import catalog
+    assert "resources.files(\"devices\")" in (ROOT / "devices" / "catalog.py").read_text(encoding="utf-8")
+    assert catalog.load()

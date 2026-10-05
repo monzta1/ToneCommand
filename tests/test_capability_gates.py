@@ -687,9 +687,9 @@ def test_audit_counts_are_reported_honestly():
     blocks = _except_exception_blocks(ast.parse(SERVER.read_text(encoding="utf-8")))
     reraised = sum(1 for _h, before, _b in blocks.values()
                    if _handles_decline_first(before))
-    assert len(blocks) == 88
+    assert len(blocks) == 89
     assert reraised == 36
-    assert len(blocks) - reraised == 52
+    assert len(blocks) - reraised == 53
 
 
 def test_capability_declined_is_its_own_type_and_the_handler_shapes_the_409(world):

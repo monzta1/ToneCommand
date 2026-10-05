@@ -164,14 +164,23 @@ def available_devices() -> list[dict]:
 
 
 def _ir2_port_present() -> bool:
-    """True when a BOSS IR-2 is on the MIDI bus. Cheap and never raises: a
-    missing MIDI binding means no IR-2, not a broken device list."""
+    """True when a BOSS IR-2 is on the MIDI bus, by the catalog's own pattern
+    (#209), so there is one matcher for every device."""
+    return any(d["kind"] == "ir2" for d in detected_devices())
+
+
+def detected_devices() -> list[dict]:
+    """#209: every catalog device whose port is on the MIDI bus right now,
+    supported or not. Reads port NAMES only: nothing is opened and nothing
+    is sent, so a device ToneCommand has no adapter for is named without a
+    byte reaching it. Never raises: a missing MIDI binding means nothing
+    detected, not a broken page."""
     try:
-        import rtmidi
-        from devices.ir2.client import PORT_HINT
-        return any(PORT_HINT in n.lower() for n in rtmidi.MidiIn().get_ports())
+        from devices import catalog
+        from fm9 import midi_transport
+        return catalog.recognise(midi_transport.port_names())
     except Exception:      # noqa: BLE001  device discovery must never fail the page
-        return False
+        return []
 
 
 def device_target() -> tuple[str | None, list[dict]]:
@@ -234,7 +243,8 @@ def device_block() -> dict:
     kind, avail = device_target()
     active = device_context().kind
     return {"active": active, "label": DEVICE_KINDS.get(active, active),
-            "selected": kind, "available": avail, "ambiguous": kind is None}
+            "selected": kind, "available": avail, "ambiguous": kind is None,
+            "detected": detected_devices()}
 
 
 @app.get("/api/device")
@@ -2101,11 +2111,19 @@ def api_link_stream():
     """
     def work(emit, cancel):
         last = None
+        last_kinds = None
         while not cancel.is_set():
             present = _fm9_port_present()
             if present != last:
                 emit("link", {"present": present})
                 last = present
+            # #209: every recognised device, so the page can greet one that
+            # arrives (and name one it cannot drive) within about a second.
+            detected = detected_devices()
+            kinds = [d["kind"] for d in detected]
+            if kinds != last_kinds:
+                emit("devices", {"detected": detected})
+                last_kinds = kinds
             cancel.wait(1.0)
 
     return _stream_response(work, final=())
@@ -2120,6 +2138,9 @@ def api_reconnect():
     the server started. This drops the handle, rescans, and reports what it
     found, which is also the honest answer when it finds nothing.
     """
+    kind = device_context().kind
+    if kind != "fm9":
+        return _reconnect_device(kind)
     with _lock:
         drop_fm9()
         rescan_midi()
@@ -2134,6 +2155,25 @@ def api_reconnect():
             drop_fm9()
             return {"connected": False, "why": str(e)}
     return {"connected": True, "preset": snap.get("preset")}
+
+
+def _reconnect_device(kind: str) -> dict:
+    """#209: the selected device that is not the FM9, connected afresh. A
+    replug leaves its MIDI handles dead (the IR-2's client holds the ports it
+    opened), so the old adapter is closed and the context rebuilt. Opening
+    the ports is all this proves; the state read that follows is what proves
+    the device answers."""
+    with _lock:
+        old = device_context().adapter
+        if old is not None:
+            with contextlib.suppress(Exception):    # a dead handle is being dropped anyway
+                old.close()
+        rescan_midi()
+        try:
+            select_device_context(_build_context(kind))
+        except Exception as e:      # noqa: BLE001  any failure to open is reported, never raised
+            return {"connected": False, "why": str(e)}
+    return {"connected": True}
 
 
 def _named_param_state(adapter, device: dict) -> dict:

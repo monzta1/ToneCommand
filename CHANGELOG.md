@@ -4,7 +4,43 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.7 (2026-10-05)
+
+**Plug a device in and ToneCommand greets it.** DPDP, the Dynamic Processor
+Discovery Protocol, recognises what is on the MIDI bus and hands a supported
+device to DDCP, the Dynamic Device Control Protocol. A device it cannot drive
+yet is named, with the issue tracking it, instead of being silently ignored.
+
+### Added
+- **DPDP, the Dynamic Processor Discovery Protocol (#209, phase 1 of #208).**
+  ToneCommand now recognises devices on the MIDI bus by their port names,
+  from a catalog shipped as data (`devices/catalog.json`), and hands a
+  supported one to DDCP, the Dynamic Device Control Protocol (the adapter
+  contract every device implements). Recognition reads port names only;
+  nothing is ever sent to a device ToneCommand cannot drive.
+  - **Plug a device in and the page greets it.** A card shows
+    "BOSS IR-2 detected" with a progress bar through the real steps (support,
+    connecting, reading the pedal) and ends on "Ready. Ask for a tone." with
+    the interface switched to that device, no reload. It says Ready only
+    after a fresh read of that device succeeds. GIG LOCK, a reviewed plan
+    still pending, or a pedal that will not answer stop the card with the
+    reason instead. Unplugging and replugging the device in use shows the
+    same card and reconnects it (a replug used to leave the IR-2 on dead
+    MIDI handles until a restart).
+  - **A device ToneCommand cannot control yet is named, not ignored.** A
+    Fractal VP4, AM4, FM3 or Axe-Fx III shows "Looks like a Fractal VP4.
+    ToneCommand cannot control it yet." with a link to its issue (#191, #41,
+    #40, #190), at startup too. Before, it was simply invisible, which reads
+    as broken. The FM9 and IR-2 port names are confirmed on real hardware;
+    the others are inferred from Fractal's naming, hence "looks like".
+  - Downloading a device's support on first plug-in, instead of shipping
+    every device to everyone, is the next phase (#208).
+
 ### Fixed
+- **A non-editable install could not use the IR-2 or the ToneX.** The
+  package list carried `devices` and `devices.headrush` but not
+  `devices.ir2` or `devices.tonex`; the packaging test only compared
+  top-level names, so it passed. It now checks every subpackage.
 - **Unplugging an FM9 marked a working IR-2 offline.** The page listens to a
   link stream that watches the FM9's USB port and nothing else, and on an
   absent event it painted the header OFFLINE and dimmed the interface without

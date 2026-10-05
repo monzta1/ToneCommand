@@ -3352,6 +3352,30 @@
     .stgline { width: 18px; margin-left: 2px; margin-right: 2px; }
   }
 
+  /* ---- #209: a device arriving, or one ToneCommand cannot drive yet ---- */
+  /* Floating, so it never moves the page: an unsupported device stays
+     plugged in, and a card in the flow clipped the request heading. */
+  .devcard {
+    position: fixed; top: 72px; right: 18px; z-index: 60;
+    width: min(460px, calc(100vw - 32px)); box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px 12px;
+    flex-wrap: wrap; padding: 10px 14px; color: var(--text);
+    font-size: var(--fs-hint); border-radius: 8px;
+    background: linear-gradient(180deg, rgba(14,34,46,0.97), rgba(8,20,30,0.97));
+    border: 1px solid rgba(87,214,255,0.45);
+    box-shadow: var(--bevel), 0 10px 28px rgba(0,0,0,0.55);
+  }
+  #devcard[hidden] { display: none; }
+  #devcard .devcardtext { color: var(--text); order: 2; flex: 1 1 auto; }
+  #devcard .devcardtitle { color: var(--cyan); letter-spacing: 0.04em; font-weight: 600; flex: 1 1 auto; }
+  #devcard.done .devcardtitle { color: var(--green, #6ee7a8); }
+  #devcard.err { border-color: rgba(255,180,84,0.55); }
+  #devcard.err .devcardtitle { color: var(--amber); }
+  #devcard #devcardlink { color: var(--cyan); order: 3; }
+  #devcard #devcardclose { order: 1; padding: 3px 9px; font-size: 0.72rem; }
+  #devcard .devcardtext { flex-basis: calc(100% - 140px); }
+  #devcard .devcardbar { order: 4; flex-basis: 100%; margin-top: 2px; }
+
   /* ---- Update notice (notify + one-click update) ---- */
   #updbanner {
     flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
@@ -3454,6 +3478,16 @@
 
   <!-- A quiet notice when a newer release exists. Notify + one-click update
        only: the app never pulls or restarts on its own. -->
+  <!-- #209: a device just plugged in walks to Ready here; a device
+       ToneCommand cannot drive yet is named here with its issue. -->
+  <div id="devcard" class="devcard" hidden>
+    <span class="devcardtitle" id="devcardtitle"></span>
+    <span class="devcardtext" id="devcardtext"></span>
+    <a id="devcardlink" href="#" target="_blank" rel="noopener" hidden></a>
+    <button class="small" id="devcardclose" title="hide this">DISMISS</button>
+    <div class="sendbar devcardbar" id="devcardbar" hidden><i></i></div>
+  </div>
+
   <div id="updbanner" hidden>
     <span class="updtext" id="updtext"></span>
     <a id="updnotes" href="#" target="_blank" rel="noopener">release notes</a>
@@ -5209,6 +5243,7 @@ async function watchLink() {
       const r = await fetch('/api/link/stream');
       if (!r.ok || !r.body) throw new Error('no stream');
       for await (const [ev, d] of sseFrom(r)) {
+        if (ev === 'devices') { renderDetected(d.detected); continue; }
         if (ev !== 'link') continue;
         // This stream watches the FM9's USB port and nothing else. With
         // another device selected, an FM9 arriving or leaving says nothing
@@ -6617,6 +6652,14 @@ async function selectDevice(kind) {
   }
 }
 document.addEventListener('DOMContentLoaded', () => {
+  // #209: dismissing an unsupported device keeps it away for this session;
+  // dismissing a plug-in card just closes it (the device stays selected).
+  $('devcardclose').addEventListener('click', () => {
+    const kind = $('devcard').dataset.kind;
+    if (kind && (detectedKinds || []).includes(kind) && !$('devcardlink').hidden) dismissKind(kind);
+    plugCardGen++;
+    paintDevCard(null);
+  });
   $('device').addEventListener('click', () => {
     if ($('devpop').hidden) openDevicePicker(''); else $('devpop').hidden = true;
   });
@@ -6624,6 +6667,126 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!e.target.closest('#devwrap')) $('devpop').hidden = true;
   });
 });
+// --- #209: the device catalog, live ------------------------------------------
+// The server names every device it recognises on the MIDI bus (by port name
+// only; nothing is sent to it). A supported device that ARRIVES while the
+// page is open gets a card that walks the real steps to Ready; one that was
+// already there at load is in the picker as before. A device ToneCommand
+// cannot drive yet is named, with its issue, because otherwise it is
+// invisible and a player cannot tell "not supported" from "broken".
+let detectedKinds = null;     // null until the first list, which is the baseline
+let plugCardGen = 0;          // a newer card supersedes an older one
+const DEVCARD_DISMISSED = 'tc.devcard.dismissed';
+function dismissedKinds() {
+  try { return JSON.parse(sessionStorage.getItem(DEVCARD_DISMISSED) || '[]'); } catch (e) { return []; }
+}
+function dismissKind(kind) {
+  try {
+    const d = dismissedKinds();
+    if (!d.includes(kind)) d.push(kind);
+    sessionStorage.setItem(DEVCARD_DISMISSED, JSON.stringify(d));
+  } catch (e) { /* private window: it comes back on the next poll, which is harmless */ }
+}
+
+// One card, painted from one state object, so node can drive the logic with a
+// fake painter and the browser draws exactly what the test saw.
+function paintDevCard(st) {
+  const card = $('devcard');
+  if (!st) { card.hidden = true; card.dataset.kind = ''; return; }
+  card.hidden = false;
+  card.dataset.kind = st.kind || '';
+  card.className = 'devcard' + (st.error ? ' err' : '') + (st.done ? ' done' : '');
+  $('devcardtitle').textContent = st.title || '';
+  $('devcardtext').textContent = st.text || '';
+  const bar = $('devcardbar');
+  bar.hidden = st.pct == null;
+  bar.querySelector('i').style.width = Math.max(0, Math.min(100, st.pct || 0)) + '%';
+  const link = $('devcardlink');
+  link.hidden = !st.issue_url;
+  if (st.issue_url) { link.href = st.issue_url; link.textContent = `Follow issue #${st.issue}`; }
+}
+
+function unsupportedCard(dev) {
+  return { kind: dev.kind, title: dev.verified ? `${dev.label} connected` : `Looks like a ${dev.label}`,
+           text: 'ToneCommand cannot control it yet.', issue: dev.issue, issue_url: dev.issue_url };
+}
+
+// The plug-in walk. Every step is a real one: the bar never moves for a step
+// that did not happen. `io` is the page in the browser and fakes in the test.
+async function runPlugCard(dev, io) {
+  const mine = ++plugCardGen;
+  const token = io.claim();               // a manual pick after this supersedes the card
+  const gone = () => mine !== plugCardGen || io.current() !== token;
+  const paint = st => { if (mine === plugCardGen) io.paint(Object.assign({kind: dev.kind, title: `${dev.label} detected`}, st)); };
+  // Step 1: support. Built in today; #208 phase 3 downloads it here.
+  paint({pct: 15, text: 'Getting support ready...'});
+  paint({pct: 40, text: `Connecting to the ${dev.label}...`});
+  // Step 2: connect. The device in use reconnects (a replug leaves dead
+  // handles); any other device is switched to, through the same refusals a
+  // click on the picker meets (GIG LOCK, a reviewed plan pending).
+  const wasActive = io.active() === dev.kind;
+  let r;
+  try { r = wasActive ? await io.reconnect() : await io.select(dev.kind); }
+  catch (e) { r = {ok: false, error: String((e && e.message) || e)}; }
+  if (mine !== plugCardGen) return 'superseded';
+  if (!r || !r.ok) {
+    paint({error: true, pct: null, text: (r && r.error) || `Could not connect to the ${dev.label}.`});
+    return 'refused';
+  }
+  if (gone()) { io.paint(null); return 'superseded'; }
+  paint({pct: 70, text: `Reading the ${dev.label}...`});
+  // Step 3: read. Ready means a fresh, connected read of THIS device, not
+  // merely that a request came back.
+  const s = await io.refresh();
+  if (gone()) { io.paint(null); return 'superseded'; }
+  if (!s || !s.fresh || !s.connected || s.active !== dev.kind) {
+    paint({error: true, pct: null, text: `Could not read the ${dev.label}. Check the cable, then click the link light.`});
+    return 'unread';
+  }
+  paint({pct: 100, done: true, text: 'Ready. Ask for a tone.'});
+  io.later(() => { if (mine === plugCardGen) io.paint(null); }, 4000);
+  return 'ready';
+}
+
+function plugIO() {
+  return {
+    claim: () => ++deviceGen,
+    current: () => deviceGen,
+    active: () => (deviceState && deviceState.active) || 'fm9',
+    paint: paintDevCard,
+    later: (fn, ms) => setTimeout(fn, ms),
+    refresh: () => refresh(),
+    select: async kind => {
+      const r = await fetch('/api/device/select', {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({kind})});
+      const d = await r.json().catch(() => ({}));
+      return r.ok ? {ok: true} : {ok: false, error: d.error || `the server said ${r.status}`};
+    },
+    reconnect: async () => {
+      const r = await fetch('/api/reconnect', {method: 'POST'});
+      const d = await r.json().catch(() => ({}));
+      return r.ok && d.connected ? {ok: true} : {ok: false, error: d.why || d.error || `the server said ${r.status}`};
+    },
+  };
+}
+
+// Called with every detected list, from the poll and from the link stream.
+function renderDetected(list, io) {
+  if (!Array.isArray(list)) return null;
+  io = io || plugIO();
+  const prev = detectedKinds;
+  detectedKinds = list.map(d => d.kind);
+  const arrived = prev === null ? [] : list.filter(d => d.supported && !prev.includes(d.kind));
+  if (arrived.length) { runPlugCard(arrived[arrived.length - 1], io); return 'plug'; }
+  // No walk running or just started: the card is free for an unsupported device.
+  const busy = $('devcard') && !$('devcard').hidden && $('devcard').dataset.kind
+    && list.some(d => d.supported && d.kind === $('devcard').dataset.kind);
+  if (busy) return 'busy';
+  const shown = list.filter(d => !d.supported && !dismissedKinds().includes(d.kind));
+  io.paint(shown.length ? unsupportedCard(shown[0]) : null);
+  return shown.length ? 'unsupported' : 'none';
+}
+
 // A build refused because the device is ambiguous (#94's 409) opens the
 // picker and says so in words, never 'the server said 409'.
 function deviceRefusal(status, body) {
@@ -6646,6 +6809,8 @@ async function refresh() {
     // answer (one that started before a selection) must touch neither.
     const freshDevice = pollGen === deviceGen;
     if (s.device && freshDevice) renderDevice(s.device);
+    // #209: who else is on the bus; a supported arrival opens the plug-in card
+    if (s.device && Array.isArray(s.device.detected)) renderDetected(s.device.detected);
     if (!s.connected) throw new Error(s.error || 'no link');
     if (!$('link').classList.contains('busy')) {
       $('link').className = 'pill on';
@@ -6673,7 +6838,7 @@ async function refresh() {
       lastState = s;
       renderDeviceParams(s);
       loadPresets(false);
-      return;
+      return {connected: true, active: s.device && s.device.active, fresh: freshDevice};
     }
     // Everything renderDeviceParams changed has to be put back, or an FM9
     // selected after an IR-2 keeps the other device's label and chrome.
@@ -6687,6 +6852,10 @@ async function refresh() {
     if (s.preset) loadShared(s.preset.number);
     loadGrid();
     if (!dragging) renderParams(s);
+    // #209: what the plug-in card needs to call a read Ready, and nothing
+    // else uses: connected, which device answered, and whether this poll is
+    // still current (a selection after it started makes it stale).
+    return {connected: true, active: s.device && s.device.active, fresh: freshDevice};
   } catch (e) {
     if (!$('link').classList.contains('busy')) {
       $('link').className = 'pill off';
@@ -6695,6 +6864,7 @@ async function refresh() {
       $('linktext').textContent = `${deviceShort(deviceState)} · OFFLINE`;
     }
     setRigOff(true);
+    return {connected: false, fresh: pollGen === deviceGen, error: String((e && e.message) || e)};
   }
 }
 

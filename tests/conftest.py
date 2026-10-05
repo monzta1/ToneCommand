@@ -128,3 +128,6 @@ def _no_hardware_in_device_discovery(monkeypatch):
     """
     import server
     monkeypatch.setattr(server, "_ir2_port_present", lambda: False)
+    # #209: the detected list reads the same bus, so it is off for the same
+    # reason; tests/test_device_catalog.py turns the real one back on.
+    monkeypatch.setattr(server, "detected_devices", lambda: [])

@@ -432,9 +432,14 @@
    "disposition": "unreachable: wraps only current_preset on a handle the caller already obtained through get_fm9, and its callers run under the same gate that would have raised the decline before reaching here; a unit that does not answer means the state is not reset, never an error page (#104)"
   },
   {
-   "function": "_ir2_port_present",
+   "function": "detected_devices",
    "ordinal": 1,
-   "disposition": "unreachable: wraps MIDI port enumeration only; no adapter method and so no CapabilityDeclined can arise. A missing rtmidi binding must mean 'no IR-2 here', not a failed page."
+   "disposition": "unreachable: wraps the catalog's name-only recognition over MIDI port enumeration; no adapter method and so no CapabilityDeclined can arise. A missing MIDI binding must mean 'nothing detected', not a failed page (#209)."
+  },
+  {
+   "function": "_reconnect_device",
+   "ordinal": 1,
+   "disposition": "unreachable: wraps _build_context only, which constructs an adapter and opens its ports; no gated adapter method runs, so no CapabilityDeclined can arise. A device that will not open is reported as connected: false with the reason (#209)."
   },
   {
    "function": "api_state",

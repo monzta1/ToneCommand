@@ -1,4 +1,6 @@
-"""The device adapter contract (ARCHITECTURE.md, step 1 of the migration).
+"""The device adapter contract, DDCP (the Dynamic Device Control Protocol;
+ARCHITECTURE.md, step 1 of the migration). DPDP (devices/catalog.py, #208)
+discovers a device and hands it to this contract.
 
 Any device family ToneCommand supports satisfies this Protocol. New devices
 (HeadRush, ToneX, Kemper, your fridge) implement the same surface and
