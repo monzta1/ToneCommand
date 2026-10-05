@@ -151,3 +151,23 @@ def test_the_committed_weights_cover_real_files(tmp_path):
                       '<testcase classname="tests.test_x.TestK" name="b" time="2"/>'
                       '</testsuite></testsuites>', encoding="utf-8")
     assert shard.weights_from([report]) == {"tests/test_x.py": 3.5}
+
+
+def test_with_weights_the_balance_bound_holds_in_seconds():
+    """The policy the conftest hook uses (review finding): by seconds, the
+    heaviest shard is never more than the costliest file above the lightest.
+    The reviewer's case: one 500 s file and five 100 s files over two shards."""
+    counts = {"tests/test_big.py": 1, **{f"tests/test_{i}.py": 100 for i in range(5)}}
+    weights = {"tests/test_big.py": 500.0, **{f"tests/test_{i}.py": 100.0 for i in range(5)}}
+    cost = shard.costs(counts, weights)
+    loads = [sum(cost[f] for f in s) for s in shard.deal(counts, 2, weights)]
+    assert sorted(loads) == [500.0, 500.0]
+    for total in (2, 3, 4):
+        loads = [sum(cost[f] for f in s) for s in shard.deal(counts, total, weights)]
+        assert max(loads) - min(loads) <= max(cost.values())
+
+
+def test_the_hook_deals_with_the_committed_weights():
+    import inspect
+    conftest = (HERE / "conftest.py").read_text(encoding="utf-8")
+    assert "shard.deal(counts, total, shard.load_weights())" in conftest

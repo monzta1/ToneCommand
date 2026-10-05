@@ -44,13 +44,35 @@ def test_a_failed_lockdown_never_writes_the_secret(tmp_path, monkeypatch):
 
     def refuse(path):
         raise owner_only.NotPrivate("icacls failed: access denied")
-    opened = []
+    written = []
+    real_write = os.write
     monkeypatch.setattr(owner_only, "tighten", refuse)
-    monkeypatch.setattr(owner_only, "open", lambda *a, **k: opened.append(a), raising=False)
+    monkeypatch.setattr(owner_only.os, "write", lambda fd, b: written.append(b) or real_write(fd, b))
     with pytest.raises(owner_only.NotPrivate):
         owner_only.write_private(target, "sk-secret")
-    assert opened == [], "the secret was opened for writing before the file was private"
+    assert written == [], "secret bytes were written before the file was private"
     assert list(tmp_path.iterdir()) == []
+
+
+def test_two_saves_at_once_never_leave_the_secret_readable(tmp_path, monkeypatch):
+    """Review finding: both saves shared one temp name, so the second could
+    move it away between the first's privacy check and its write, and the
+    first then recreated the path with the default mode. Here save B runs
+    in full inside save A's privacy check."""
+    target = tmp_path / "secret.json"
+    real_is_private = owner_only.is_private
+    state = {"nested": False}
+
+    def check(p):
+        if not state["nested"]:
+            state["nested"] = True
+            owner_only.write_private(target, "from-B")
+        return real_is_private(p)
+    monkeypatch.setattr(owner_only, "is_private", check)
+    owner_only.write_private(target, "from-A")
+    assert target.read_text(encoding="utf-8") == "from-A"
+    assert real_is_private(target)
+    assert [p.name for p in tmp_path.iterdir()] == ["secret.json"]
 
 
 def test_a_file_that_will_not_read_as_private_is_refused_and_removed(tmp_path, monkeypatch):
@@ -66,7 +88,7 @@ def test_write_private_produces_a_private_file_with_the_text(tmp_path):
     owner_only.write_private(target, "sk-secret")
     assert target.read_text(encoding="utf-8") == "sk-secret"
     assert owner_only.is_private(target)
-    assert not (tmp_path / "secret.json.tmp").exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["secret.json"]
 
 
 @pytest.mark.skipif(WINDOWS, reason="POSIX modes; the Windows ACL has its own test")

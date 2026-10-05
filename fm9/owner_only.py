@@ -17,6 +17,7 @@ import contextlib
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 WINDOWS = sys.platform == "win32"
@@ -94,23 +95,28 @@ def is_private(path: Path) -> bool:
 def write_private(path: Path, text: str) -> None:
     """Write a secret that nobody else can read, or write nothing.
 
-    An EMPTY temp file is created beside `path` (0o600 at creation on POSIX),
-    tightened and checked; only then is the secret written into it, and the
-    file moved into place (a same-volume move keeps its ACL). A failure before
-    the write leaves no secret bytes anywhere; any failure removes the temp
-    file and raises."""
+    An EMPTY temp file with a name no other writer can have (created
+    exclusively, 0o600 on POSIX) is made beside `path`, tightened and
+    checked; the secret then goes in through the SAME open descriptor, so
+    nothing between the check and the write can swap the file underneath,
+    and the file is moved into place (a same-volume move keeps its ACL).
+    Two saves at once each have their own temp file. A failure before the
+    write leaves no secret bytes anywhere; any failure removes the temp file
+    and raises."""
     path = Path(path)
-    tmp = path.with_name(path.name + ".tmp")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp = Path(name)
     try:
-        os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
-        tighten(tmp)
-        if not is_private(tmp):
-            raise NotPrivate(f"{tmp} is still readable by another account")
-        with open(tmp, "w", encoding="utf-8") as f:     # truncating keeps the ACL
-            f.write(text)
+        try:
+            tighten(tmp)
+            if not is_private(tmp):
+                raise NotPrivate(f"{tmp} is still readable by another account")
+            data = text.encode("utf-8")
+            while data:
+                data = data[os.write(fd, data):]
+        finally:
+            os.close(fd)
         os.replace(tmp, path)
-        if not WINDOWS:
-            os.chmod(path, 0o600)       # belt and braces: a replace keeps the mode
     except BaseException:
         with contextlib.suppress(OSError):
             tmp.unlink()
