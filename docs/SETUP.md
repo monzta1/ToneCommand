@@ -12,6 +12,15 @@ are planned for later chunks.
 ToneCommand runs on **macOS, Windows and Linux**. macOS is the tested path;
 Windows and Linux are documented and expected to work. Pick your OS below.
 
+## Supported installs
+
+ToneCommand runs from a **checkout** (clone the repository, then
+`pip install -e .` inside it, exactly as below) or from the **bundled app**.
+A plain `pip install .` (or installing the wheel) is not supported yet: the
+wheel does not carry the data the app reads (`config/`, `ui/`, `recipes/`),
+so it stops at startup with one line saying so rather than crashing (#177).
+Making that install work is part of #208.
+
 ## macOS
 
 Tested on Apple Silicon with Python 3.12 and an FM9 connected over USB, on

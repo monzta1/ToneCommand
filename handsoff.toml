@@ -127,6 +127,16 @@ commands = [
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_packaging.py -q -k 'root or spec'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_packaging.py -q -k 'smoke or port'",
   ".venv/bin/python -m pytest tests/test_packaging.py -q -k 'workflow or docs'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_catalog.py -q -k 'catalog or recognise or nothing_sent'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_catalog.py -q -k 'state or stream'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_catalog.py -q -k 'card or page'",
+  ".venv/bin/python -m pytest tests/test_packaging.py -q -k 'subpackage or catalog'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_handle.py tests/test_capability_gates.py tests/test_ui_warning.py tests/test_device_picker.py tests/test_ui_syntax.py tests/test_ir2_adapter.py tests/test_ir2_product_loop.py -q",
+  ".venv/bin/python -m pytest tests/test_shard.py -q",
+  ".venv/bin/python -m pytest tests/test_packaging.py -q -k 'install_kind or refuse or setup_doc'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_owner_only.py tests/test_ai_settings.py tests/test_tone3000_auth.py -q",
+  ".venv/bin/python -m pytest tests/test_planner_grok.py tests/test_headrush_client.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_text_size.py tests/test_device_catalog.py -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval. This app has no hosted server;

@@ -34,12 +34,13 @@ never what it is.
 from __future__ import annotations
 
 import json
+import tempfile
 import re
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import planner
+from . import owner_only, planner
 
 #: CLIProxyAPI's default, prefilled for the OpenAI-compatible choice.
 CLIPROXY_DEFAULT_URL = planner.CLIPROXY_DEFAULT_URL
@@ -406,14 +407,11 @@ def _write_private(path: Path, text: str) -> None:
     could read it. Unlike `.env`, which the user creates and chmods
     themselves, this one is created by the app, so the mode is ours to get
     right. An existing world-readable file is tightened on the next save
-    rather than left as found. (Patch from @Triumph1701 on #25.)
+    rather than left as found. (Patch from @Triumph1701 on #25.) On Windows
+    a POSIX mode means nothing, so owner_only sets an ACL there (#186), and
+    the key is only written once the file is shown to be private.
     """
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, text.encode())
-    finally:
-        os.close(fd)
-    os.chmod(path, 0o600)          # a pre-existing file keeps its old mode
+    owner_only.write_private(path, text)
 
 
 def save(patch: dict) -> AiSettings:
@@ -661,7 +659,7 @@ def _grok_models() -> tuple[list[str], str]:
         return [], "the grok binary is not on this machine"
     try:
         proc = subprocess.run([binary, "models"], capture_output=True,
-                              text=True, timeout=20, cwd="/tmp",
+                              text=True, timeout=20, cwd=tempfile.gettempdir(),
                               env=planner.cli_env(planner.GROK_ENV_KEYS))
     except (subprocess.TimeoutExpired, OSError) as exc:
         return [], f"grok models failed: {exc}"

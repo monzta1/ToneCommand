@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
-from fm9 import recipe_capture as rc, tone3000_auth as A
+from fm9 import owner_only, recipe_capture as rc, tone3000_auth as A
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
@@ -74,10 +74,6 @@ def test_authorize_url_carries_the_documented_parameters():
         A.authorize_url("k", "r", "s", "c", prompt="browse")
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the 0o600 token file is POSIX only; Windows needs an ACL, tracked in #186",
-)
 def test_exchange_posts_the_form_and_stores_tokens_at_0600(tokens_path):
     http = FakeHttp()
     t = A.exchange("code-1", "verif", "http://127.0.0.1:8909/api/tone3000/callback", "t3k_pub_x", http, now=1000.0)
@@ -88,7 +84,7 @@ def test_exchange_posts_the_form_and_stores_tokens_at_0600(tokens_path):
     assert t["access_token"] == "at-1" and t["refresh_token"] == "rt-1" and t["expires_at"] == 4600.0
     store = A.TokenStore()
     store.save(t)
-    assert oct(tokens_path.stat().st_mode & 0o777) == "0o600"
+    assert owner_only.is_private(tokens_path)
     assert store.load()["access_token"] == "at-1"
     assert store.status() == {"signed_in": True, "expires_at": 4600.0, "client_id_set": True}
     store.clear()
@@ -99,10 +95,6 @@ def test_exchange_posts_the_form_and_stores_tokens_at_0600(tokens_path):
         A.exchange("c", "v", "r", "c", lambda *a: (200, b"<html>"))
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the 0o600 token file is POSIX only; Windows needs an ACL, tracked in #186",
-)
 def test_refresh_and_access_token_refreshes_a_minute_ahead(tokens_path):
     http = FakeHttp()
     store = A.TokenStore()
@@ -153,10 +145,6 @@ def test_route_login_refuses_without_a_key_and_builds_the_url_with_one(client, m
     assert q["prompt"] == ["load_tone"] and q["tone_id"] == ["57410"]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the 0o600 token file is POSIX only; Windows needs an ACL, tracked in #186",
-)
 def test_route_callback_verifies_state_exchanges_and_redirects(client, monkeypatch, tokens_path):
     http = FakeHttp()
     monkeypatch.setattr(A, "default_http", http)
@@ -175,7 +163,7 @@ def test_route_callback_verifies_state_exchanges_and_redirects(client, monkeypat
     r = client.get(f"/api/tone3000/callback?code=code-9&state={state}&tone_id=57410", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "/?tone3000=signed-in&tone_id=57410"
     assert http.calls[-1][2]["code"] == "code-9" and http.calls[-1][2]["code_verifier"] == verifier
-    assert oct(tokens_path.stat().st_mode & 0o777) == "0o600" and server._t3k_pending == {}
+    assert owner_only.is_private(tokens_path) and server._t3k_pending == {}
     st = client.get("/api/tone3000/status").json()
     assert st["signed_in"] is True and st["last_tone_id"] == 57410 and "token" not in json.dumps(st).replace("expires", "")
     assert "at-1" not in r.text and "at-1" not in json.dumps(st)
@@ -208,10 +196,6 @@ def test_route_callback_verifies_state_exchanges_and_redirects(client, monkeypat
 
 # --- REQ-003: the fetch runs under the token; the replacement; the page; the docs ------------------------
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the 0o600 token file is POSIX only; Windows needs an ACL, tracked in #186",
-)
 def test_fetch_prefers_the_token_over_the_secret_key(monkeypatch, tokens_path):
     assert rc.key_from_env() is None
     monkeypatch.setenv("TONE3000_SECRET_KEY", "t3k_cs_old")

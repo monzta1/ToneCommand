@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "devices": [
+    {"kind": "fm9", "label": "Fractal FM9", "ports": ["\\bfm9\\b"], "adapter": "fm9", "issue": null, "verified": true},
+    {"kind": "ir2", "label": "BOSS IR-2", "ports": ["\\bir-2\\b"], "adapter": "ir2", "issue": null, "verified": true},
+    {"kind": "headrush", "label": "HeadRush", "ports": [], "adapter": "headrush", "issue": null, "verified": false},
+    {"kind": "tonex", "label": "IK Multimedia ToneX", "ports": [], "adapter": "tonex", "issue": null, "verified": false},
+    {"kind": "fm3", "label": "Fractal FM3", "ports": ["\\bfm3\\b"], "adapter": null, "issue": 40, "verified": false},
+    {"kind": "am4", "label": "Fractal AM4", "ports": ["\\bam4\\b"], "adapter": null, "issue": 41, "verified": false},
+    {"kind": "vp4", "label": "Fractal VP4", "ports": ["\\bvp4\\b"], "adapter": null, "issue": 191, "verified": false},
+    {"kind": "axefx3", "label": "Fractal Axe-Fx III", "ports": ["\\baxe-?fx\\s*(iii|3)\\b"], "adapter": null, "issue": 190, "verified": false}
+  ]
+}

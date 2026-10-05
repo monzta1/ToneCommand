@@ -5,6 +5,7 @@ CLI: `text`, `stopReason`, `usage`, `total_cost_usd`, and the model id as a KEY
 under `modelUsage` rather than a top-level field.
 """
 import json
+import subprocess
 import os
 import sys
 import stat
@@ -30,11 +31,15 @@ REAL_ENVELOPE = {
 }
 
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the fake backend is a shebang script, which Windows does not run; "
-           "a .cmd shim or sys.executable invocation is tracked in #186",
-)
+
+
+# #211: on Windows the product cannot start a CLI backend at all: the prompt
+# rides on the command line (about 50,000 characters) and Windows caps a
+# command line at 32,767. Strict, so the day #211 is fixed these turn red and
+# the mark comes off. The fake itself does run there; see the test below.
+_WINDOWS_CMDLINE_LIMIT = pytest.mark.xfail(
+    sys.platform == "win32", raises=FileNotFoundError, strict=True,
+    reason="#211: the prompt is passed on a command line longer than Windows allows")
 
 
 def fake_grok(tmp_path, monkeypatch, stdout="", stderr="", code=0):
@@ -50,14 +55,35 @@ def fake_grok(tmp_path, monkeypatch, stdout="", stderr="", code=0):
         f"sys.stderr.write({stderr!r})\n"
         f"sys.exit({code})\n", encoding="utf-8")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setattr(planner, "find_grok_cli", lambda: str(script))
+    monkeypatch.setattr(planner, "find_grok_cli", lambda: _executable(script, tmp_path))
     return argv_log
+
+
+def _executable(script, tmp_path):
+    """The fake as something the OS runs directly. Windows ignores shebangs,
+    and a .cmd shim would put the prompt through cmd.exe, which rewrites the
+    % < > | it contains, so there it becomes a real grok.exe: distlib's
+    launcher with the script inside (the same mechanism as pip's console
+    scripts), which hands argv over exactly as a native CLI receives it
+    (#186)."""
+    if sys.platform != "win32":
+        return str(script)
+    from pip._vendor.distlib.scripts import ScriptMaker
+    src, out = tmp_path / "src", tmp_path / "bin"
+    src.mkdir(exist_ok=True)
+    out.mkdir(exist_ok=True)
+    (src / "grok.py").write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+    maker = ScriptMaker(str(src), str(out), add_launchers=True)
+    maker.executable = sys.executable
+    made = maker.make("grok.py")
+    return next(p for p in made if p.lower().endswith(".exe"))
 
 
 def call():
     return planner._plan_via_grok_cli("more gain", "STATE", "REFERENCE")
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_a_plan_comes_back_with_the_model_from_modelusage(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout=json.dumps(REAL_ENVELOPE))
     got, model = call()
@@ -65,6 +91,7 @@ def test_a_plan_comes_back_with_the_model_from_modelusage(tmp_path, monkeypatch)
     assert model == "grok-4.6-build", "grok 1.0.5 has no top-level model field"
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_output_is_constrained_by_plan_schema(tmp_path, monkeypatch):
     """The Claude CLI path can only ask for JSON; this one binds it."""
     log = fake_grok(tmp_path, monkeypatch, stdout=json.dumps(REAL_ENVELOPE))
@@ -78,6 +105,7 @@ def test_output_is_constrained_by_plan_schema(tmp_path, monkeypatch):
         assert flag in argv, f"{flag} verified present on grok 1.0.5"
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_the_subprocess_gets_only_grok_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-leak")
     monkeypatch.setenv("XAI_API_KEY", "xai-expected")
@@ -88,6 +116,7 @@ def test_the_subprocess_gets_only_grok_credentials(tmp_path, monkeypatch):
     assert "ANTHROPIC_API_KEY" not in env
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_the_model_flag_is_passed_only_when_configured(tmp_path, monkeypatch):
     monkeypatch.delenv("GROK_CLI_MODEL", raising=False)
     log = fake_grok(tmp_path, monkeypatch, stdout=json.dumps(REAL_ENVELOPE))
@@ -109,6 +138,7 @@ def test_a_missing_binary_is_unavailable(monkeypatch):
     assert err.value.failure_class == "unavailable"
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_an_error_envelope_is_a_backend_error(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout=json.dumps(
         {"type": "error", "message": "authentication required; run grok --oauth"}))
@@ -118,6 +148,7 @@ def test_an_error_envelope_is_a_backend_error(tmp_path, monkeypatch):
     assert "authentication required" in err.value.detail
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_a_nonzero_exit_with_no_envelope_reports_stderr(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout="", stderr="command not found: xai",
               code=127)
@@ -127,6 +158,7 @@ def test_a_nonzero_exit_with_no_envelope_reports_stderr(tmp_path, monkeypatch):
     assert "exit 127" in err.value.detail and "xai" in err.value.detail
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_an_empty_text_field_names_the_stop_reason(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout=json.dumps(
         {"text": "", "stopReason": "max_tokens",
@@ -137,6 +169,7 @@ def test_an_empty_text_field_names_the_stop_reason(tmp_path, monkeypatch):
     assert "max_tokens" in err.value.detail
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_garbage_on_stdout_is_unreadable_output(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout="Grok Build TUI\nnot json at all")
     with pytest.raises(planner.BackendFailure) as err:
@@ -144,6 +177,7 @@ def test_garbage_on_stdout_is_unreadable_output(tmp_path, monkeypatch):
     assert err.value.failure_class == "unreadable_output"
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_envelope_survives_preamble_around_the_json(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch,
               stdout="warning: config deprecated\n" + json.dumps(REAL_ENVELOPE))
@@ -151,9 +185,23 @@ def test_envelope_survives_preamble_around_the_json(tmp_path, monkeypatch):
     assert got["summary"] == "raise drive" and model == "grok-4.6-build"
 
 
+@_WINDOWS_CMDLINE_LIMIT
 def test_text_that_is_not_a_plan_is_unreadable_output(tmp_path, monkeypatch):
     fake_grok(tmp_path, monkeypatch, stdout=json.dumps(
         {"text": "I would rather not.", "modelUsage": {"grok-4.6-build": {}}}))
     with pytest.raises(planner.BackendFailure) as err:
         call()
     assert err.value.failure_class == "unreadable_output"
+
+
+def test_the_fake_binary_runs_on_this_os(tmp_path, monkeypatch):
+    """#186: the stand-in is something this OS executes directly (a real
+    grok.exe on Windows), with argv delivered intact, so the tests above
+    measure the product and not the fake."""
+    log = fake_grok(tmp_path, monkeypatch, stdout="hello")
+    exe = planner.find_grok_cli()
+    out = subprocess.run([exe, "-p", "short prompt", "--json-schema", '{"a": "b c"}'],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and out.stdout == "hello", out.stderr
+    assert json.loads(log.read_text(encoding="utf-8"))["argv"] == \
+        ["-p", "short prompt", "--json-schema", '{"a": "b c"}']

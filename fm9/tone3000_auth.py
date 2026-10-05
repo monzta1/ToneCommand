@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlencode
 
+from fm9 import owner_only
+
 HOST = "https://www.tone3000.com"
 AUTHORIZE_URL = HOST + "/api/v1/oauth/authorize"
 TOKEN_URL = HOST + "/api/v1/oauth/token"
@@ -170,13 +172,9 @@ class TokenStore:
 
     def save(self, tokens: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".part")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(tokens, f, indent=1)
-        os.chmod(tmp, 0o600)
-        tmp.replace(self.path)
-        os.chmod(self.path, 0o600)
+        # #186: owner-only on every OS (an ACL on Windows), and the token is
+        # only written once the file is shown to be private.
+        owner_only.write_private(self.path, json.dumps(tokens, indent=1))
 
     def clear(self) -> None:
         try:

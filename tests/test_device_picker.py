@@ -29,7 +29,8 @@ def client(monkeypatch):
 def test_one_device_state_block_and_the_exact_link_text(client):
     s = client.get("/api/state").json()
     assert s["device"] == {"active": "fm9", "label": "Fractal FM9", "selected": "fm9",
-                           "available": [{"kind": "fm9", "label": "Fractal FM9"}], "ambiguous": False}
+                           "available": [{"kind": "fm9", "label": "Fractal FM9"}], "ambiguous": False,
+                           "detected": []}
     # the link text is built from the fixed short-name map, never the API label
     assert ("const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', "
             "ir2: 'IR-2' };") in PAGE

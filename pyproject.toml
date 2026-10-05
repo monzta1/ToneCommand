@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tonecommand"
-version = "1.5.6"
+version = "1.5.7"
 description = "Natural-language tone control for the Fractal FM9 over USB MIDI"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -65,7 +65,7 @@ dev = [
     # without losing that, so the runs go side by side instead. 611 tests in
     # 70s rather than 300s, and each worker is its own process, so the module
     # level state these tests monkeypatch is more isolated, not less.
-    "pytest-xdist>=3",
+    "pytest-xdist>=3.2",          # --dist worksteal (#196)
     "httpx>=0.27",
     "numpy>=1.24",
     # tests/test_site_build.py builds the site to check its rendered links,
@@ -93,4 +93,10 @@ py-modules = ["server"]
 # `tools` too: server.py (path_audit) and fm9/health.py (conventions) import
 # from it, so a non-editable install without it cannot import the server
 # (found 2026-09-20 with the numpy defect; editable installs hid both).
-packages = ["fm9", "devices", "devices.headrush", "tools"]
+# #209: devices.ir2 and devices.tonex were missing, so a non-editable install
+# could not build either device; the test now checks dotted subpackages.
+packages = ["fm9", "devices", "devices.headrush", "devices.ir2", "devices.tonex", "tools"]
+
+[tool.setuptools.package-data]
+# #209: the DPDP device catalog is data the devices package reads at runtime.
+devices = ["catalog.json"]

@@ -698,25 +698,29 @@ def test_the_openai_default_does_not_overwrite_an_env_base_url():
 
 # --- the file holds a key, so only its owner may read it ---
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Windows ignores POSIX modes, so the file lands 0o666; owner-only "
-           "there needs an ACL, tracked in #186",
-)
 def test_the_settings_file_is_not_world_readable(store):
     """Path.write_text uses the process umask, commonly 0644. Patch from
-    @Triumph1701 on #25."""
+    @Triumph1701 on #25. On Windows owner-only is an ACL (#186)."""
     import stat
+    from fm9 import owner_only
     ai_settings.save({"backend": "cli"})
-    mode = store.stat().st_mode
-    assert not mode & stat.S_IROTH, "world-readable"
-    assert not mode & stat.S_IRGRP, "group-readable"
-    assert stat.S_IMODE(mode) == 0o600
+    assert owner_only.is_private(store)
+    if sys.platform != "win32":
+        mode = store.stat().st_mode
+        assert not mode & stat.S_IROTH, "world-readable"
+        assert not mode & stat.S_IRGRP, "group-readable"
+        assert stat.S_IMODE(mode) == 0o600
 
     # a file predating the fix is tightened rather than left as found
-    os.chmod(store, 0o644)
+    if sys.platform == "win32":
+        import subprocess
+        subprocess.run(["icacls", str(store), "/grant", "*S-1-1-0:R"], check=True,
+                       capture_output=True)                      # Everyone may read
+    else:
+        os.chmod(store, 0o644)
+    assert not owner_only.is_private(store)
     ai_settings.save({"backend": "cli"})
-    assert stat.S_IMODE(store.stat().st_mode) == 0o600
+    assert owner_only.is_private(store)
 
 
 # --- the log line was the last raw sink for model output ---

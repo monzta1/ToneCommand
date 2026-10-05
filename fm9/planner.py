@@ -26,6 +26,7 @@ confirms in the UI.
 from __future__ import annotations
 
 import json
+import tempfile
 import logging
 import os
 import re
@@ -802,7 +803,7 @@ def _plan_via_cli(prompt: str, device_state: str,
             [cli, "-p", full_prompt, "--output-format", "json",
              "--model", cli_model()],
             capture_output=True, text=True, timeout=timeout_s(),
-            cwd="/tmp",
+            cwd=tempfile.gettempdir(),
             env={**cli_env(CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"},
         )
@@ -867,7 +868,7 @@ def _cli_stream_text(full_prompt: str, on_text=None, cancel=None) -> tuple[str, 
     try:
         proc = subprocess.Popen(
             args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            cwd="/tmp",
+            cwd=tempfile.gettempdir(),
             env={**cli_env(CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
     except OSError as exc:
@@ -1012,7 +1013,7 @@ def _plan_via_grok_cli(prompt: str, device_state: str,
     try:
         proc = subprocess.run(
             args, capture_output=True, text=True, timeout=timeout_s(),
-            cwd="/tmp", env=cli_env(GROK_ENV_KEYS))
+            cwd=tempfile.gettempdir(), env=cli_env(GROK_ENV_KEYS))
     except subprocess.TimeoutExpired:
         raise BackendFailure("grok", "timeout",
                              f"no reply within {timeout_s()}s", grok, model)
