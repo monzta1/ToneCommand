@@ -307,3 +307,14 @@ html.fx-on pre, html.fx-on .cmdbar { background: rgba(19, 23, 21, 0.72); backdro
 @media (prefers-reduced-motion: reduce) {
   #splash { animation: none; opacity: 0; visibility: hidden; pointer-events: none; }
 }
+
+/* The announcement strip under the hero. Quiet rather than a banner: one
+   sentence, the same type as the page, and it links to the page that
+   actually says what the device can do. */
+.newsbar {
+  margin: 0 0 26px; padding: 11px 18px;
+  border: 1px solid var(--line); border-left: 3px solid var(--cyan);
+  border-radius: 4px; background: rgba(90, 224, 255, 0.05);
+}
+.newsbar p { margin: 0; font-size: 0.94rem; line-height: 1.55; }
+.newsbar strong { color: var(--cyan); letter-spacing: 0.04em; }

@@ -2152,9 +2152,13 @@ def _named_param_state(adapter, device: dict) -> dict:
         rows.append({"name": spec["name"], "value": value,
                      "lo": spec["lo"], "hi": spec["hi"],
                      "options": spec["options"]})
+    # NOT "params": that key is the FM9's own block/parameter metadata, and
+    # renderParams() read this list as if it were that dict and threw, which
+    # landed in refresh()'s catch and painted the header OFFLINE for a pedal
+    # that was answering perfectly.
     return {"connected": True, "gig_mode": _gig_mode["on"], "device": device,
             "preset": {"number": number, "editor": number, "name": str(amp)},
-            "params": rows,
+            "device_params": rows,
             "observed": adapter.observed_changes()
             if hasattr(adapter, "observed_changes") else []}
 
@@ -2840,6 +2844,20 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                     pass
         return result
 
+    # #198: a device with named parameters is planned for with its own
+    # prompt, vocabulary and schema, and this has to happen BEFORE the
+    # snapshot below. `snapshot` reads a preset, eight scenes and a block
+    # grid, and an IR-2 declines all three, so every request a player typed
+    # with that pedal selected answered 500. The state route was made
+    # device-aware and this path was not, which is the whole bug.
+    _dev = device_context().adapter
+    if getattr(_dev, "capabilities", None) and \
+            _dev.capabilities().has_named_params:
+        from devices.ir2 import planning as devplan
+        return planner.plan(body.prompt, devplan.device_state(_dev),
+                            devplan.param_reference(_dev),
+                            system=devplan.SYSTEM, shape=devplan.SHAPE,
+                            schema=devplan.SCHEMA, validate=devplan.validate)
     offline = False
     with _lock:
         try:

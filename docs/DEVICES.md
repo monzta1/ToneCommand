@@ -12,7 +12,7 @@ header and a build is refused until you say which device it is for.
 | Device | Control | State read back | Notes |
 |---|---|---|---|
 | **Fractal FM9** | Full | From the unit | The reference implementation. Blocks, scenes, cabs, modifiers, stores, preset files |
-| **BOSS IR-2** | Full, all 7 parameters | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. IR slots listed, not writable |
+| **BOSS IR-2** | Full, all 7 parameters, plus IR install | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. Load your own cab IRs |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
 
@@ -56,9 +56,38 @@ The IR-2 is also the most talkative device ToneCommand supports. It announces
 every knob turn and footswitch press without being asked, so ToneCommand knows
 when you have changed something on the pedal by hand. The FM9 cannot do that.
 
-**What it does not do.** Its twelve IR slots are listed by name, but nothing
-writes to them: the IR transfer path is not decoded, so installing an IR
-refuses in one line and sends nothing. Use the BOSS IR-2 IR Loader for that.
+### Loading your own IRs
+
+ToneCommand can write a cabinet IR from your own library into the pedal.
+
+The eleven USER slots are not a free list: each one holds the cabinet for one
+amp voicing, in order, so installing an IR replaces that amp's speaker.
+
+| Slot | Voicing | | Slot | Voicing | | Slot | Voicing |
+|---|---|---|---|---|---|---|---|
+| USER 1 | CLEAN | | USER 5 | CRUNCH | | USER 9 | BROWN |
+| USER 2 | TWN | | USER 6 | BRIT | | USER 10 | MODDED |
+| USER 3 | TWEED | | USER 7 | HI-GAIN | | USER 11 | RFIER |
+| USER 4 | DIAMOND | | USER 8 | SLDN | | | |
+
+Because of that, **no slot is writable until you say so.** Set
+`TONECOMMAND_IR2_SLOTS` to the slots you are willing to overwrite, for example
+`9,10,11`. Asking for a slot that is not on the list tells you which voicing's
+cabinet you were about to replace.
+
+Any 16, 24 or 32-bit PCM wav works. It is resampled to 44.1 kHz, truncated to
+the 37 ms the pedal holds with a short fade so the cut does not click, and
+peak-normalised, because every factory cab peaks at exactly 1.0 and a hotter
+one clips inside the pedal. Every sample is read back and compared before the
+install reports success.
+
+**The pedal loads its cabinets at power-on**, so a freshly installed IR is not
+audible until you unplug the IR-2 and plug it back in. Switching voicings does
+not do it. Every install says so in its result, because otherwise it reads as
+a failure.
+
+Removing an IR is refused: it would leave that voicing with no speaker at all,
+which the pedal's own editor does not offer. Install something else over it.
 The pedal has no scenes and no effect blocks, so those refuse too, by
 declaration rather than by pretending. It reports no firmware version, so
 ToneCommand reports none rather than inventing one.

@@ -169,6 +169,31 @@
   .reportbody { white-space: pre-wrap; word-break: break-word; font-size: 12px;
     background: rgba(0,0,0,0.3); border: 1px solid var(--line);
     border-radius: 4px; padding: 10px; max-height: 38vh; overflow: auto; }
+  /* Why the update button is refusing, where the button is. It was in the
+     tooltip only, so a greyed button read as broken rather than deliberate. */
+  .updwhy { color: var(--muted); font-size: var(--fs-label); margin-left: 10px; }
+  /* One dense row. The shell is a fixed-height column and every pixel this
+     panel takes comes out of the plan below it: at 125px on a laptop window
+     it squeezed the plan card to 63px, which is what made the plan summary
+     unreadable. The amp sits inline with the knobs so the whole device fits
+     in roughly the height the FM9's scene strip uses. */
+  .devpanel { padding: 6px 4px; display: flex; align-items: center;
+    gap: 18px; flex-wrap: wrap; }
+  .devamp { display: flex; align-items: baseline; gap: 10px; margin: 0;
+    flex: 0 0 auto; }
+  .devamp .lbl { font-size: var(--fs-label); letter-spacing: 0.2em; color: var(--muted); }
+  .devamp .val { font-size: var(--fs-lead); color: var(--cyan); letter-spacing: 0.08em; }
+  .devknobs { display: grid; gap: 6px 14px; flex: 1 1 520px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .devknob { display: grid; grid-template-columns: 72px 1fr 30px;
+    align-items: center; gap: 8px; }
+  .devknob .lbl { font-size: var(--fs-label); letter-spacing: 0.14em; color: var(--muted); }
+  .devknob .num { text-align: right; color: var(--text-strong);
+    font-variant-numeric: tabular-nums; }
+  .devbar { height: 7px; border-radius: 4px; background: var(--panel-2);
+    border: 1px solid var(--line); overflow: hidden; }
+  .devbar span { display: block; height: 100%; background: var(--cyan);
+    transition: width 220ms ease; }
   .cnote.cerr { border-left: 2px solid var(--amber); padding-left: 10px; }
   .reportbtn { padding: 4px 10px; font-size: var(--fs-label);
     margin-left: 8px; vertical-align: baseline; }
@@ -2064,8 +2089,11 @@
     background: rgba(0,0,0,.18); }
   .intentname { color: var(--cyan); font-size: var(--fs-label);
     letter-spacing: .1em; }
+  /* Wraps rather than ellipsising. A reason cut off mid-sentence ("the
+     closest match to a Vo...") is a reason nobody can read, and this is the
+     text that explains a change before it is sent. */
   .intentoutcome { color: var(--text); font-size: var(--fs-hint);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
   .intentcount { color: var(--muted); font-size: var(--fs-label);
     text-align: right; white-space: nowrap; }
 
@@ -2938,6 +2966,34 @@
       0 5px 8px rgba(0,0,0,0.42);
   }
   #context .pathzone .gridwrap { max-height: 78px; padding: 0; }
+  /* A device panel is a list, not a signal chain. The 78px above is sized
+     for the FM9's grid and clipped 141px of knobs down to 78 with
+     overflow hidden, so most of the pedal's state was simply invisible. */
+  #context .pathzone .gridwrap:has(.devpanel) {
+    max-height: none; height: auto; overflow: visible;
+  }
+  /* What a named-parameter device does not have, and must not be shown:
+     a scene strip, a chain legend, or the chain's reserved height. */
+  body.named-device #context .scenes { display: none; }
+  /* What a named-parameter device does not have, after a send as well as
+     before it: no audition path, no preset to store to, no edit buffer to
+     be "unsaved", and no undo. These offered all four on an IR-2. */
+  body.named-device #auditionbtn,
+  body.named-device #storeafter,
+  body.named-device #dirty { display: none; }
+  body.named-device #context .gridnote { display: none; }
+  body.named-device #context .pathzone { height: auto; }
+  /* #shell is a fixed-height flex column, so on a short window flex-shrink
+     squeezed this section down to a thin empty strip and hid the whole
+     pedal state. Measured: fine at 900px tall, gone at 700, which is a
+     laptop. It must keep its height; the workspace below is what scrolls. */
+  body.named-device #context { flex-shrink: 0; }
+  /* The FM9 hides its signal chain on short windows and keeps the scene
+     strip, which is the right trade for the FM9. This device has no scene
+     strip and its whole state lives in that chain area, so the same rule
+     hid EVERYTHING on any window up to 840px tall: most laptops. The
+     selector here outranks the media query's, so it wins at every height. */
+  body.named-device #context .pathzone { display: flex; }
   #context svg.grid { width: auto; max-width: 100%; max-height: 74px; }
   #context .pathzone .gridnote { margin-top: 1px; min-height: 16px; }
   #context .pathzone .gridnote .k:not(#chainhide) { opacity: 0.7; }
@@ -3403,6 +3459,7 @@
     <a id="updnotes" href="#" target="_blank" rel="noopener">release notes</a>
     <button class="small" id="updcmds">HOW TO UPDATE</button>
     <button class="small armed" id="updnow" hidden>UPDATE &amp; RESTART</button>
+    <span class="updwhy" id="updwhy" hidden></span>
     <button class="small" id="upddismiss" title="dismiss">&#10005;</button>
     <div class="sendbar updprog" id="updprog" hidden><i></i></div>
     <div class="updbox" id="updcmdbox" hidden></div>
@@ -3581,12 +3638,12 @@
       <section class="stagepane" id="pane-confirm" hidden>
         <div class="stageintro">
           <h2>READY TO SEND</h2>
-          <p>One final check before ToneCommand changes the FM9.</p>
+          <p id="cintro">One final check before ToneCommand changes the FM9.</p>
         </div>
         <div class="cfacts" id="cfacts"></div>
         <div class="cblast" id="cblast"></div>
         <label class="cack"><input type="checkbox" id="ack">
-          I reviewed the target and affected scenes</label>
+          <span id="acklabel">I reviewed the target and affected scenes</span></label>
         <div class="stagefoot">
           <button id="backreview">BACK TO REVIEW</button>
           <span class="spacer"></span>
@@ -4202,7 +4259,7 @@ function noteSlotName(number, name) {
   if (number === currentPresetNumber && lastState.preset) {
     lastState.preset.name = name;
     $('preset').innerHTML =
-      `<span class="lbl">PRESET</span><span class="pnum">${lastState.preset.editor ?? number}</span>`
+      `<span class="lbl">${lastState.device_params ? 'VOICING' : 'PRESET'}</span><span class="pnum">${lastState.preset.editor ?? number}</span>`
       + `<b>${esc(name)}</b><span class="caret"></span>`;
   }
 }
@@ -4280,6 +4337,25 @@ function loadPresets(refresh) {
 }
 
 async function _loadPresets(refresh) {
+  // A device with named parameters has no 512-slot library. The IR-2 has two
+  // stored patches, which is what its footswitch toggles, so that is what the
+  // selector offers. Scanning 512 FM9 slots against it returned nothing and
+  // left the box empty, which is what a player sees as "broken".
+  if (deviceState && deviceState.active && deviceState.active !== 'fm9'
+      && lastState && lastState.device_params) {
+    // The selector offers what a player would actually browse. On the IR-2
+    // the two stored patches ARE the preset concept technically, and listing
+    // them gives you "PATCH 0" and "PATCH 1", which tells you nothing. The
+    // voicing is the choice that decides the sound and there are eleven of
+    // them with real names, so that is what this lists.
+    const amp = (lastState.device_params || []).find(r => (r.options || []).length);
+    const opts = (amp && amp.options) || [];
+    allSlots = opts.map((name, i) => ({number: i, editor: i, name, empty: false}));
+    presetScan = {read: opts.length, total: opts.length};
+    renderPresetScan();
+    renderPresets(false);
+    return allSlots;
+  }
   presetScan = {read: 0, total: 512};
   renderPresetScan();
   try {
@@ -4315,6 +4391,27 @@ async function gotoPreset(n, force) {
   // The popover closes at once, so without this the click answers with a
   // beat of nothing while the unit switches.
   $('preset').classList.add('busy');
+  // On a device whose selector lists voicings, picking one sets the voicing.
+  // /api/preset is the FM9's preset-select path and means nothing here.
+  if (lastState && lastState.device_params) {
+    try {
+      const r = await fetch('/api/apply', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({actions: [{kind: 'set_device_param',
+                                         param: 'AMP', value: Number(n)}]}),
+      });
+      const d = await r.json();
+      const bad = (d.results || []).find(x => x.ok === false);
+      if (bad) log(`could not change the voicing: ${bad.detail}`, 'err');
+      await refresh();
+    } catch (e) {
+      log(`could not change the voicing: ${e.message}`, 'err');
+    } finally {
+      presetBusy = false;
+      $('preset').classList.remove('busy');
+    }
+    return;
+  }
   try {
     const r = await fetch('/api/preset', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -5156,6 +5253,13 @@ function setUpdBtn(btn, d) {
   btn.disabled = !d.can_update;
   btn.title = d.can_update ? 'Update and restart, no terminal needed'
                            : (d.why || 'Update with the commands shown');
+  // The reason used to live only in the tooltip, so a greyed button looked
+  // broken rather than deliberate. Say it where it is read.
+  const why = $('updwhy');
+  if (why) {
+    why.textContent = d.can_update ? '' : (d.why || '');
+    why.hidden = !!d.can_update;
+  }
 }
 function renderVersion(d) {
   if (!d) return;
@@ -6456,7 +6560,9 @@ function deviceShort(dev) {
   return DEVICE_SHORT[kind] || (kind ? String(kind).toUpperCase() : 'FM9');
 }
 function renderDevice(dev) {
+  const changed = !deviceState || deviceState.active !== dev.active;
   deviceState = dev;
+  if (changed && typeof renderExamples === 'function') renderExamples();
   const wrap = $('devwrap');
   if (!dev || !dev.available || dev.available.length < 2) { wrap.hidden = true; $('devpop').hidden = true; return; }
   wrap.hidden = false;
@@ -6551,8 +6657,24 @@ async function refresh() {
     // confirmation, so it does not need the belt and braces, and the name is
     // what you are actually reading. Rebuild the caret: innerHTML replaces it.
     if (s.preset) $('preset').innerHTML =
-      `<span class="lbl">PRESET</span><span class="pnum">${s.preset.editor ?? s.preset.number}</span>` +
+      `<span class="lbl">${s.device_params ? 'VOICING' : 'PRESET'}</span><span class="pnum">${s.preset.editor ?? s.preset.number}</span>` +
       `<b>${esc(s.preset.name)}</b><span class="caret"></span>`;
+    // A device with named parameters has no scenes, no grid and no blocks.
+    // Running the FM9's renderers over its state threw, and the throw landed
+    // in the catch below, which painted OFFLINE over a pedal that was
+    // answering. Render what this device actually has instead.
+    if (s.device_params) {
+      lastState = s;
+      renderDeviceParams(s);
+      loadPresets(false);
+      return;
+    }
+    // Everything renderDeviceParams changed has to be put back, or an FM9
+    // selected after an IR-2 keeps the other device's label and chrome.
+    document.body.classList.remove('named-device');
+    const ctxf = $('context');
+    if (ctxf) ctxf.setAttribute('data-label', 'LIVE '
+      + ((deviceState && deviceState.label) || 'FM9').toUpperCase() + ' CONTEXT');
     renderScenes(s);
     if (s.scene) currentSceneNumber = s.scene.number;
     if (typeof stageGuard === 'function') stageGuard(s);
@@ -6562,7 +6684,9 @@ async function refresh() {
   } catch (e) {
     if (!$('link').classList.contains('busy')) {
       $('link').className = 'pill off';
-      $('linktext').textContent = 'FM9 · OFFLINE';
+      // Never hardcode FM9 here: with another device selected this said
+      // "FM9 OFFLINE" about a pedal that was plugged in and answering.
+      $('linktext').textContent = `${deviceShort(deviceState)} · OFFLINE`;
     }
     setRigOff(true);
   }
@@ -6593,6 +6717,47 @@ let lastBypass = {};        // "FAMILY:instance" -> is the block switched off
 let lastMods = {};          // param name -> what is driving it, if anything
 let lastState = {};         // the last state payload, for the audition lists
 let lastCab = {bank: null, ordinal: -1};
+
+// A device whose whole surface is named parameters (#198). The FM9 draws a
+// signal grid and eight scenes; this pedal is one amp and six knobs, so it
+// draws those. Live values, straight off the unit, updated by the same poll.
+function renderDeviceParams(s) {
+  const rows = s.device_params || [];
+  const box = $('blocks');          // where the FM9 draws its signal chain
+  if (!box) return;
+  // This device has no scenes, so that strip would otherwise sit there empty
+  // and stale from whatever was last connected.
+  const sc = $('scenes');
+  if (sc) sc.innerHTML = '';
+  const amp = rows.find(r => (r.options || []).length);
+  const knobs = rows.filter(r => !(r.options || []).length);
+  box.innerHTML = `
+    <div class="devpanel">
+      ${amp ? `<div class="devamp">
+        <span class="lbl">AMP</span>
+        <span class="val">${esc(String(amp.value))}</span>
+      </div>` : ''}
+      <div class="devknobs">
+        ${knobs.map(k => `
+          <div class="devknob">
+            <span class="lbl">${esc(k.name)}</span>
+            <div class="devbar"><span style="width:${
+              Math.round(100 * (Number(k.value) - k.lo) / ((k.hi - k.lo) || 1))
+            }%"></span></div>
+            <span class="num">${esc(String(k.value))}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  const g = $('gridwhy');
+  if (g) g.textContent = '';
+  // The chain legend ("on / off / tap a pedal to tweak it") describes a
+  // signal grid this device does not have, and the empty scene strip left a
+  // gap where eight scenes used to be.
+  document.body.classList.add('named-device');
+  const ctx = $('context');
+  if (ctx) ctx.setAttribute('data-label', 'LIVE ' +
+    ((deviceState && deviceState.label) || 'DEVICE').toUpperCase() + ' CONTEXT');
+}
 
 function renderParams(s) {
   const meta = s.params || {};
@@ -7196,17 +7361,36 @@ const EXAMPLES = [
   ['Octave under lead', 'add a subtle octave-down layer like a POG under the lead'],
 ];
 
-$('egs').innerHTML = EXAMPLES.slice(0, 4)
-  .map(([label, prompt], i) =>
-    `<button data-eg="${i}" title="${esc(prompt)}">${esc(label)}</button>`)
-  .join('');
+// Offering "Wets in scene 2" to a pedal with no scenes is an instruction
+// that cannot work, which is worse than offering nothing. Each device gets
+// examples it can actually do.
+const DEVICE_EXAMPLES = {
+  ir2: [
+    ['Brown sound',    'a brown sound, tight, not much room'],
+    ['Cleanest',       'give me the cleanest thing this pedal does'],
+    ['More gain',      'more gain and back the bass off a little'],
+    ['What is it on?', 'what is it set to right now?'],
+  ],
+};
+
+function renderExamples() {
+  const kind = (deviceState && deviceState.active) || 'fm9';
+  const list = DEVICE_EXAMPLES[kind] || EXAMPLES;
+  CURRENT_EXAMPLES = list;
+  $('egs').innerHTML = list.slice(0, 4)
+    .map(([label, prompt], i) =>
+      `<button data-eg="${i}" title="${esc(prompt)}">${esc(label)}</button>`)
+    .join('');
+}
+let CURRENT_EXAMPLES = EXAMPLES;
+renderExamples();
 
 $('egs').addEventListener('click', e => {
   const b = e.target.closest('button[data-eg]');
   if (!b) return;
   // Loaded, not sent. Pressing SEND stays the player's move, and seeing the
   // sentence first is half of what the examples are teaching.
-  $('prompt').value = EXAMPLES[Number(b.dataset.eg)][1];
+  $('prompt').value = CURRENT_EXAMPLES[Number(b.dataset.eg)][1];
   $('prompt').focus();
 });
 
@@ -7381,7 +7565,7 @@ async function runBuild(spec, note) {
         srcStage = '';
         srcWork.count = typeof d === 'number' ? d : d.n;
         const kind = (d && d.kind) || '';
-        if (kind) workSay(`${srcWork.count}. ${kind.replace(/_/g, ' ')}`);
+        if (kind) workSay(`${srcWork.count}. ${kindWord(kind)}`);
         srcAlive = Date.now();
         srcProgress('build', note);
         renderWorking();
@@ -7496,6 +7680,11 @@ function describe(a) {
   // A cab selection is a bank and an ordinal, not a parameter; without this
   // it fell through to the set_param wording as "cab 1 / null: set to 40".
   if (a.kind === 'set_cab') return `Cab → ${a.cab_name || 'ordinal ' + a.value}${a.bank != null ? ' (bank ' + a.bank + ')' : ''}`;
+  // A named parameter carries no block, so it fell through to the set_param
+  // wording and the review read "null 1 / AMP: set to null": null block, null
+  // value, because an enum arrives in type_name. Same failure set_cab had.
+  if (a.kind === 'set_device_param')
+    return `${a.param} → ${a.type_name != null ? a.type_name : a.value}`;
   if (a.kind === 'rename_preset') return `Rename preset → "${a.type_name}"`;
   if (a.kind === 'rename_scene') return `Rename scene ${a.value} → "${a.type_name}"`;
   // danger first, and one parenthetical rather than two: the slot label
@@ -7540,6 +7729,13 @@ function renderTension(tensions) {
 function renderToneCheck(findings) {
   const box = $('tonecheck');
   if (!box) return;
+  // The tone check judges scene roles, levels and effects across a preset.
+  // A device with named parameters has none of those, so a green "Tone check
+  // passed: roles, levels and effects look right for a gig" was a pass on a
+  // test that never ran. Saying nothing is the honest answer.
+  if (lastState && lastState.device_params) {
+    box.hidden = true; box.innerHTML = ''; return;
+  }
   box.hidden = false;
   if (!findings.length) {
     box.className = 'tonecheck pass';
@@ -7615,11 +7811,14 @@ function showPlan(plan) {
                                       && !(a.validation_errors || []).length);
   planResult(
     `<b>Plan ready: ${n} change${n === 1 ? '' : 's'} proposed.</b> `
-    + `Nothing has been sent to the FM9 yet.`
+    + `Nothing has been sent to the ${devName()} yet.`
     + (blocked ? ` ${blocked} ${blocked === 1 ? 'is' : 'are'} marked BLOCKED `
                  + `and will not transmit.` : '')
     + ` If it reads right, continue to REVIEW, confirm, and send`
-    + (willStore
+    + (devNamed()
+        // No false comfort here either: this device has no undo at all.
+        ? `. There is no undo on this device.`
+        : willStore
         // No false comfort: UNDO never covers a store, and this plan has one.
         ? `. This plan also STORES to a preset slot; you will be asked again `
           + `before that happens, and UNDO does not cover it.`
@@ -7663,17 +7862,30 @@ function renderPlanCards(plan, filter) {
       `<div class="vmsg ${errs.length ? 'verr' : 'vwrn'}">${
         esc(plainActionIssue(m, !!errs.length))}</div>`).join('');
     const setParam = a.kind === 'set_param';
+    const named = a.kind === 'set_device_param';
     const meta = setParam ? (lastParams || {})[a.param] : null;
+    // Never the hardcoded 'FM9': with another device selected every row of the
+    // review claimed its change was going to an FM9.
+    const devLabel = ((deviceState && deviceState.label) || 'FM9').toUpperCase();
     const target = a.block
       ? `${String(a.block).toUpperCase()} ${a.instance || 1}${a.channel ? ` ${a.channel}` : ''}`
-      : (a.kind === 'rename_preset' || a.kind === 'store' ? 'PRESET' : 'FM9');
+      : named ? devLabel
+      : (a.kind === 'rename_preset' || a.kind === 'store' ? 'PRESET' : devLabel);
+    // A named parameter's current value is already on screen in the device
+    // panel; the review read "Not read" because it only looked for FM9 values.
+    const namedNow = named
+      ? ((lastState && lastState.device_params) || [])
+          .find(r => String(r.name).toUpperCase() === String(a.param).toUpperCase())
+      : null;
     const beforeRaw = setParam
       ? ((plan.values || {})[a.param] ?? (lastState.values || {})[a.param])
-      : null;
+      : (namedNow ? namedNow.value : null);
     const before = beforeRaw === undefined || beforeRaw === null ? 'Not read' : beforeRaw;
     // Both branches are model- or device-originated strings. Escape here,
     // once, before either enters the review table.
-    const after = setParam ? esc(String(a.value)) : esc(describe(a));
+    const after = setParam ? esc(String(a.value))
+      : named ? esc(String(a.type_name != null ? a.type_name : a.value))
+      : esc(describe(a));
     // Inline editing: a numeric set_param with a published range becomes a
     // field the player retypes before it is sent, clamped to that range on
     // commit. Everything else (renames, stores, enum type changes) stays text.
@@ -7693,7 +7905,8 @@ function renderPlanCards(plan, filter) {
       ? `<button class="editflag" data-reset="${ai}" title="Put it back to the planned ${esc(String(planned))}">edited ↺</button>`
       : '';
     const spread = alsoAffects(a, currentSceneNumber);
-    const impact = spread
+    const impact = named ? 'Whole sound'
+      : spread
       ? `${(spread.match(/\d+/g) || []).length + 1} scenes`
       : (a.scene ? `Scene ${a.scene}` : 'Current');
     // Safety facts stay open. Ordinary rationale is available without making
@@ -8119,7 +8332,7 @@ function renderWorking() {
   const what = !busy
     ? workDone.text
     : planSending
-      ? `SENDING ${planSent}/${planTotal} to the FM9`
+      ? `SENDING ${planSent}/${planTotal} to the ${devName()}`
       : chatBusy
         ? (chatBuilding
             ? (chatQueued ? 'QUEUED'
@@ -8897,7 +9110,7 @@ function renderInstallFound(presets, cabs) {
       const out = row.querySelector('.instout');
       out.hidden = false;
       out.className = 'instout foundout busy';
-      out.innerHTML = '<span class="spin">◍</span> Transmitting to the FM9, '
+      out.innerHTML = `<span class="spin">◍</span> Transmitting to the ${devName()}, `
         + 'then reading the slot back to verify...';
       btn.disabled = true;
       workAnnounce(`INSTALLING "${name}" to slot ${sel ? sel.label : slot}...`,
@@ -9089,7 +9302,7 @@ async function streamPlan(payload) {
         chatQueued = '';
         chatCount = typeof d === 'number' ? d : d.n;
         const kind = (d && d.kind) || '';
-        if (kind) workSay(`${chatCount}. ${kind.replace(/_/g, ' ')}`);
+        if (kind) workSay(`${chatCount}. ${kindWord(kind)}`);
         chatAlive = Date.now();
         renderChat();
       }
@@ -9854,7 +10067,7 @@ function sendProgress(d) {
       `<div id="sendprog" class="sendprog">
          <div class="sendbar"><i id="sendbarfill"></i></div>
          <div class="sendrow">
-           <span id="sendpct">Sending to the FM9...</span>
+           <span id="sendpct">Sending...</span>
            <button id="sendlogtoggle" type="button">show details</button>
          </div>
          <div id="sendlog" class="sendlog" hidden></div>
@@ -9867,7 +10080,7 @@ function sendProgress(d) {
     };
   }
   $('sendbarfill').style.width = pct + '%';
-  $('sendpct').textContent = `Sending to the FM9... ${pct}%`;
+  $('sendpct').textContent = `Sending to the ${devName()}... ${pct}%`;
   const lg = $('sendlog');
   const line = document.createElement('div');
   line.textContent = `${d.done}/${d.total}  ${d.ok ? '' : 'FAILED  '}${d.what}`;
@@ -9933,8 +10146,8 @@ async function apply() {
     renderWorking();
   };
   say(0);
-  planResult(`<span class="spin">◍</span> Sending to the FM9...`, 'busy');
-  chatWorking = 'sending to the FM9...';
+  planResult(`<span class="spin">◍</span> Sending to the ${devName()}...`, 'busy');
+  chatWorking = `sending to the ${devName()}...`;
   renderChat();
   try {
     const r = await fetch('/api/apply/stream', {
@@ -10024,14 +10237,19 @@ async function apply() {
         + `overwritten in flash, and UNDO does not cover a store.`
       : ' It is not saved to a preset yet.';
     chatWorking = '';
+    // A device with no store and no undo gets a result that says so, rather
+    // than the FM9's promise of STORE PRESET and UNDO.
+    const tail = devNamed()
+      ? ' There is no undo on this device: ask for the old sound to go back.'
+      : (stored.length ? bufferNote
+                       : ` Nothing is stored in the preset until you choose `
+                         + `STORE PRESET, and UNDO puts the previous sound back.`);
     chatNote(bad
       ? `Sent ${good} of ${acted.length} change${acted.length === 1 ? '' : 's'} `
-        + `to the FM9.${failLine}`
-        + bufferNote
-      : `Sent ${good} change${good === 1 ? '' : 's'} to the FM9. Play it.`
-        + (stored.length ? bufferNote
-                         : ` Nothing is stored in the preset until you choose `
-                           + `STORE PRESET, and UNDO puts the previous sound back.`));
+        + `to the ${devName()}.${failLine}`
+        + (devNamed() ? tail : bufferNote)
+      : `Sent ${good} change${good === 1 ? '' : 's'} to the ${devName()}. Play it.`
+        + tail);
     // Auto health after a build (issue #51): clone/dead/silent scenes the
     // plan-time review cannot see, because the final grid is the starter
     // template plus the plan. Surfaced here so a duplicate footswitch is
@@ -10069,7 +10287,9 @@ async function apply() {
       ? `SENT ${good} OF ${acted.length}. Failed: ${failures[0] || 'see the plan panel'}`
       : (stored.length
           ? `DONE: ${good} change${good === 1 ? '' : 's'} sent and stored to slot ${storedWhere}. The preset is ready; play it.`
-          : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
+          : devNamed()
+            ? `DONE: ${good} change${good === 1 ? '' : 's'} on the ${devName()}. Play it. No undo here.`
+            : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
       bad ? 'part' : 'ok');
     sendPhase(bad ? `PARTIAL · ${good} OF ${acted.length} VERIFIED`
                   : `COMPLETE · ${good} OF ${acted.length} VERIFIED`);
@@ -10091,11 +10311,16 @@ async function apply() {
     planResult(bad
       ? `<b>Sent ${good} of ${acted.length}.</b>${esc(failLine)} `
         + `The failed card${bad === 1 ? ' is' : 's are'} marked below.`
-        + (stored.length
+        + (devNamed()
+            ? ' There is no undo on this device.'
+            : stored.length
             ? esc(bufferNote)
             : ` Nothing was stored to flash; UNDO covers what landed.`)
-      : `<b>Sent ${good} change${good === 1 ? '' : 's'} to the FM9.</b> `
-        + (stored.length
+      : `<b>Sent ${good} change${good === 1 ? '' : 's'} to the ${esc(devName())}.</b> `
+        + (devNamed()
+            ? 'Play it now. There is no undo on this device: ask for the old '
+              + 'sound to go back.'
+            : stored.length
             ? `Play it.` + esc(bufferNote)
             : `Play it now. Nothing is saved to `
               + `the preset until you choose STORE PRESET, and UNDO puts it back.`),
@@ -10117,7 +10342,9 @@ async function apply() {
     planSending = false;
     stopChatTicker();
     renderWorking();
-    $('apply').innerHTML = 'SEND TO FM9';
+    // Rewrites the label after the arm countdown. Hardcoding FM9 here undid
+    // the device-aware label the moment the button armed.
+    $('apply').textContent = `SEND TO ${sendTargetLabel()}`;
     $('apply').disabled = false; $('discard').disabled = false;
     currentPlan = null;
     clearAffected();
@@ -10354,7 +10581,13 @@ const KIND_INTENT = {
 function intentGroups(plan) {
   const groups = new Map();
   for (const a of plan.actions || []) {
-    const key = a.kind === 'set_param'
+    // A named-parameter change is one row per parameter. Grouping by kind
+    // folded all seven into a single row headed "SET_DEVICE_PARAM", with the
+    // first change's reason truncated across it: the player could read none
+    // of what was about to happen to their pedal.
+    const key = a.kind === 'set_device_param'
+      ? String(a.param || 'SETTING').toUpperCase()
+      : a.kind === 'set_param'
       ? `VOICE ${a.block || 'BLOCK'} ${a.instance || 1}`.toUpperCase()
       : (KIND_INTENT[a.kind] || (a.kind || 'CHANGE').toUpperCase());
     if (!groups.has(key)) groups.set(key, []);
@@ -10417,7 +10650,9 @@ function renderPlanStage() {
         : '');
   $('planintents').innerHTML = [...groups.entries()].map(([name, list]) => {
     const first = list[0] || {};
-    const outcome = first.reason || describe(first);
+    const target = first.kind === 'set_device_param'
+      ? `to ${first.type_name != null ? first.type_name : first.value}. ` : '';
+    const outcome = target + (first.reason || describe(first));
     const blocked = list.some(a => (a.validation_errors || []).length);
     const inferred = list.some(a => (a.validation_warnings || []).length);
     const state = blocked ? 'BLOCKED' : (inferred ? 'CHECK' : 'GROUNDED');
@@ -11009,9 +11244,78 @@ async function renderCabPanel() {
 
 // --- CONFIRM stage: arm, then send ----------------------------------------
 
+// The device a send goes to, for every label that names it. Five separate
+// places said "FM9" literally, so the confirm screen read SEND TO FM9 with an
+// IR-2 selected. One function means the next label cannot drift.
+// Every user-facing sentence about a send names the device it went to and
+// claims only what that device can do. The send path said "the FM9" in nine
+// places and promised UNDO and STORE PRESET on a pedal that has neither,
+// which is the overstated confirmation this project's own comments warn
+// teaches people to stop believing confirmations.
+// A streamed action kind, in words. The raw kind read "set device param"
+// six times in the log; the review screen shows each parameter by name, so
+// during the stream a plain word is enough and does not leak an internal name.
+const KIND_WORDS = {set_device_param: 'setting'};
+function kindWord(k) { return KIND_WORDS[k] || String(k).replace(/_/g, ' '); }
+
+function devName() {
+  return (lastState && lastState.device_params && deviceState && deviceState.label)
+    || 'FM9';
+}
+function devNamed() { return !!(lastState && lastState.device_params); }
+
+function sendTargetLabel() {
+  return ((lastState && lastState.device_params && deviceState && deviceState.label)
+          || 'FM9').toUpperCase();
+}
+
+// The gig-lock notice on the confirm screen. One definition, because the
+// device-aware confirm path copied it and declared the exit button's id twice.
+function renderGigLockWhy() {
+  const locked = gigOn === true;
+  $('giglockwhy').hidden = !locked;
+  if (locked) {
+    $('giglockwhy').innerHTML = 'GIG LOCK is on: transmission is blocked. '
+      + 'It never exits on its own. '
+      + '<button id="exitgig">EXIT GIG LOCK</button>';
+    $('exitgig').onclick = () => toggleGig();
+  }
+}
+
 function renderConfirmStage() {
   if (!currentPlan) return;
   const n = currentPlan.actions.length;
+  // The last screen before your pedal changes. On a named-parameter device
+  // it said "UNDO READY", "changes the FM9", "SEND TO FM9" and "No other
+  // scene moves": every fact on the final check was about a different
+  // device, and the recovery line promised a safety net that did not exist.
+  if (lastState && lastState.device_params) {
+    const label = (deviceState && deviceState.label) || 'the device';
+    const amp = (lastState.device_params || []).find(r => (r.options || []).length);
+    $('cintro').textContent = `One final check before ToneCommand changes the ${label}.`;
+    const facts = [
+      ['TARGET', `${esc(label)} · ${esc(amp ? String(amp.value) : 'current sound')}`],
+      ['SCOPE', `${n} setting${n === 1 ? '' : 's'}`],
+      ['DESTINATION', `${esc(label)} · APPLIED LIVE`],
+      ['RECOVERY', '<span class="warn">NO UNDO</span>'],
+    ];
+    $('cfacts').innerHTML = facts.map(([l, v]) =>
+      `<div class="cfact"><div class="cfl">${l}</div>
+       <div class="cfv">${v}</div></div>`).join('');
+    $('cblast').textContent = 'This pedal has no scenes: these settings are the '
+      + 'whole sound. There is no undo, so note the current values if you may '
+      + 'want them back.';
+    $('acklabel').textContent = 'I reviewed these changes';
+    $('apply').textContent = `SEND TO ${sendTargetLabel()}`;
+    renderGigLockWhy();
+    $('ack').checked = false;
+    $('armbtn').disabled = true;
+    disarmSend();
+    return;
+  }
+  $('cintro').textContent = 'One final check before ToneCommand changes the FM9.';
+  $('acklabel').textContent = 'I reviewed the target and affected scenes';
+  $('apply').textContent = 'SEND TO FM9';
   const scenes = affectedScenes.size;
   const dev = currentPlan.device && currentPlan.device.preset;
   const stores = currentPlan.actions.filter(a => a.kind === 'store');
@@ -11036,14 +11340,7 @@ function renderConfirmStage() {
     ? `SCENE${hit.length > 1 ? 'S' : ''} ${hit.join(', ')} WILL ALSO CHANGE: `
       + `they share a channel with what this plan edits.`
     : 'No other scene moves: nothing here crosses a shared channel.';
-  const locked = gigOn === true;
-  $('giglockwhy').hidden = !locked;
-  if (locked) {
-    $('giglockwhy').innerHTML = 'GIG LOCK is on: transmission is blocked. '
-      + 'It never exits on its own. '
-      + '<button id="exitgig">EXIT GIG LOCK</button>';
-    $('exitgig').onclick = () => toggleGig();
-  }
+  renderGigLockWhy();
   $('ack').checked = false;
   $('armbtn').disabled = true;
   disarmSend();
@@ -11067,11 +11364,11 @@ $('armbtn').onclick = () => {
   $('apply').hidden = false;
   $('armhint').hidden = false;
   armLeft = 8;
-  $('apply').textContent = `SEND TO FM9 · ${armLeft}`;
+  $('apply').textContent = `SEND TO ${sendTargetLabel()} · ${armLeft}`;
   armTimer = setInterval(() => {
     armLeft -= 1;
     if (armLeft <= 0) { disarmSend(); return; }
-    $('apply').textContent = `SEND TO FM9 · ${armLeft}`;
+    $('apply').textContent = `SEND TO ${sendTargetLabel()} · ${armLeft}`;
   }, 1000);
 };
 
@@ -11116,6 +11413,34 @@ function renderStageRail() {
   $('preflightcard').hidden = !showPlanCards;
   $('reversecard').hidden = !showPlanCards;
   if (!showPlanCards) return;
+  // A device with named parameters has no scenes, no preset to pin, and no
+  // undo snapshot (its state cannot be captured through the FM9's scene
+  // path). This panel used to tell an IR-2 user "UNDO ready", "FM9
+  // connected" and "Undo available after send": three claims, all false,
+  // one of them a safety net that did not exist. Say what is true instead.
+  if (lastState && lastState.device_params) {
+    const label = (deviceState && deviceState.label) || 'the device';
+    const n = currentPlan.actions.length;
+    $('blastbody').innerHTML = `${n} setting${n === 1 ? '' : 's'} on the ${esc(label)}. `
+      + 'No scenes: this is the whole sound.';
+    const blocked = currentPlan.actions.filter(
+      a => (a.validation_errors || []).length).length;
+    const drows = [
+      [blocked === 0, blocked === 0 ? 'Ready to send'
+        : `${blocked} change${blocked === 1 ? '' : 's'} BLOCKED`],
+      [!off, off ? `Reconnect the ${label} first` : `${label} connected`],
+      [gigOn !== true, gigOn === true ? 'GIG LOCK blocks transmission'
+                                      : 'Every change read back'],
+    ];
+    // The no-undo caveat goes FIRST. At the bottom it was clipped by the
+    // column on a 700px window, first as a separate card and then as the last
+    // line here, which hid the one caveat that matters before you press send.
+    $('preflightbody').innerHTML = `<div class="warn">! No undo on this device</div>`
+      + drows.map(([ok, text]) =>
+        `<div class="${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'} ${esc(text)}</div>`).join('');
+    $('reversecard').hidden = true;
+    return;
+  }
   const hit = [...affectedScenes].sort((a, b) => a - b);
   $('blastbody').innerHTML = hit.length
     ? hit.map(x => `<span class="schip">${x}</span>`).join('')

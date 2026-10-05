@@ -528,6 +528,11 @@ def build_home(readme: str, release: dict) -> None:
     caps = screenshot_captions()
 
     hero = f"""
+<aside class="newsbar">
+  <p><strong>New</strong> the <a href="/devices/">BOSS IR-2</a> is fully
+  supported: talk to it the same way, and load your own cabinet IRs onto it.</p>
+</aside>
+
 <section class="hero2">
   <div class="hero-copy">
     <p class="kicker">{TAGLINE}</p>

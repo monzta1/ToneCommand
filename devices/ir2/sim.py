@@ -26,6 +26,11 @@ class SimIR2:
         }
         for slot in range(p.IR_FIRST_SLOT, p.IR_FIRST_SLOT + p.IR_SLOTS):
             self.blocks[p.ir_slot_addr(slot, p.IR_NAME)] = [0x20] * 32
+            self.blocks[p.ir_slot_addr(slot, p.IR_SIZE)] = [0] * 4
+            self.blocks[p.ir_slot_addr(slot, p.IR_FILE)] = [0] * 128
+            # 3,400 words, as the unit holds: 1,632 samples, the quantised
+            # tables, then zero padding.
+            self.blocks[p.ir_slot_addr(slot, p.IR_DATA)] = [0] * (3400 * 8)
         self.writes: list[tuple[int, list[int]]] = []
         self._events: list[tuple[int, list[int]]] = []
         self.closed = False
