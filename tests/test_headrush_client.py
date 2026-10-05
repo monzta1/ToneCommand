@@ -23,7 +23,9 @@ from pathlib import Path
 import pytest
 
 from devices.headrush.client import (
+    DEFAULT_ATTEMPTS,
     NOTIFICATION_KINDS,
+    _LOSSY_LOOKUP_CODES,
     HeadrushClient,
     _getaddrinfo_resolver,
     describe_unreachable,
@@ -130,22 +132,34 @@ def test_a_family_miss_on_the_filtered_attempt_drops_the_filter_and_finds_the_un
 
 @pytest.mark.skipif(_FAMILY_MISS_CODE is None,
                     reason="this platform defines neither EAI_NODATA nor EAI_ADDRFAMILY")
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="fails on Windows only; root cause not yet established, tracked in #186",
-)
 def test_a_family_miss_after_the_filter_is_gone_is_not_retried():
     """A family miss is only ever a verdict on the filter. Once the filter is
     gone the same code means the name really has no address, and retrying it
     just pays the lookup again.
+
+    #186: on Windows this cannot hold, and it is not a bug in the resolver.
+    Winsock defines EAI_NODATA as the same number as EAI_NONAME
+    (WSAHOST_NOT_FOUND), so "no address of that family" and "no such name,
+    try again" are one code there, and a lossy-lookup retry is the right
+    reading of it. The test asserts that platform fact first, so a Windows
+    where the codes differ fails here rather than passing on a premise that
+    no longer holds, then checks the retry still stops within the budget.
     """
     resolver = RecordingResolver(
         socket.gaierror(socket.EAI_NONAME, "dropped"),
-        socket.gaierror(_FAMILY_MISS_CODE, "no address of that family"),
+        *[socket.gaierror(_FAMILY_MISS_CODE, "no address of that family")] * (DEFAULT_ATTEMPTS + 1),
     )
+    collides = _FAMILY_MISS_CODE in _LOSSY_LOOKUP_CODES
+    if sys.platform == "win32":
+        assert collides, (f"expected EAI_NODATA == EAI_NONAME on Windows, got "
+                          f"{_FAMILY_MISS_CODE} vs {socket.EAI_NONAME}")
     with pytest.raises(socket.gaierror):
         resolve_device_addresses("unit.local", resolve=resolver, sleep=_no_sleep)
-    assert resolver.calls == [4, None], "no third attempt after an unfiltered family miss"
+    if collides:
+        assert resolver.calls == [4] + [None] * (DEFAULT_ATTEMPTS - 1), \
+            "one code for both: retried as a lossy lookup, and never past the budget"
+    else:
+        assert resolver.calls == [4, None], "no third attempt after an unfiltered family miss"
 
 
 def test_a_dropped_mdns_reply_is_retried_rather_than_reported_as_a_dead_device():

@@ -23,6 +23,11 @@ from fastapi.responses import (FileResponse, JSONResponse, Response,
                                StreamingResponse)
 from pydantic import BaseModel
 
+# #177: a plain wheel install has no config/, ui/ or recipes/; say so in one
+# line before any import below reads a catalog that is not there.
+from fm9.paths import require_supported_install
+require_supported_install()
+
 from fm9.adapter import (CAPABILITY_PROTOCOLS, UNDECLARED, Capabilities,
                          DeviceAdapter)
 from fm9.device import FM9, FM9NotFound, get_cab_slots, get_store_slots

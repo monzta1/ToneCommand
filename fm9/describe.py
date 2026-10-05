@@ -457,7 +457,7 @@ def extract(source_text: str, cancel=None) -> dict:
             [cli, "-p", EXTRACT_TASK + source_text, "--output-format", "json",
              "--model", planner.cli_model()],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            cwd="/tmp",
+            cwd=tempfile.gettempdir(),
             env={**planner.cli_env(planner.CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
     except OSError as exc:

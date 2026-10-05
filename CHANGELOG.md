@@ -36,7 +36,32 @@ yet is named, with the issue tracking it, instead of being silently ignored.
   - Downloading a device's support on first plug-in, instead of shipping
     every device to everyone, is the next phase (#208).
 
+### Changed
+- **CI runs in four shards per OS (#196).** Whole test files are dealt
+  count-balanced across four runners on Linux and on Windows, and an
+  account job fails the required `tests` check unless the shards together
+  executed exactly the collected suite: nothing missing, nothing twice.
+  A new push to a pull request cancels its run in flight. Every Windows
+  skip added by #184 is gone: each gap is fixed, or (the HeadRush lookup
+  test) replaced by an assertion of the Windows fact that explains it.
+
 ### Fixed
+- **Windows: the API key and the TONE3000 token were readable by every
+  local account (#186).** Windows ignores POSIX file modes, so the
+  "owner-only" settings and token files were not. They now get an access
+  list granting only you (set with icacls, which ships with Windows), and
+  the secret is written only after the file is shown to be private; if that
+  cannot be done, nothing is written.
+- **Windows: the Claude CLI and grok planner backends ran in `/tmp`**, a
+  folder Windows does not normally have (as did reading a source and
+  listing grok's models), so on Windows those calls failed before the
+  backend ever started; the grok tests showed it as `NotADirectoryError`
+  (#186). They run in the system temp folder now.
+- **A plain `pip install .` crashed at startup** on a missing catalog file.
+  It now stops with one line naming the two supported ways to install
+  (from a checkout with `pip install -e .`, or the bundled app), and
+  docs/SETUP.md says so (#177). Making the wheel install work belongs to
+  #208.
 - **A non-editable install could not use the IR-2 or the ToneX.** The
   package list carried `devices` and `devices.headrush` but not
   `devices.ir2` or `devices.tonex`; the packaging test only compared

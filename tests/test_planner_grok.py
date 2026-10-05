@@ -30,11 +30,6 @@ REAL_ENVELOPE = {
 }
 
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="the fake backend is a shebang script, which Windows does not run; "
-           "a .cmd shim or sys.executable invocation is tracked in #186",
-)
 
 
 def fake_grok(tmp_path, monkeypatch, stdout="", stderr="", code=0):
@@ -50,8 +45,28 @@ def fake_grok(tmp_path, monkeypatch, stdout="", stderr="", code=0):
         f"sys.stderr.write({stderr!r})\n"
         f"sys.exit({code})\n", encoding="utf-8")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setattr(planner, "find_grok_cli", lambda: str(script))
+    monkeypatch.setattr(planner, "find_grok_cli", lambda: _executable(script, tmp_path))
     return argv_log
+
+
+def _executable(script, tmp_path):
+    """The fake as something the OS runs directly. Windows ignores shebangs,
+    and a .cmd shim would put the prompt through cmd.exe, which rewrites the
+    % < > | it contains, so there it becomes a real grok.exe: distlib's
+    launcher with the script inside (the same mechanism as pip's console
+    scripts), which hands argv over exactly as a native CLI receives it
+    (#186)."""
+    if sys.platform != "win32":
+        return str(script)
+    from pip._vendor.distlib.scripts import ScriptMaker
+    src, out = tmp_path / "src", tmp_path / "bin"
+    src.mkdir(exist_ok=True)
+    out.mkdir(exist_ok=True)
+    (src / "grok.py").write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+    maker = ScriptMaker(str(src), str(out), add_launchers=True)
+    maker.executable = sys.executable
+    made = maker.make("grok.py")
+    return next(p for p in made if p.lower().endswith(".exe"))
 
 
 def call():

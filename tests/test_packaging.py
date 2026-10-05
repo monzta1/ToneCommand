@@ -160,3 +160,42 @@ def test_the_device_catalog_ships_as_package_data():
     from devices import catalog
     assert "resources.files(\"devices\")" in (ROOT / "devices" / "catalog.py").read_text(encoding="utf-8")
     assert catalog.load()
+
+
+# --- #177: an unsupported install says so in one line -------------------------
+
+def test_install_kind_tells_checkout_wheel_and_frozen_apart(tmp_path, monkeypatch):
+    from fm9 import paths
+    assert paths.install_kind(ROOT) == "checkout"
+    assert paths.install_kind(tmp_path) == "wheel"            # site-packages: no pyproject, no ui/
+    (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
+    assert paths.install_kind(tmp_path) == "wheel"            # both markers, not one
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert paths.install_kind(tmp_path) == "frozen"
+
+
+def test_a_wheel_install_is_refused_in_one_line_before_any_data_read(tmp_path):
+    """The code alone, as a wheel lays it out (no pyproject.toml, no config/,
+    ui/ or recipes/), imported from another directory: one line naming the
+    supported installs and exit 1, not a FileNotFoundError from the registry."""
+    import shutil
+    site = tmp_path / "site"
+    site.mkdir()
+    shutil.copy(ROOT / "server.py", site / "server.py")
+    for pkg in ("fm9", "devices", "tools"):
+        shutil.copytree(ROOT / pkg, site / pkg, ignore=shutil.ignore_patterns("__pycache__"))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    env = {**os.environ, "PYTHONPATH": str(site), "TONECOMMAND_SIM": "1"}
+    out = subprocess.run([sys.executable, "-c", "import server"], cwd=elsewhere,
+                         env=env, capture_output=True, text=True)
+    from fm9 import paths
+    assert out.returncode == 1
+    assert out.stderr.strip().splitlines()[-1] == paths.UNSUPPORTED_INSTALL
+    assert "FileNotFoundError" not in out.stderr and "Traceback" not in out.stderr
+
+
+def test_setup_doc_states_the_supported_installs():
+    doc = (ROOT / "docs" / "SETUP.md").read_text(encoding="utf-8")
+    assert "## Supported installs" in doc
+    assert "A plain `pip install .` (or installing the wheel) is not supported yet" in doc

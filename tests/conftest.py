@@ -131,3 +131,37 @@ def _no_hardware_in_device_discovery(monkeypatch):
     # #209: the detected list reads the same bus, so it is off for the same
     # reason; tests/test_device_catalog.py turns the real one back on.
     monkeypatch.setattr(server, "detected_devices", lambda: [])
+
+
+# --- #196: one CI shard of the suite ------------------------------------------
+# `--shard I/N` keeps the files tests/shard.py deals to shard I and deselects
+# the rest. The deal depends only on the collected node ids, so every xdist
+# worker computes the same one. CI's account job proves the shards together
+# executed exactly the collection.
+
+def pytest_addoption(parser):
+    parser.addoption("--shard", default=None, metavar="I/N",
+                     help="run shard I (0-based) of N: whole files, count-balanced (#196)")
+
+
+def _shard_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "tonecommand_test_shard", Path(__file__).with_name("shard.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def pytest_collection_modifyitems(config, items):
+    spec = config.getoption("--shard")
+    if not spec:
+        return
+    shard = _shard_module()
+    index, total = shard.parse(spec)
+    mine = set(shard.deal(shard.counts_of(i.nodeid for i in items), total)[index])
+    keep = [i for i in items if shard.file_of(i.nodeid) in mine]
+    dropped = [i for i in items if shard.file_of(i.nodeid) not in mine]
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+    items[:] = keep

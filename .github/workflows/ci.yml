@@ -5,11 +5,59 @@ on:
     branches: [main]
   pull_request:
 
+# #196: a new push to a pull request cancels that pull request's run in
+# flight; nobody waits on shards for a commit that is already obsolete.
+# Pushes to main get their own group per ref and are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   suite:
     # Windows too (#184): its locale encoding is cp1252, so a text read
     # without an explicit encoding dies on any non-ASCII byte we ship. A
     # Linux-only matrix cannot see that; a user's install did.
+    # #196: each OS runs the suite as four shards (tests/shard.py deals whole
+    # files, count-balanced), each still parallel inside with -n auto.
+    name: suite (${{ matrix.os }}, shard ${{ matrix.shard }} of 4)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Run one shard of the test suite (simulator + validation, no hardware)
+        run: pytest tests/ -q -n auto --shard ${{ matrix.shard }}/4 --junitxml=shard.xml
+      - name: The report of every test this shard executed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.os }}-${{ matrix.shard }}
+          path: shard.xml
+          if-no-files-found: error
+      - name: Verification ladder on the simulator
+        if: matrix.shard == 0 && runner.os != 'Windows'
+        run: TONECOMMAND_SIM=1 python tools/preset_doctor.py 0 1
+      - name: Verification ladder on the simulator (Windows)
+        if: matrix.shard == 0 && runner.os == 'Windows'
+        run: python tools/preset_doctor.py 0 1
+        env:
+          TONECOMMAND_SIM: "1"
+
+  account:
+    # No test may be dropped by the deal: the four shards' reports together
+    # must be exactly one full collection on that OS, nothing missing, run
+    # twice, or run without being collected.
+    name: account (${{ matrix.os }})
+    needs: suite
+    if: always()
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,27 +70,27 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Run test suite (simulator + validation, no hardware)
-        run: pytest tests/ -q -n auto
-      - name: Verification ladder on the simulator
-        if: runner.os != 'Windows'
-        run: TONECOMMAND_SIM=1 python tools/preset_doctor.py 0 1
-      - name: Verification ladder on the simulator (Windows)
-        if: runner.os == 'Windows'
-        run: python tools/preset_doctor.py 0 1
-        env:
-          TONECOMMAND_SIM: "1"
+      - name: Collect the whole suite
+        run: pytest tests/ -q --collect-only -p no:cacheprovider > ids.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: junit-${{ matrix.os }}-*
+          path: reports
+      - name: Every collected test ran exactly once
+        shell: bash
+        run: python tests/shard.py --account ids.txt reports/*/shard.xml
 
   tests:
     # The one required check on main, kept under that exact name: a matrix
-    # job reports as "tests (ubuntu-latest)" and "tests (windows-latest)",
-    # which branch protection would wait for forever. This gate fails
-    # unless every leg of the matrix passed.
-    needs: suite
+    # job reports as "suite (...)", which branch protection would wait for
+    # forever. This gate fails unless every shard on every OS and both
+    # accounts passed. A cancelled or skipped job is not coverage.
+    needs: [suite, account]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Every platform passed
+      - name: Every shard and both accounts passed
         run: |
-          echo "suite result: ${{ needs.suite.result }}"
+          echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}"
           test "${{ needs.suite.result }}" = "success"
+          test "${{ needs.account.result }}" = "success"
