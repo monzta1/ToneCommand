@@ -6,6 +6,8 @@ FM9 registry and called `set_param_display`, and the IR-2 has no blocks and
 publishes no taper, so all three action kinds raised. The refusals were
 right. The loop was the thing that was wrong.
 """
+from pathlib import Path
+
 import pytest
 
 from fm9.adapter import NamedParams
@@ -165,3 +167,18 @@ def test_a_whole_plan_lands_on_the_device(ir2):
     assert ir2.patch() == {"BASS": 54, "MIDDLE": 78, "TREBLE": 80,
                            "LEVEL": 64, "GAIN": 96, "AMBIENCE": 18,
                            "AMP": "BROWN"}
+
+
+def test_an_fm9_port_event_does_not_overrule_another_selected_device():
+    """The link stream watches the FM9's USB port and nothing else. With an
+    IR-2 selected, unplugging an FM9 used to paint the header OFFLINE and dim
+    the page over a pedal that was working, until the next poll corrected it.
+    An FM9 event may only drive the header when the FM9 is the selected
+    device; otherwise it just prompts a fresh read of the device in use."""
+    ui = (Path(__file__).resolve().parent.parent / "ui" / "index.html").read_text(
+        encoding="utf-8")
+    handler = ui.split("if (ev !== 'link') continue;")[1].split("} catch")[0]
+    assert "d.present || devNamed()" in handler
+    # and the FM9's own unplug still goes offline, unchanged
+    assert "$('link').className = 'pill off';" in handler
+    assert "setRigOff(true);" in handler

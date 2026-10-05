@@ -5210,7 +5210,13 @@ async function watchLink() {
       if (!r.ok || !r.body) throw new Error('no stream');
       for await (const [ev, d] of sseFrom(r)) {
         if (ev !== 'link') continue;
-        if (d.present) {
+        // This stream watches the FM9's USB port and nothing else. With
+        // another device selected, an FM9 arriving or leaving says nothing
+        // about the device in use, so it only prompts a fresh read of THAT
+        // device. Before this, unplugging an FM9 painted the header OFFLINE
+        // and dimmed the page over an IR-2 that was working, until the next
+        // poll put it right.
+        if (d.present || devNamed()) {
           // Present is a cue, not a verdict: the full state read is what
           // proves the rig answers, and it is what turns the light green.
           await refresh();

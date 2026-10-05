@@ -4,6 +4,20 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **Unplugging an FM9 marked a working IR-2 offline.** The page listens to a
+  link stream that watches the FM9's USB port and nothing else, and on an
+  absent event it painted the header OFFLINE and dimmed the interface without
+  checking which device was selected. With an IR-2 in use, unplugging an FM9
+  (or opening the page with no FM9 present) showed the IR-2 as offline until
+  the next five-second poll put it right. An FM9 event now only drives the
+  header when the FM9 is the selected device; otherwise it just prompts a
+  fresh read of the device in use. Checked both ways: an FM9 unplug leaves an
+  IR-2 reading LINKED, and still takes an FM9 offline.
+- Plugging an FM9 in mid-session does not switch away from a selected IR-2.
+  That is deliberate: changing devices under someone, possibly mid-plan,
+  would be worse than not. The FM9 is always in the picker.
+
 ## 1.5.6 (2026-10-05)
 
 **The BOSS IR-2 is fully supported.** Plug it in and talk to it: pick from
