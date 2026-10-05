@@ -6716,8 +6716,17 @@ function unsupportedCard(dev) {
 async function runPlugCard(dev, io) {
   const mine = ++plugCardGen;
   const token = io.claim();               // a manual pick after this supersedes the card
-  const gone = () => mine !== plugCardGen || io.current() !== token;
-  const paint = st => { if (mine === plugCardGen) io.paint(Object.assign({kind: dev.kind, title: `${dev.label} detected`}, st)); };
+  // Two ways to be overtaken, handled differently: a NEWER card owns the
+  // painter now, so this one leaves without touching it; a manual pick in
+  // the device picker leaves this card current, so it closes itself.
+  const stale = () => mine !== plugCardGen;
+  const picked = () => io.current() !== token;
+  const overtaken = () => {
+    if (stale()) return true;
+    if (picked()) { io.paint(null); return true; }
+    return false;
+  };
+  const paint = st => { if (!stale()) io.paint(Object.assign({kind: dev.kind, title: `${dev.label} detected`}, st)); };
   // Step 1: support. Built in today; #208 phase 3 downloads it here.
   paint({pct: 15, text: 'Getting support ready...'});
   paint({pct: 40, text: `Connecting to the ${dev.label}...`});
@@ -6728,17 +6737,16 @@ async function runPlugCard(dev, io) {
   let r;
   try { r = wasActive ? await io.reconnect() : await io.select(dev.kind); }
   catch (e) { r = {ok: false, error: String((e && e.message) || e)}; }
-  if (mine !== plugCardGen) return 'superseded';
+  if (overtaken()) return 'superseded';
   if (!r || !r.ok) {
     paint({error: true, pct: null, text: (r && r.error) || `Could not connect to the ${dev.label}.`});
     return 'refused';
   }
-  if (gone()) { io.paint(null); return 'superseded'; }
   paint({pct: 70, text: `Reading the ${dev.label}...`});
   // Step 3: read. Ready means a fresh, connected read of THIS device, not
   // merely that a request came back.
   const s = await io.refresh();
-  if (gone()) { io.paint(null); return 'superseded'; }
+  if (overtaken()) return 'superseded';
   if (!s || !s.fresh || !s.connected || s.active !== dev.kind) {
     paint({error: true, pct: null, text: `Could not read the ${dev.label}. Check the cable, then click the link light.`});
     return 'unread';

@@ -248,7 +248,19 @@ const api = new Function("$", "sessionStorage", "deviceGen", "deviceState", "fet
   code + "\nreturn {runPlugCard, renderDetected, dismissKind};")(
   $, sessionStorage, deviceGen, deviceState, null, null, null);
 const results = [];
-if (sc.card) results.push(await api.runPlugCard(sc.card, io));
+if (sc.overlap) {
+  // Card A's read is held open while card B arrives and finishes; then A's
+  // read comes back late. Only the first refresh is deferred.
+  let release, first = true;
+  io.refresh = async () => { calls.push(["refresh"]);
+    if (first) { first = false; await new Promise(r => { release = r; }); }
+    return sc.read; };
+  const a = api.runPlugCard(sc.card, io);
+  await new Promise(r => setImmediate(r));
+  const b = await api.runPlugCard(sc.overlap, io);
+  release();
+  results.push(await a, b);
+} else if (sc.card) results.push(await api.runPlugCard(sc.card, io));
 for (const list of sc.lists || []) {
   if (sc.dismiss) api.dismissKind(sc.dismiss);
   results.push(api.renderDetected(list, io));
@@ -366,3 +378,23 @@ def test_page_wires_the_card_into_the_poll_the_stream_and_dismiss():
     assert "return {connected: false, fresh: pollGen === deviceGen, error: String((e && e.message) || e)};" in PAGE
     # the real io goes through the same select and reconnect routes a click uses
     assert "const r = await fetch('/api/reconnect', {method: 'POST'});" in PAGE
+
+
+def test_card_closes_when_a_manual_pick_meets_a_refused_switch(tmp_path):
+    """Review F1: the refusal arrived after a manual pick and was painted
+    anyway, leaving a dead card on screen for good."""
+    r = _card(tmp_path, card=IR2, active="fm9", read=GOOD_READ, pickDuring=True,
+              select={"ok": False, "error": "a reviewed plan is pending for the current device"})
+    assert r["results"] == ["superseded"]
+    assert r["paints"][-1] is None
+    assert not any(p and p.get("error") for p in r["paints"])
+
+
+def test_card_a_late_read_never_hides_a_newer_card(tmp_path):
+    """Review F2: an older card finishing late cleared the card that had
+    replaced it."""
+    r = _card(tmp_path, card=IR2, overlap=dict(FM9), active="ir2",
+              read={"connected": True, "active": "fm9", "fresh": True})
+    assert r["results"] == ["superseded", "ready"]
+    assert r["paints"][-1] is not None
+    assert r["paints"][-1]["kind"] == "fm9" and r["paints"][-1]["text"] == "Ready. Ask for a tone."
