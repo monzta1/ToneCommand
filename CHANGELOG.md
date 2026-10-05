@@ -38,7 +38,8 @@ yet is named, with the issue tracking it, instead of being silently ignored.
 
 ### Changed
 - **CI runs in four shards per OS (#196).** Whole test files are dealt
-  count-balanced across four runners on Linux and on Windows, and an
+  across four runners on Linux and on Windows, balanced by each file's
+  measured seconds (`tests/shard_weights.json`, from CI's own reports), and an
   account job fails the required `tests` check unless the shards together
   executed exactly the collected suite: nothing missing, nothing twice.
   A new push to a pull request cancels its run in flight. Every Windows

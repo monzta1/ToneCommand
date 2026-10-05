@@ -34,7 +34,7 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Run one shard of the test suite (simulator + validation, no hardware)
-        run: pytest tests/ -q -n auto --shard ${{ matrix.shard }}/4 --junitxml=shard.xml
+        run: pytest tests/ -q -n auto --dist worksteal --shard ${{ matrix.shard }}/4 --junitxml=shard.xml
       - name: The report of every test this shard executed
         if: always()
         uses: actions/upload-artifact@v4

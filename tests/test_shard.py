@@ -121,3 +121,33 @@ def test_the_shard_option_splits_the_real_suite_exactly():
     assert all(parts)
     union = [n for p in parts for n in p]
     assert sorted(union) == sorted(whole) and len(union) == len(set(union))
+
+
+def test_measured_seconds_beat_test_counts():
+    """Two long tests make a small file the heaviest; by seconds it gets a
+    shard to itself, where counting tests would have piled work on top."""
+    counts = {"tests/test_gates.py": 16, "tests/test_a.py": 60, "tests/test_b.py": 60,
+              "tests/test_c.py": 60}
+    weights = {"tests/test_gates.py": 150.0, "tests/test_a.py": 50.0,
+               "tests/test_b.py": 50.0, "tests/test_c.py": 50.0}
+    assert ["tests/test_gates.py"] in shard.deal(counts, 2, weights)
+    assert ["tests/test_gates.py"] not in shard.deal(counts, 2)
+
+
+def test_a_file_with_no_weight_is_costed_at_the_median_rate():
+    counts = {"tests/test_a.py": 10, "tests/test_b.py": 10, "tests/test_new.py": 4}
+    weights = {"tests/test_a.py": 20.0, "tests/test_b.py": 40.0}      # 2 s and 4 s per test
+    assert shard.costs(counts, weights)["tests/test_new.py"] == 4 * 3.0
+    dealt = [f for s in shard.deal(counts, 2, weights) for f in s]
+    assert sorted(dealt) == sorted(counts)
+
+
+def test_the_committed_weights_cover_real_files(tmp_path):
+    w = shard.load_weights()
+    assert w and all(k.startswith("tests/test_") and k.endswith(".py") for k in w)
+    report = tmp_path / "r.xml"
+    report.write_text('<testsuites><testsuite>'
+                      '<testcase classname="tests.test_x" name="a" time="1.5"/>'
+                      '<testcase classname="tests.test_x.TestK" name="b" time="2"/>'
+                      '</testsuite></testsuites>', encoding="utf-8")
+    assert shard.weights_from([report]) == {"tests/test_x.py": 3.5}

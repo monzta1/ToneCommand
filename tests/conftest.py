@@ -159,7 +159,8 @@ def pytest_collection_modifyitems(config, items):
         return
     shard = _shard_module()
     index, total = shard.parse(spec)
-    mine = set(shard.deal(shard.counts_of(i.nodeid for i in items), total)[index])
+    counts = shard.counts_of(i.nodeid for i in items)
+    mine = set(shard.deal(counts, total, shard.load_weights())[index])
     keep = [i for i in items if shard.file_of(i.nodeid) in mine]
     dropped = [i for i in items if shard.file_of(i.nodeid) not in mine]
     if dropped:
