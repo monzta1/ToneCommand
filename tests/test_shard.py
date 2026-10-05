@@ -50,6 +50,9 @@ def test_nodeid_and_junit_keys_meet():
     assert shard.nodeid_key("tests/test_x.py::test_y[a-1]") == "tests.test_x::test_y[a-1]"
     assert shard.nodeid_key("tests/test_x.py::TestK::test_y") == "tests.test_x.TestK::test_y"
     assert shard.nodeid_key("tests\\test_x.py::test_y") == "tests.test_x::test_y"
+    # found by the first sharded CI run: a parameter id holding "::"
+    assert shard.nodeid_key("tests/test_x.py::test_y[http://[::1]:8770]") == \
+        "tests.test_x::test_y[http://[::1]:8770]"
 
 
 def test_account_passes_only_an_exact_execution():

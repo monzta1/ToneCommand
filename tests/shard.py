@@ -66,10 +66,13 @@ def junit_key(classname: str, name: str) -> str:
 def nodeid_key(nodeid: str) -> str:
     """A collected node id in the same shape junit_key produces:
     tests/test_x.py::TestClass::test_y[p] -> tests.test_x.TestClass::test_y[p]."""
-    parts = nodeid.split("::")
+    # A parameter id may itself contain "::" (an IPv6 URL such as
+    # http://[::1]:8770), so the parameters come off before the split.
+    base, bracket, params = nodeid.partition("[")
+    parts = base.split("::")
     module = parts[0][:-3] if parts[0].endswith(".py") else parts[0]
     dotted = module.replace("\\", "/").replace("/", ".")
-    return junit_key(".".join([dotted, *parts[1:-1]]), parts[-1])
+    return junit_key(".".join([dotted, *parts[1:-1]]), parts[-1] + bracket + params)
 
 
 def executed(report_paths) -> list[str]:

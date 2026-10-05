@@ -56,7 +56,10 @@ yet is named, with the issue tracking it, instead of being silently ignored.
   folder Windows does not normally have (as did reading a source and
   listing grok's models), so on Windows those calls failed before the
   backend ever started; the grok tests showed it as `NotADirectoryError`
-  (#186). They run in the system temp folder now.
+  (#186). They run in the system temp folder now. **They still cannot run
+  on Windows**: the prompt (about 50,000 characters) is passed on the
+  command line, which Windows caps at 32,767. That is #211, found by these
+  same tests once they ran on Windows; the API backends are unaffected.
 - **A plain `pip install .` crashed at startup** on a missing catalog file.
   It now stops with one line naming the two supported ways to install
   (from a checkout with `pip install -e .`, or the bundled app), and
