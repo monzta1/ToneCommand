@@ -222,7 +222,9 @@ def test_an_example_loads_but_does_not_send():
     """Seeing the sentence is half of what the examples teach, and pressing
     ENGAGE stays the player's move."""
     fn = SCRIPT.split("$('egs').addEventListener('click'")[1].split("\n});")[0]
-    assert "$('prompt').value = EXAMPLES" in fn
+    # CURRENT_EXAMPLES since #198: the list follows the selected device, so a
+    # scene-less pedal is not offered "Wets in scene 2".
+    assert "$('prompt').value = CURRENT_EXAMPLES" in fn
     assert "fetch(" not in fn
     assert "$('engage').click" not in fn and "planPrompt" not in fn
 

@@ -142,7 +142,10 @@ def test_the_state_route_answers_for_a_device_with_no_scenes(ir2):
     assert r.status_code == 200
     d = r.json()
     assert d["connected"] is True
-    assert [p["name"] for p in d["params"]][0] == "BASS"
+    # NOT "params": that key is the FM9's own block metadata, and the
+    # collision made renderParams throw and paint the header OFFLINE.
+    assert "params" not in d
+    assert [p["name"] for p in d["device_params"]][0] == "BASS"
     assert d["preset"]["name"] == "CLEAN"
     assert "scenes" not in d, "claiming scenes here would be inventing them"
 

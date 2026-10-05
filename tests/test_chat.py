@@ -481,7 +481,9 @@ def test_transmitting_reports_into_the_conversation_too():
     the page from where somebody five turns into a conversation is looking."""
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "chatWorking = 'sending to the FM9...'" in fn
+    # Names the selected device since the IR-2 work, so an IR-2 send does not
+    # announce itself as going to an FM9.
+    assert "chatWorking = `sending to the ${devName()}...`" in fn
     assert "Sent ${good} change" in fn
     assert "Nothing was sent. ${plain}" in fn
 
@@ -1098,7 +1100,13 @@ def test_the_button_gets_its_own_label_back():
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     assert 'id="apply" hidden>SEND TO FM9<' in ui
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "'SEND TO FM9'" in fn, "restoring a shorter label renames the button"
+    # The label it gets back names the selected device, so an IR-2 send does
+    # not restore a button reading SEND TO FM9. sendTargetLabel() is 'FM9' on
+    # an FM9, so the FM9's label is unchanged.
+    assert "SEND TO ${sendTargetLabel()}" in fn, \
+        "restoring a shorter label renames the button"
+    assert "return ((lastState && lastState.device_params && deviceState && deviceState.label)" in ui
+    assert "|| 'FM9').toUpperCase();" in ui
 
 
 # --- naming the scenes too ------------------------------------------------

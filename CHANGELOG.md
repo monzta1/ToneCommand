@@ -4,6 +4,85 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed (the IR-2 could be selected, and then nothing actually worked)
+- **Every request typed with an IR-2 selected answered 500.** `_plan_for`
+  took an FM9 snapshot (a preset, eight scenes, a block grid) before it ever
+  reached the device-aware planning branch, and the IR-2 declines all three.
+  The state route had been made device-aware and the plan route had not,
+  and no test ran a request end to end. Proven fixed by doing exactly that:
+  a typed request planned, reviewed, confirmed and sent from the UI, the
+  pedal verified at every write.
+- **The confirm screen, the result screen and the plan panel all lied.**
+  `UNDO READY`, `Undo available after send`, `UNDO puts it back`, `SEND TO
+  FM9`, `FM9 connected`, `FM9 · loaded preset`, `No other scene moves`, a
+  green `Tone check passed` from a check that never ran, and STORE PRESET and
+  AUDITION ON FM9 buttons, all on a pedal with no undo, no presets to store,
+  no scenes and no audition path. Every one names the selected device or is
+  hidden now. The recovery line reads NO UNDO, and that caveat is the first
+  line of the always-visible ready check rather than a card that fell off
+  the bottom of the column on a laptop-height window.
+- **The review table was unreadable.** Seven changes were folded into one
+  row headed `SET_DEVICE_PARAM` and read `null 1 / AMP: set to null`, target
+  `FM9`, before `Not read`. Each parameter is its own row now, with its real
+  before and after read off the pedal.
+- **On any window up to 840px tall the pedal's whole state was invisible.**
+  The FM9 hides its signal chain on short windows and keeps its scene strip;
+  the IR-2's panel lives in that chain area and has no scene strip, so the
+  same rule hid everything. The panel is one compact row now and stays
+  visible at every height tested from 600 to 1100.
+- **The selector offered `PATCH 0` and `PATCH 1`.** The two stored patches
+  are technically the preset concept and mean nothing to a player. It lists
+  the eleven voicings by name now, and picking one changes the pedal. The
+  header reads VOICING.
+- **The update banner said "1.5.5 available, you have 1.5.3" on a 1.5.5
+  checkout**, with the button greyed. The version came from installed
+  package metadata, which only changes when `pip install -e .` is re-run.
+  In a repo checkout `pyproject.toml` is the running version now. The button
+  still refuses on a feature branch, and now says why on screen rather than
+  only in a tooltip.
+
+### Verified, and how
+- A scan of every visible word at idle, plan, review, confirm and a real send,
+  with the IR-2 selected, for `FM9`, the undo and store claims and the scene
+  wording: none appear. The same scan against the FM9 finds all of them,
+  which is correct there and proves the scan is real.
+- FM9 against the simulator, and FM9 to IR-2 and back in one session: scenes,
+  signal grid, labels and examples all restore.
+
+### Fixed (the interface did not adapt to the device, it only changed its label)
+- **The header said `FM9 OFFLINE` while the IR-2 was plugged in and
+  answering.** The state payload used the key `params`, which is the FM9's
+  own block and parameter metadata, so `renderParams` read a list as that
+  dict and threw. The exception landed in a catch that HARDCODED
+  `'FM9 · OFFLINE'`, painting a lie over a working device. The key is
+  `device_params` now, the FM9's renderers are not run for a device without
+  blocks or scenes, and that catch names whichever device is selected.
+- **The preset selector was empty.** It scanned 512 FM9 slots against a pedal
+  that has two stored patches. It now offers those two.
+- **Most of the pedal's state was invisible.** The parameter panel is 141px
+  of content and the chain area is pinned to 78px with overflow hidden, so
+  the amp voicing and six knob values were clipped away. The panel is a list,
+  not a signal chain, and no longer inherits that height.
+- The empty scene strip and the chain legend ("tap a pedal to tweak it") are
+  hidden for a device that has neither, and the panel heading names the
+  selected device rather than always saying FM9.
+- The example prompts follow the device. Offering "Wets in scene 2" to a
+  pedal with no scenes is an instruction that cannot work, which is worse
+  than offering nothing.
+- The AMP name used a hardcoded `1.5rem`, bypassing the page's `--ui-scale`
+  control, so it would not have grown with the rest of the interface. Caught
+  by `tests/test_text_size.py`.
+- The context panel kept the OTHER device's label after switching back, and a
+  stray duplicate attribute was left on that section. Both found by testing
+  FM9 to IR-2 and back in one session rather than each device alone.
+
+### Verified
+- FM9 against the simulator: 8 scenes, the signal grid, its own examples, the
+  right label, and no `named-device` class. Switching FM9 to IR-2 and back
+  restores every one of those.
+- Zero console errors in either mode, including opening all seven drawers and
+  a full poll cycle with the IR-2 selected.
+
 ### Added (#195: load your own cabinet IRs onto the BOSS IR-2)
 - ToneCommand writes a cab IR from your own library into the pedal. Proven
   end to end on hardware: `RKH 4x12 V30 SNH MD421W Center.wav`, 204 ms at
