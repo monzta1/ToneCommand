@@ -4,6 +4,14 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.6 (2026-10-05)
+
+**The BOSS IR-2 is fully supported.** Plug it in and talk to it: pick from
+its eleven voicings, shape gain and the tone stack, and load your own cabinet
+IRs onto it. Every change is shown for review before anything is sent and
+verified by reading the pedal back. There is no undo on this pedal, and
+ToneCommand says so before you send rather than after.
+
 ### Fixed (the IR-2 could be selected, and then nothing actually worked)
 - **Every request typed with an IR-2 selected answered 500.** `_plan_for`
   took an FM9 snapshot (a preset, eight scenes, a block grid) before it ever
