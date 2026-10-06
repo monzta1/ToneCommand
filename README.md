@@ -6,16 +6,31 @@
 
 <p align="center"><strong>OLD SOUL. NEW MACHINE. HUMANS IN COMMAND.</strong></p>
 
-<p align="center"><em>ToneCommand 1.0.0</em></p>
+<p align="center"><em>Multi-device: full support for the Fractal FM9 and the BOSS IR-2</em></p>
 
 <p align="center"><a href="https://tonecommand.com"><strong>tonecommand.com</strong></a>: install guides, docs, screenshots, recipes and downloads, in one place.</p>
 
-**Talk to your FM9. It builds the tone.** Type a sentence, get a gig-ready,
+**Talk to your rig. It builds the tone.** Type a sentence, get a gig-ready,
 multi-scene preset on your Fractal FM9 in minutes: the signal chain wired, amps
-voiced per scene, cabs chosen, scenes named on the footswitches. You read the
-exact list of parameter changes, you confirm, and only then do they land on the
-hardware over USB MIDI, verified by reading the unit back. A language model
-proposes; it never sends. Nothing reaches your amp until you say go.
+voiced per scene, cabs chosen, scenes named on the footswitches. Or plug in a
+BOSS IR-2 and ask it for a brown sound: it picks the voicing, sets the knobs,
+and can load your own cabinet IRs onto the pedal. You read the exact list of
+changes, you confirm, and only then do they land on the hardware over USB MIDI,
+verified by reading the unit back. A language model proposes; it never sends.
+Nothing reaches your amp until you say go.
+
+ToneCommand is no longer FM9-only. Plug a device in and it is recognised and
+greeted; every device declares what it can honestly do, and the same safety
+layer guards all of them.
+
+| Works with | Today |
+|---|---|
+| **Fractal FM9** | Full: blocks, scenes, amps, cabs, modifiers, stores, preset files |
+| **BOSS IR-2** | Full: all seven parameters, every amp voicing, and your own cab IRs |
+| **Fractal FM3** | Connects read-only: presets, scenes and blocks; full support next ([#40](https://github.com/monzta1/ToneCommand/issues/40)) |
+| **HeadRush, IK ToneX** | HeadRush rigs and parameters; ToneX captures listed, read-only by design |
+
+Every device and exactly what it can do: [docs/DEVICES.md](docs/DEVICES.md).
 
 ## Watch it happen
 
