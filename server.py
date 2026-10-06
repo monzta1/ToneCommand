@@ -2226,6 +2226,11 @@ def _reconnect_device(kind: str) -> dict:
         try:
             select_device_context(_build_context(kind))
         except Exception as e:      # noqa: BLE001  any failure to open is reported, never raised
+            # #212 review: the old adapter was closed above, so the context
+            # must not keep pointing at it; the next read says not connected
+            # instead of reading through a dead handle, and the report agrees.
+            ctx = device_context()
+            select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
             note_connection(False, f"{DEVICE_KINDS.get(kind, kind)}: {e}")
             return {"connected": False, "why": str(e)}
     note_connection(True)
@@ -2273,10 +2278,13 @@ def api_state():
         if getattr(adapter, "capabilities", None) and \
                 adapter.capabilities().has_named_params:
             try:
-                return _named_param_state(adapter, device)
+                out = _named_param_state(adapter, device)
+                note_connection(True)
+                return out
             except CapabilityDeclined:
                 raise
             except Exception as e:      # noqa: BLE001  reported, not swallowed
+                note_connection(False, str(e))           # #212: in the report too
                 return JSONResponse({"connected": False, "error": str(e),
                                      "gig_mode": _gig_mode["on"],
                                      "device": device}, status_code=200)

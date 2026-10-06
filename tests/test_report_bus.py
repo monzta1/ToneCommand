@@ -109,3 +109,34 @@ def test_the_transport_names_the_device_it_looked_for(monkeypatch):
         midi_transport.open_ports("fm3")
     with pytest.raises(midi_transport.TransportError, match="^FM9 MIDI ports not found"):
         midi_transport.open_ports("fm9")
+
+
+def test_a_failed_reconnect_leaves_no_dead_handle(log, monkeypatch):
+    """Review: the closed adapter stayed in the context, so the report said
+    'handle open' for a device that was gone."""
+    monkeypatch.setenv("TONECOMMAND_FM3_SIM", "1")
+    monkeypatch.setattr(server, "_gig_mode", {"on": False})
+    monkeypatch.setattr(server, "_plan_revisions", {})
+    monkeypatch.setattr(server, "_context", server._default_context)
+    client = TestClient(server.app)
+    assert client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    monkeypatch.setattr(server, "_build_context", lambda kind: (_ for _ in ()).throw(RuntimeError("FM3 missing")))
+    assert client.post("/api/reconnect").json() == {"connected": False, "why": "FM3 missing"}
+    assert server.device_context().kind == "fm3" and server.device_context().adapter is None
+    assert "Device: Fractal FM3 (fm3), not connected" in diagnostics.environment()
+    assert client.get("/api/state").json()["connected"] is False
+
+
+def test_a_named_device_read_failure_reaches_the_report(log, monkeypatch):
+    class Dead:
+        def capabilities(self):
+            from fm9.adapter import Capabilities
+            return Capabilities(has_named_params=True)
+
+        def named_params(self):
+            raise RuntimeError("IR-2 disconnected")
+    monkeypatch.setattr(server, "_context", server.DeviceContext("ir2", server.FM9_REGISTRY, Dead(), "BOSS IR-2"))
+    monkeypatch.setattr(server, "_named_param_state", lambda a, d: a.named_params())
+    s = TestClient(server.app).get("/api/state").json()
+    assert s["connected"] is False
+    assert _logged(log) == ["IR-2 disconnected"]
