@@ -10,6 +10,16 @@ import server
 from fm9 import diagnostics, midi_transport
 
 REAL_DETECTED = server.detected_devices
+REAL_MIDI = diagnostics._midi
+
+
+@pytest.fixture(autouse=True)
+def _report_reads_the_patched_transport(monkeypatch):
+    """Back to the real lookup, which reads midi_transport; each test below
+    patches midi_transport itself, so no test touches the machine's bus."""
+    monkeypatch.setattr(diagnostics, "_midi", REAL_MIDI)
+    monkeypatch.setattr(midi_transport, "port_names", lambda *a, **k: [])
+    monkeypatch.setattr(midi_transport, "output_names", lambda *a, **k: [])
 
 
 @pytest.fixture
@@ -140,3 +150,19 @@ def test_a_named_device_read_failure_reaches_the_report(log, monkeypatch):
     s = TestClient(server.app).get("/api/state").json()
     assert s["connected"] is False
     assert _logged(log) == ["IR-2 disconnected"]
+
+
+def test_fm9_reconnect_logs_an_unexpected_failure_and_resets_on_success(log, monkeypatch):
+    """Review: a RuntimeError on the FM9 reconnect path logged nothing, and a
+    success did not reset, so A, success, A was logged once."""
+    monkeypatch.setattr(server, "_context", server._default_context)
+    client = TestClient(server.app)
+    monkeypatch.setattr(server, "rescan_midi", lambda: None)
+    monkeypatch.setattr(server, "get_fm9", lambda: (_ for _ in ()).throw(RuntimeError("MIDI disconnected")))
+    assert client.post("/api/reconnect").json()["connected"] is False
+    monkeypatch.setattr(server, "get_fm9", lambda: object())
+    monkeypatch.setattr(server, "snapshot", lambda dev: {"preset": {"number": 1}})
+    assert client.post("/api/reconnect").json()["connected"] is True
+    monkeypatch.setattr(server, "get_fm9", lambda: (_ for _ in ()).throw(RuntimeError("MIDI disconnected")))
+    client.post("/api/reconnect")
+    assert _logged(log) == ["MIDI disconnected", "MIDI disconnected"]

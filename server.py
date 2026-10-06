@@ -2188,8 +2188,10 @@ def api_reconnect():
         except CapabilityDeclined:
             raise
         except Exception as e:
+            note_connection(False, str(e))           # #212: in the report too
             drop_fm9()
             return {"connected": False, "why": str(e)}
+    note_connection(True)
     return {"connected": True, "preset": snap.get("preset")}
 
 

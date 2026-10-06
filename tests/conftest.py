@@ -131,6 +131,13 @@ def _no_hardware_in_device_discovery(monkeypatch):
     # #209: the detected list reads the same bus, so it is off for the same
     # reason; tests/test_device_catalog.py turns the real one back on.
     monkeypatch.setattr(server, "detected_devices", lambda: [])
+    # #212: Report a problem lists the MIDI ports; with the real bus behind
+    # it every report-building test depended on the machine (and aborted in
+    # a sandbox with no MIDI service). tests/test_report_bus.py puts it back.
+    from types import SimpleNamespace
+    from fm9 import diagnostics
+    monkeypatch.setattr(diagnostics, "_midi", lambda: SimpleNamespace(
+        port_names=lambda *a, **k: [], output_names=lambda *a, **k: []))
 
 
 # --- #196: one CI shard of the suite ------------------------------------------
