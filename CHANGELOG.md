@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.8 (2026-10-06)
+
+**FM3 owners: plug it in.** The FM3 now connects through the FM9's own code,
+read-only for now: it shows your preset, scenes and blocks, and switches
+presets and scenes. And Report a problem finally says what is on the MIDI
+bus, so a device that will not connect can be diagnosed from one report.
+
 ### Added
 - **The FM3 connects, read-only (#212).** An FM3 is the same Fractal family
   as the FM9, so it now goes through the FM9's own code, addressed as an FM3.
