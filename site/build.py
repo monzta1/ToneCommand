@@ -522,21 +522,23 @@ def build_home(readme: str, release: dict) -> None:
     pre = sec[""]
     paras = [p.strip() for p in re.split(r"\n\s*\n", pre) if p.strip()]
     lead = next((p for p in paras if p.startswith("**Talk")), "")
-    lead = lead.replace("**Talk to your FM9. It builds the tone.** ", "", 1)
+    lead = lead.replace("**Talk to your rig. It builds the tone.** ", "", 1)
     lead_html, _ = render_md(lead)
     prompts = typed_prompts(sec.get("What you can say", "") + sec.get("Features", ""))
     caps = screenshot_captions()
 
     hero = f"""
 <aside class="newsbar">
-  <p><strong>New</strong> the <a href="/devices/">BOSS IR-2</a> is fully
-  supported: talk to it the same way, and load your own cabinet IRs onto it.</p>
+  <p><strong>New</strong> ToneCommand is multi-device: full support for the
+  Fractal FM9 and the <a href="/devices/">BOSS IR-2</a> (load your own cabinet
+  IRs onto it), and the FM3 now connects read-only. Plug a device in and it is
+  recognised.</p>
 </aside>
 
 <section class="hero2">
   <div class="hero-copy">
     <p class="kicker">{TAGLINE}</p>
-    <h1>Talk to your FM9.<br><span class="glow">It builds the tone.</span></h1>
+    <h1>Talk to your rig.<br><span class="glow">It builds the tone.</span></h1>
     <div class="lead">{lead_html}</div>
     <div class="cmdbar" data-prompts='{html.escape(json.dumps(prompts), quote=True)}' aria-label="Examples of what you can type">
       <span class="cmdlabel">COMMAND</span>
@@ -548,7 +550,7 @@ def build_home(readme: str, release: dict) -> None:
       <a class="btn" href="#watch-it-happen">Watch it happen</a>
       <a class="btn" href="/recipes/">Browse recipes</a>
     </p>
-    <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · <a href="/devices/">FM9, BOSS IR-2, HeadRush, ToneX</a> · current release <a href="/download/">{html.escape(release['version'])}</a></p>
+    <p class="version">Free and open source, Apache-2.0 · macOS, Windows and Linux · <a href="/devices/">FM9 and BOSS IR-2 in full; FM3 read-only; HeadRush, ToneX</a> · current release <a href="/download/">{html.escape(release['version'])}</a></p>
   </div>
   <figure class="hero-panel">
     <img src="{img_url('ui-full.png')}" alt="{html.escape(caps.get('ui-full.png', 'The ToneCommand interface'))}" width="2000" height="1299" fetchpriority="high">
@@ -669,7 +671,7 @@ def build_home(readme: str, release: dict) -> None:
 """)
     body = hero + '<div class="home prose">' + "".join(out) + "</div>"
     write("/", page(title="ToneCommand", path="/", version=release["version"],
-                    description="Natural-language tone control for the Fractal FM9 over USB MIDI. Describe the tone; review the exact changes; verified on real hardware.",
+                    description="Natural-language tone control over USB MIDI for the Fractal FM9 and the BOSS IR-2, with more devices joining. Describe the tone; review the exact changes; verified on real hardware.",
                     body=body, mermaid=uses_mermaid, wide=True))
 
 

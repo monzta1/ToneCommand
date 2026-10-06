@@ -201,8 +201,8 @@ HeadRush, and the ToneX (read-only by design).
 
 Hardware: developed and regression-tested on an FM9 Mk II Turbo. Other
 FM9 variants share the model byte and should behave identically, but are
-untested. Axe-Fx III and FM3 use different model bytes and are not
-supported. Firmware outside 11.x / 12.00 is untested; the editor
+untested. The FM3 connects read-only since 1.5.8 (see DEVICES.md); the
+Axe-Fx III uses a different model byte and is not supported. Firmware outside 11.x / 12.00 is untested; the editor
 protocol is unofficial and firmware-sensitive, and the hardware
 regression suite passing is the green light after any update. The
 original protocol feasibility findings, with the exact commands and

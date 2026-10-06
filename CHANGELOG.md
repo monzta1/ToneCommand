@@ -4,6 +4,14 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **ToneCommand says what it is now: multi-device.** The README, the
+  website's home page and the package description no longer read as
+  FM9-only: full support for the Fractal FM9 and the BOSS IR-2, the FM3
+  connecting read-only, HeadRush and ToneX, each linked to exactly what it
+  can do on the devices page, which gains the FM3. The README's stale
+  "ToneCommand 1.0.0" line is gone.
+
 ## 1.5.8 (2026-10-06)
 
 **FM3 owners: plug it in.** The FM3 now connects through the FM9's own code,
