@@ -144,6 +144,8 @@ DEVICE_KINDS = {
     "headrush": "HeadRush",
     "tonex": "IK Multimedia ToneX",
     "ir2": "BOSS IR-2",
+    # #212: read-only through the FM9 module, addressed as an FM3.
+    "fm3": "Fractal FM3",
 }
 #: Chosen explicitly, by kind, through /api/device/select. None means no
 #: choice has been made, which is only a problem when there is a choice.
@@ -165,7 +167,14 @@ def available_devices() -> list[dict]:
     # opt-in the same way the others are.
     if os.environ.get("TONECOMMAND_IR2_SIM") == "1" or _ir2_port_present():
         out.append({"kind": "ir2", "label": DEVICE_KINDS["ir2"]})
+    # #212: an FM3 is listed when DPDP sees its port, like the IR-2.
+    if os.environ.get("TONECOMMAND_FM3_SIM") == "1" or _fm3_port_present():
+        out.append({"kind": "fm3", "label": DEVICE_KINDS["fm3"]})
     return out
+
+
+def _fm3_port_present() -> bool:
+    return any(d["kind"] == "fm3" for d in detected_devices())
 
 
 def _ir2_port_present() -> bool:
@@ -231,6 +240,17 @@ def _build_context(kind: str) -> DeviceContext:
         # with, exactly as the ToneX context does; nothing reads it here.
         return DeviceContext("ir2", FM9_REGISTRY, IR2Adapter(client=client),
                              DEVICE_KINDS["ir2"])
+    if kind == "fm3":
+        # #212: the FM9 module addressed as an FM3, read-only at its port.
+        # The FM9 registry is lent for the status dump's block names; no
+        # parameter value is read through it on this device.
+        from fm9.device import FM3
+        if os.environ.get("TONECOMMAND_FM3_SIM") == "1":
+            from fm9.sim import SimFM3
+            adapter = SimFM3(FM9_REGISTRY)
+        else:
+            adapter = FM3(FM9_REGISTRY)
+        return DeviceContext("fm3", FM9_REGISTRY, adapter, DEVICE_KINDS["fm3"])
     if kind == "tonex":
         # No registry of its own yet: the pedal's surface is captures, not
         # blocks and parameters. The FM9 registry is lent so the device-blind
@@ -280,6 +300,15 @@ def api_device_select(body: dict):
                           "send or discard it before switching"},
                 status_code=409)
         if kind != device_context().kind:
+            # #212: build first, so a device that will not open is reported
+            # in words (and logged for Report a problem) and the current
+            # device is left exactly as it was.
+            try:
+                ctx = _build_context(kind)
+            except Exception as e:      # noqa: BLE001  any failure to open is reported, never raised
+                note_connection(False, f"{DEVICE_KINDS.get(kind, kind)}: {e}")
+                return JSONResponse({"error": f"could not open the {DEVICE_KINDS.get(kind, kind)}: {e}"},
+                                    status_code=503)
             if device_context().kind == "fm9":
                 drop_fm9()
             elif device_context().adapter is not None:
@@ -287,7 +316,8 @@ def api_device_select(body: dict):
                     device_context().adapter.close()
                 except Exception:      # noqa: BLE001  a dead handle is being dropped anyway
                     pass
-            select_device_context(_build_context(kind))
+            select_device_context(ctx)
+            note_connection(True)
         _selected_kind["kind"] = kind
     return {"ok": True, "selected": kind, "active": device_context().kind}
 
@@ -2152,14 +2182,35 @@ def api_reconnect():
         try:
             snap = snapshot(get_fm9())
         except FM9NotFound as e:
+            note_connection(False, str(e))
             drop_fm9()
             return {"connected": False, "why": str(e)}
         except CapabilityDeclined:
             raise
         except Exception as e:
+            note_connection(False, str(e))           # #212: in the report too
             drop_fm9()
             return {"connected": False, "why": str(e)}
+    note_connection(True)
     return {"connected": True, "preset": snap.get("preset")}
+
+
+#: #212: the last connection failure written to the diagnostics log, so a
+#: five second poll failing the same way does not write it every time. A
+#: different failure is written; a success resets it, so the same failure
+#: after a recovery is written again.
+_last_connection_failure: dict = {"message": None}
+
+
+def note_connection(ok: bool, message: str = "") -> None:
+    """Record a connection outcome for Report a problem (#212)."""
+    if ok:
+        _last_connection_failure["message"] = None
+        return
+    if message == _last_connection_failure["message"]:
+        return
+    _last_connection_failure["message"] = message
+    diagnostics.log_error("connection", message, device=device_context().kind)
 
 
 def _reconnect_device(kind: str) -> dict:
@@ -2177,7 +2228,14 @@ def _reconnect_device(kind: str) -> dict:
         try:
             select_device_context(_build_context(kind))
         except Exception as e:      # noqa: BLE001  any failure to open is reported, never raised
+            # #212 review: the old adapter was closed above, so the context
+            # must not keep pointing at it; the next read says not connected
+            # instead of reading through a dead handle, and the report agrees.
+            ctx = device_context()
+            select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
+            note_connection(False, f"{DEVICE_KINDS.get(kind, kind)}: {e}")
             return {"connected": False, "why": str(e)}
+    note_connection(True)
     return {"connected": True}
 
 
@@ -2222,18 +2280,25 @@ def api_state():
         if getattr(adapter, "capabilities", None) and \
                 adapter.capabilities().has_named_params:
             try:
-                return _named_param_state(adapter, device)
+                out = _named_param_state(adapter, device)
+                note_connection(True)
+                return out
             except CapabilityDeclined:
                 raise
             except Exception as e:      # noqa: BLE001  reported, not swallowed
+                note_connection(False, str(e))           # #212: in the report too
                 return JSONResponse({"connected": False, "error": str(e),
                                      "gig_mode": _gig_mode["on"],
                                      "device": device}, status_code=200)
         try:
             snap = snapshot(get_fm9())
             snap["device"] = device
+            # #212: the page offers no sound-changing control for this device.
+            snap["read_only"] = device_context().kind == "fm3"
+            note_connection(True)
             return snap
-        except FM9NotFound:
+        except FM9NotFound as e:
+            note_connection(False, str(e))
             drop_fm9()
             # gig_mode rides along even unplugged, so the pill in the header
             # stays true while the rig is off.
@@ -2241,6 +2306,7 @@ def api_state():
         except CapabilityDeclined:
             raise
         except Exception as e:
+            note_connection(False, str(e))
             drop_fm9()
             return JSONResponse({"connected": False, "error": str(e),
                                  "gig_mode": _gig_mode["on"], "device": device}, status_code=500)
@@ -2550,8 +2616,8 @@ def _name_the_build(result: dict, name: str | None,
 def api_plan(body: PromptBody):
     """The plan, in one request. Kept for callers that cannot hold a stream."""
     result = _plan_for(body)
-    if isinstance(result, dict) and "ambiguous_device" in result:
-        return JSONResponse(result, status_code=409)        # #94: say which
+    if isinstance(result, dict) and ("ambiguous_device" in result or result.get("read_only")):
+        return JSONResponse(result, status_code=409)        # #94: say which; #212: read-only
     if isinstance(result, dict) and "error" in result and len(result) == 1:
         return JSONResponse(result, status_code=502)
     return result
@@ -2826,6 +2892,12 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         return {"error": "say which device this build is for: "
                          + ", ".join(d["label"] for d in avail),
                 "ambiguous_device": [d["kind"] for d in avail]}
+    # #212: the FM3 is read-only; every action the planner writes is
+    # FM9-shaped, so nothing is planned for it, in words, before any model
+    # is asked.
+    if kind == "fm3":
+        from fm9.device import FM3_READ_ONLY
+        return {"error": FM3_READ_ONLY, "read_only": True}
     # #84: a new plan reads the rig as it is; an audition still hanging in
     # the edit buffer would be read as the player's cab. Put it back first.
     with _lock:

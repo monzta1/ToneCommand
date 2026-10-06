@@ -94,6 +94,28 @@ def port_names(env: dict | None = None, supriya_module: Any = None) -> list[str]
                 pass
 
 
+def output_names(env: dict | None = None, supriya_module: Any = None) -> list[str]:
+    """Output port names, opening nothing, for Report a problem (#212).
+    Empty, never raising, when no backend resolves."""
+    try:
+        b = backend(env)
+    except TransportError:
+        return []
+    if b == "mido":
+        return [str(n) for n in mido.get_output_names()]
+    sm = supriya_module or __import__("supriya_midi")
+    port = sm.MidiOut()
+    try:
+        return [str(n) for n in port.get_ports()]
+    finally:
+        close = getattr(port, "delete", None) or getattr(port, "close_port", None)
+        if close:
+            try:
+                close()
+            except Exception:
+                pass
+
+
 def open_ports(hint: str, env: dict | None = None, supriya_module: Any = None) -> tuple[Any, Any]:
     """(inp, outp) for the first input and output whose names contain
     `hint` (case-insensitive), through the resolved backend. Raises
@@ -104,7 +126,7 @@ def open_ports(hint: str, env: dict | None = None, supriya_module: Any = None) -
         ins = [n for n in mido.get_input_names() if hint in n.lower()]
         outs = [n for n in mido.get_output_names() if hint in n.lower()]
         if not ins or not outs:
-            raise TransportError("FM9 MIDI ports not found; is it connected and powered on?")
+            raise TransportError(_not_found(hint))
         return mido.open_input(ins[0]), mido.open_output(outs[0])
     sm = supriya_module or __import__("supriya_midi")
     return SupriyaIn.open(sm, hint), SupriyaOut.open(sm, hint)
@@ -145,7 +167,13 @@ def _pick(names: list[str], hint: str) -> int:
     for i, n in enumerate(names):
         if hint in str(n).lower():
             return i
-    raise TransportError("FM9 MIDI ports not found; is it connected and powered on?")
+    raise TransportError(_not_found(hint))
+
+
+def _not_found(hint: str) -> str:
+    """#212: name the device that was looked for. Before, an FM3 owner was
+    told the FM9 was missing."""
+    return f"{hint.upper()} MIDI ports not found; is it connected and powered on?"
 
 
 class SupriyaIn:

@@ -48,7 +48,7 @@ def test_select_auto_prefers_mido_then_supriya_then_refuses_with_the_install_lin
 def test_seam_the_device_layer_opens_ports_through_the_transport_only(monkeypatch):
     src = (ROOT / "fm9" / "device.py").read_text(encoding="utf-8")
     assert "mido.get_input_names" not in src and "mido.open_input" not in src
-    assert "midi_transport.open_ports(port_hint)" in src
+    assert "midi_transport.open_ports(port_hint or self.PORT_HINT)" in src
     # a missing device is still FM9NotFound with the one line
     monkeypatch.setattr(T, "open_ports", lambda hint, **k: (_ for _ in ()).throw(T.TransportError("FM9 MIDI ports not found; is it connected and powered on?")))
     with pytest.raises(FM9NotFound, match="not found"):

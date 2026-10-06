@@ -56,7 +56,9 @@ def public(entry: dict) -> dict:
             "supported": entry["adapter"] is not None,
             "verified": bool(entry["verified"]),
             "issue": entry["issue"],
-            "issue_url": f"{ISSUES_URL}{entry['issue']}" if entry["issue"] else None}
+            "issue_url": f"{ISSUES_URL}{entry['issue']}" if entry["issue"] else None,
+            # #212: supported for reading only (the FM3 through the FM9 module).
+            "read_only": bool(entry.get("read_only"))}
 
 
 def recognise(port_names) -> list[dict]:
