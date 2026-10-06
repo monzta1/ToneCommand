@@ -212,17 +212,21 @@ class SimState:
 class SimFM9Core:
     """Consumes protocol frames, mutates SimState, emits response frames."""
 
-    def __init__(self, state: SimState | None = None):
+    def __init__(self, state: SimState | None = None, model: int = p.MODEL_FM9):
         self.st = state or SimState()
+        # #212: the unit answers frames addressed to its own model and
+        # ignores the rest, which is how an FM3 treats an FM9 frame.
+        self.model = model
 
     def handle(self, frame: list[int]) -> list[list[int]]:
         d = frame[1:-1]                        # strip F0/F7 -> mido-style data
-        if list(d[:3]) != list(p.MFR) or d[3] != p.MODEL_FM9:
+        if list(d[:3]) != list(p.MFR) or d[3] != self.model:
             return []
         fn = d[4]
         body = d[5:-1]                          # strip checksum
         h = getattr(self, f"_fn_{fn:02x}", None)
-        return h(body) if h else []
+        replies = h(body) if h else []
+        return [p.readdress(r, self.model) for r in replies]
 
     # ---- preset install (0x77/0x78/0x79 dump receive) --------------------
     # The write direction is hardware-unverified everywhere, this simulator
@@ -791,4 +795,18 @@ def SimFM9(registry: Registry | None = None) -> FM9:
     from fm9.captures import CaptureStore
     dev.capture_store = CaptureStore(slots=8, formats=(".nam",))
     core.st.capture_store = dev.capture_store
+    return dev
+
+
+def SimFM3(registry: Registry | None = None):
+    """#212: an FM3 backed by the simulator, answering only frames addressed
+    to the FM3's model byte. Its block complement is the FM9's here, which
+    the read-only FM3 never relies on: it reads names, scenes and the status
+    dump, nothing that depends on the parameter map."""
+    from fm9.device import FM3
+    core = SimFM9Core(SimState(registry), model=p.MODEL_FM3)
+    inp = _SimIn()
+    outp = _SimOut(core, inp)
+    dev = FM3(registry=core.st.reg, ports=(inp, outp))
+    dev.sim_core = core
     return dev

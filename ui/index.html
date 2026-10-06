@@ -2975,6 +2975,19 @@
   /* What a named-parameter device does not have, and must not be shown:
      a scene strip, a chain legend, or the chain's reserved height. */
   body.named-device #context .scenes { display: none; }
+  /* #212: a read-only device: nothing that would change the sound. */
+  body.readonly-device #auditionbtn,
+  body.readonly-device #storeafter,
+  body.readonly-device #dirty { display: none; }
+  body.readonly-device #context .gridnote { display: none; }
+  body.readonly-device #context .pathzone { display: flex; height: auto; }
+  .ropanel { display: flex; align-items: center; gap: 6px; padding: 2px;
+             flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+  .ronote { color: var(--amber); font-size: var(--fs-label); margin-right: 6px; }
+  .ronote a { color: var(--cyan); }
+  .robk { border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px;
+          color: var(--text); font-size: var(--fs-label); flex-shrink: 0; }
+  .robk.off { opacity: 0.55; border-style: dashed; }
   /* What a named-parameter device does not have, after a send as well as
      before it: no audition path, no preset to store to, no edit buffer to
      be "unsaved", and no undo. These offered all four on an IR-2. */
@@ -6593,7 +6606,7 @@ $('gridbig').addEventListener('click', e => {
 // always has. `deviceGen` is bumped by a selection; a poll that started
 // before the bump leaves the device block alone (a stale answer must never
 // revert a fresh choice).
-const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', ir2: 'IR-2' };
+const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', ir2: 'IR-2', fm3: 'FM3' };
 let deviceGen = 0;
 let deviceState = null;
 function deviceShort(dev) {
@@ -6751,7 +6764,9 @@ async function runPlugCard(dev, io) {
     paint({error: true, pct: null, text: `Could not read the ${dev.label}. Check the cable, then click the link light.`});
     return 'unread';
   }
-  paint({pct: 100, done: true, text: 'Ready. Ask for a tone.'});
+  paint({pct: 100, done: true, text: dev.read_only
+    ? 'Connected, read-only for now: presets and scenes switch; nothing changes your sound.'
+    : 'Ready. Ask for a tone.'});
   io.later(() => { if (mine === plugCardGen) io.paint(null); }, 4000);
   return 'ready';
 }
@@ -6851,11 +6866,20 @@ async function refresh() {
     // Everything renderDeviceParams changed has to be put back, or an FM9
     // selected after an IR-2 keeps the other device's label and chrome.
     document.body.classList.remove('named-device');
+    // #212: a read-only device (the FM3) shows its preset, scenes and which
+    // blocks are on, and offers nothing that would change the sound.
+    document.body.classList.toggle('readonly-device', !!s.read_only);
     const ctxf = $('context');
     if (ctxf) ctxf.setAttribute('data-label', 'LIVE '
       + ((deviceState && deviceState.label) || 'FM9').toUpperCase() + ' CONTEXT');
     renderScenes(s);
     if (s.scene) currentSceneNumber = s.scene.number;
+    if (s.read_only) {
+      renderReadOnlyBlocks(s);
+      renderParams(s);          // no values were read: this clears the panels
+      loadPresets(false);
+      return {connected: true, active: s.device && s.device.active, fresh: freshDevice};
+    }
     if (typeof stageGuard === 'function') stageGuard(s);
     if (s.preset) loadShared(s.preset.number);
     loadGrid();
@@ -6901,6 +6925,21 @@ let lastBypass = {};        // "FAMILY:instance" -> is the block switched off
 let lastMods = {};          // param name -> what is driving it, if anything
 let lastState = {};         // the last state payload, for the audition lists
 let lastCab = {bank: null, ordinal: -1};
+
+// #212: the FM3 is read through the FM9 module, read-only. Its grid and
+// parameter map were never verified, so instead of a signal chain drawn from
+// FM9 geometry it gets the blocks the status dump reports, by name, with
+// their state, and one line saying what works and where the rest is tracked.
+function renderReadOnlyBlocks(s) {
+  const chips = (s.blocks || []).map(b =>
+    `<span class="robk${b.bypassed ? ' off' : ''}">${esc(b.label)} · ${esc(b.channel)}${b.bypassed ? ' · off' : ''}</span>`).join('');
+  // One row: on a laptop-height window a second row pushed the request
+  // heading off the top of the workspace.
+  $('blocks').innerHTML = `<div class="ropanel"><span class="ronote">Read-only for now: presets and scenes `
+    + `switch from here; <a href="https://github.com/monzta1/ToneCommand/issues/40" `
+    + `target="_blank" rel="noopener">full ${esc(deviceShort(deviceState))} support</a> comes later.</span>`
+    + `${chips || '<span class="hint">no blocks reported</span>'}</div>`;
+}
 
 // A device whose whole surface is named parameters (#198). The FM9 draws a
 // signal grid and eight scenes; this pedal is one amp and six knobs, so it
@@ -7555,6 +7594,8 @@ const DEVICE_EXAMPLES = {
     ['More gain',      'more gain and back the bass off a little'],
     ['What is it on?', 'what is it set to right now?'],
   ],
+  // #212: read-only, so no request it would only refuse is suggested.
+  fm3: [],
 };
 
 function renderExamples() {
@@ -8568,6 +8609,9 @@ function conversationText() {
 // diagnostic log; the conversation never carries the machinery.
 function plainPlanError(msg) {
   const m = String(msg || '').toLowerCase();
+  // #212: a read-only device already says what works and where the rest is
+  // tracked; "give it another go" would send the player round in circles.
+  if (/is read-only in tonecommand/.test(m)) return String(msg);
   if (/no complete plan|no reply within|transport|timed out|timeout|unreachable|took too long/.test(m))
     return 'That one took too long to come together. Give it another go, '
          + 'or ask for a little less in one go.';
@@ -8584,8 +8628,10 @@ function plainPlanError(msg) {
 
 function plainDeviceError(msg) {
   const m = String(msg || '').toLowerCase();
+  if (/is read-only in tonecommand/.test(m)) return String(msg);          // #212
+  // #212: the device in use, not always the FM9.
   if (/offline|not answering|not connected|midi|port/.test(m))
-    return 'The FM9 is not responding. Check the USB connection and try again.';
+    return `The ${deviceShort(deviceState)} is not responding. Check the USB connection and try again.`;
   if (/preset changed|expected preset/.test(m))
     return 'The loaded preset changed. Review the request again before sending.';
   if (/gig/.test(m))

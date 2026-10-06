@@ -25,6 +25,9 @@ from dataclasses import dataclass
 
 MFR = (0x00, 0x01, 0x74)
 MODEL_FM9 = 0x12
+#: #212: from preset files (docs/HARDWARE-VALIDATION.md: III 0x10, FM3 0x11,
+#: FM9 0x12), not yet seen live from an FM3.
+MODEL_FM3 = 0x11
 
 # Official (Rev 1.4 PDF)
 FN_BYPASS = 0x0A          # id id dd; dd: 0 engaged, 1 bypassed, 7F query
@@ -672,4 +675,49 @@ def parse_status_dump(data: list[int]) -> list[BlockStatus] | None:
         eid = decode14(body[i], body[i + 1])
         dd = body[i + 2]
         out.append(BlockStatus(eid, bool(dd & 1), (dd >> 1) & 0x07, (dd >> 4) & 0x07))
+    return out
+
+
+# --- #212: what may reach an FM3 while it is read-only ----------------------
+#
+# Exact forms only, all from the official Rev 1.4 spec except the firmware
+# query (community, Axe-Fx II heritage, a read). Nothing from the editor
+# protocol (fn 0x01): the FM9's own "get parameter" is a typed SET of 0.0,
+# which on an FM3, whose parameter map differs (#40), could write.
+
+def _scene_arg(v: int) -> bool:
+    return v == 0x7F or 0 <= v <= 7
+
+
+def fm3_allowed(frame: list[int]) -> bool:
+    """True when `frame` (F0 ... F7) is one of the read-only forms."""
+    if len(frame) < 8 or frame[0] != 0xF0 or frame[-1] != 0xF7:
+        return False
+    if tuple(frame[1:4]) != MFR or frame[4] not in (MODEL_FM9, MODEL_FM3):
+        return False
+    body = frame[1:-2]
+    if checksum(body) != frame[-2]:
+        return False
+    fn, payload = frame[5], frame[6:-2]
+    if fn == FN_PATCH_NAME:
+        return len(payload) == 2
+    if fn in (FN_SCENE_NAME, FN_SCENE):
+        return len(payload) == 1 and _scene_arg(payload[0])
+    if fn in (FN_BYPASS, FN_CHANNEL):
+        return len(payload) == 3 and payload[2] == 0x7F
+    if fn in (FN_STATUS_DUMP, FN_FIRMWARE):
+        return payload == []
+    if fn == FN_TEMPO_BPM:
+        return payload == [0x7F, 0x7F]
+    return False
+
+
+def readdress(frame: list[int], model: int) -> list[int]:
+    """The same frame addressed to another model of the family, checksum
+    recomputed. A no-op when it already carries `model`."""
+    if frame[4] == model:
+        return list(frame)
+    out = list(frame)
+    out[4] = model
+    out[-2] = checksum(out[1:-2])
     return out

@@ -4,6 +4,32 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **The FM3 connects, read-only (#212).** An FM3 is the same Fractal family
+  as the FM9, so it now goes through the FM9's own code, addressed as an FM3.
+  It shows the preset, the eight scenes and which blocks are on, and switches
+  presets and scenes. Nothing that changes your sound is sent to it: its
+  block and parameter map, grid and cables were only ever proven on an FM9,
+  and each needs checking on a real FM3 first (#40). This is enforced at the
+  FM3's MIDI port, which passes only Fractal's documented queries and the
+  preset and scene switches, so no part of the app can go around it. Asking
+  for a tone with the FM3 selected says so in one line instead of planning
+  FM9 changes. The FM3's model byte (0x11) comes from preset files; it has
+  not yet been seen live from an FM3, so the first owner's report is the
+  hardware proof.
+
+### Fixed
+- **Report a problem could not show why a device was not found (#212).** It
+  now lists the MIDI input and output port names, the devices recognised on
+  the bus and whether the selected device is connected, and "Recent
+  diagnostics" carries connection failures (once per distinct failure, so a
+  five second poll does not fill the log). Its version line now reads the
+  checkout, as the update banner does, instead of an install record that a
+  `git pull` leaves behind, and its device line printed nothing about the
+  connection because it called a function that does not exist.
+- "MIDI ports not found" names the device it looked for instead of always
+  saying FM9.
+
 ## 1.5.7 (2026-10-05)
 
 **Plug a device in and ToneCommand greets it.** DPDP, the Dynamic Processor

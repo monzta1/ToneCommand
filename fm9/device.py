@@ -250,7 +250,12 @@ class SetResult:
 
 
 class FM9:
-    def __init__(self, registry: Registry | None = None, port_hint: str = "fm9",
+    #: #212: what this class talks to. An FM3 is the same family through the
+    #: same code, addressed with its own model byte (FM3 below).
+    LABEL = "FM9"
+    PORT_HINT = "fm9"
+
+    def __init__(self, registry: Registry | None = None, port_hint: str | None = None,
                  ports=None):
         """`ports=(inp, outp)` injects transport objects (used by fm9.sim for
         hardware-free testing); default discovers the real FM9 over mido."""
@@ -263,9 +268,12 @@ class FM9:
             # and hands back the same port shape the simulator uses.
             from fm9 import midi_transport
             try:
-                self.inp, self.outp = midi_transport.open_ports(port_hint)
+                self.inp, self.outp = midi_transport.open_ports(port_hint or self.PORT_HINT)
             except midi_transport.TransportError as e:
                 raise FM9NotFound(str(e))
+        # Before the first frame below: a model that restricts what it sends
+        # wraps the port here, so no path in this class can go around it.
+        self.outp = self._wrap_output(self.outp)
         # per-effect channel info, refreshed from status dumps
         self._channels: dict[int, int] = {}
         self._current_channel: dict[int, int] = {}
@@ -278,7 +286,7 @@ class FM9:
         if self.current_preset() is None:
             self.close()
             raise FM9NotFound(
-                "FM9 port opened but the device did not answer a preset-name "
+                f"{self.LABEL} port opened but the device did not answer a preset-name "
                 "query. Either it is still booting, FM9-Edit is running, or a "
                 "zombie process is holding the MIDI port (ps aux | grep python).")
 
@@ -310,6 +318,10 @@ class FM9:
         # with an in-memory store so Epic I can be built against the primitive.
         plays_captures=False,
     )
+
+    def _wrap_output(self, outp):
+        """The FM9 sends through its port as opened."""
+        return outp
 
     def capabilities(self) -> Capabilities:
         caps = self.CAPABILITIES
@@ -1572,3 +1584,98 @@ class FM9:
         self._param_echo(frame, spec.effect_id, spec.param_id, timeout=0.6)
         after = self.get_param_display(spec)
         return SetResult(True, "sent (discrete)", before, after)
+
+
+# --- #212: the FM3, read-only, through this same module -----------------------
+
+class ReadOnly(RuntimeError):
+    """A write was asked of a device ToneCommand only reads for now."""
+
+
+FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now: it can show the "
+                 "preset and scenes and switch them, but not change your sound. "
+                 "Full support is tracked in #40.")
+
+
+class ReadOnlyOut:
+    """The FM3's MIDI output. Every sender in FM9 reaches the wire through
+    this object, including the paths that call outp.send directly, so being
+    read-only is a property of the port rather than of each method.
+
+    SysEx passes only in the exact forms protocol.fm3_allowed lists, and is
+    then addressed to the FM3's model byte. Program change and the bank
+    controller (CC0) pass: that is how presets are switched. Anything else is
+    refused before the wire."""
+
+    def __init__(self, port, model: int = p.MODEL_FM3):
+        self.port = port
+        self.model = model
+
+    def send(self, msg):
+        if msg.type == "sysex":
+            frame = [0xF0, *msg.data, 0xF7]
+            if not p.fm3_allowed(frame):
+                raise ReadOnly(FM3_READ_ONLY)
+            frame = p.readdress(frame, self.model)
+            self.port.send(mido.Message("sysex", data=frame[1:-1]))
+            return
+        if msg.type == "program_change" or (msg.type == "control_change" and msg.control == 0):
+            self.port.send(msg)
+            return
+        raise ReadOnly(FM3_READ_ONLY)
+
+    def close(self):
+        close = getattr(self.port, "close", None)
+        if close:
+            close()
+
+    def __getattr__(self, name):
+        return getattr(self.port, name)
+
+
+class FM3(FM9):
+    """A Fractal FM3 through the FM9 module, read-only (#212).
+
+    The FM3 speaks the same gen-3 family protocol, so the official queries
+    (names, scenes, status dump, bypass and channel queries, firmware) and
+    preset/scene switching work through the FM9 code addressed with the FM3's
+    model byte. Everything that changes the sound is refused: the block and
+    parameter map, grid and cable encodings were proven on the FM9 only, and
+    each needs write-plus-read-back on a real FM3 before it is trusted (#40).
+    """
+
+    LABEL = "FM3"
+    PORT_HINT = "fm3"
+    MODEL = p.MODEL_FM3
+
+    CAPABILITIES = Capabilities(
+        read_path=ReadPath.DEVICE,
+        reads_slot_names=True,
+        has_scenes=True,
+        topology=Topology.FIXED,
+    )
+
+    def _wrap_output(self, outp):
+        return ReadOnlyOut(outp, self.MODEL)
+
+    def capabilities(self) -> Capabilities:
+        return self.CAPABILITIES
+
+    def bulk_read(self, effect_id: int, timeout: float = 1.5):
+        """A documented no-send: parameter values are not read on the FM3,
+        whose parameter map differs from the FM9 registry (#40)."""
+        return None
+
+    def _refuse(self, *a, **k):
+        raise ReadOnly(FM3_READ_ONLY)
+
+    # Every method that changes the unit, refused before a frame is built.
+    # The port would refuse each of them anyway; this says so sooner.
+    set_param_display = set_param_wire = set_param_ordinal = set_params_batch = _refuse
+    set_bypass = set_channel = set_tempo = _refuse
+    rename_preset = rename_scene = store_preset = send_preset_file = _refuse
+    load_preset_buffer = install_preset = _refuse
+    install_user_cab = install_user_cab_slot = install_user_cab_at = _refuse
+    install_capture = remove_capture = _refuse
+    place_block = splice_block = connect_cells = reorder_block = _refuse
+    bind_modifier = clear_modifier = _refuse

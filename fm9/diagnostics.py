@@ -199,13 +199,40 @@ def environment() -> list[str]:
     safe("Install", _install_kind)
     safe("Planner", _planner_line)
     safe("Device", _device_line)
+    # #212: what is on the MIDI bus, by name. An FM3 owner's report said
+    # only "Device: fm9", which could not tell a missing device from one
+    # named differently than expected. Names only: nothing is opened.
+    safe("MIDI in", lambda: _names(_midi().port_names()))
+    safe("MIDI out", lambda: _names(_midi().output_names()))
+    safe("Detected", _detected_line)
     return lines
 
 
+def _midi():
+    from fm9 import midi_transport
+    return midi_transport
+
+
+def _names(names) -> str:
+    return ", ".join(repr(str(n)) for n in names) if names else "none"
+
+
+def _detected_line() -> str:
+    import server
+    found = server.detected_devices()
+    if not found:
+        return "nothing recognised"
+    return ", ".join(d["label"] + ("" if d.get("supported") else " (not supported yet)")
+                     + (" (read-only)" if d.get("read_only") else "") for d in found)
+
+
 def _version_line() -> str:
-    from importlib import metadata
+    # #212: the version the update banner uses, which reads pyproject.toml in
+    # a checkout. Installed metadata only moves when `pip install -e .` is
+    # re-run, so after a git pull it named an older release.
+    from fm9 import updates
     try:
-        v = metadata.version("tonecommand")
+        v = updates.current_version()
     except Exception:          # noqa: BLE001  not installed as a distribution
         v = "unknown"
     import subprocess
@@ -244,17 +271,20 @@ def _planner_line() -> str:
 def _device_line() -> str:
     import server
     ctx = server.device_context()
-    try:
-        connected = bool(server._fm9_handle()) if hasattr(server, "_fm9_handle") else None
-    except Exception:          # noqa: BLE001  not connected is a normal answer
-        connected = False
+    # #212: whether a handle to the device is open right now. The old check
+    # called a function that does not exist, so this part never printed.
+    if ctx.kind == "fm9":
+        connected = getattr(server, "_fm9", None) is not None
+    else:
+        connected = ctx.adapter is not None
     fw = ""
     try:
         fw = ctx.adapter.firmware_label() if ctx.adapter else ""
     except Exception:          # noqa: BLE001  a device that declines is fine
         fw = ""
-    return f"{ctx.kind}" + (f" firmware {fw}" if fw else "") + \
-           ("" if connected is None else f", connected={bool(connected)}")
+    label = server.DEVICE_KINDS.get(ctx.kind, ctx.kind)
+    return f"{label} ({ctx.kind})" + (f", firmware {fw}" if fw else "") + \
+           (", handle open" if connected else ", not connected")
 
 
 def package_for_sharing(scope: str | None = None, limit: int = 10,

@@ -394,6 +394,11 @@
   {
    "function": "api_device_select",
    "ordinal": 1,
+   "disposition": "unreachable: wraps _build_context only, which constructs an adapter and opens its ports; no gated adapter method runs, so no CapabilityDeclined can arise. A device that will not open is answered 503 in words, logged for Report a problem, and the current device is left as it was (#212)."
+  },
+  {
+   "function": "api_device_select",
+   "ordinal": 2,
    "disposition": "unreachable: wraps close() on the adapter being dropped, on DeviceAdapter, behind no gate"
   },
   {

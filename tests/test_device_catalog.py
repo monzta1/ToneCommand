@@ -86,11 +86,14 @@ def test_recognise_names_unsupported_devices_with_their_issue():
     assert {k: d["issue"] for k, d in got.items()} == \
         {"vp4": 191, "am4": 41, "fm3": 40, "axefx3": 190}
     for d in got.values():
-        assert d["supported"] is False and d["verified"] is False
+        # #212: the FM3 is driven read-only through the FM9 module; its issue
+        # still links the full support it lacks
+        assert d["supported"] is (d["kind"] == "fm3") and d["verified"] is False
+        assert d["read_only"] is (d["kind"] == "fm3")
         assert d["issue_url"] == f"https://github.com/monzta1/ToneCommand/issues/{d['issue']}"
     ir2 = catalog.recognise(["IR-2"])[0]
     assert ir2 == {"kind": "ir2", "label": "BOSS IR-2", "supported": True,
-                   "verified": True, "issue": None, "issue_url": None}
+                   "verified": True, "issue": None, "issue_url": None, "read_only": False}
 
 
 # -- REQ-002: recognition sends nothing ------------------------------------------------
@@ -137,7 +140,8 @@ def test_state_block_carries_detected_devices(client, monkeypatch):
     s = client.get("/api/state").json()
     assert s["device"]["detected"] == [{
         "kind": "vp4", "label": "Fractal VP4", "supported": False, "verified": False,
-        "issue": 191, "issue_url": "https://github.com/monzta1/ToneCommand/issues/191"}]
+        "issue": 191, "issue_url": "https://github.com/monzta1/ToneCommand/issues/191",
+        "read_only": False}]
     # an unsupported device is named, never made available or selectable
     assert [d["kind"] for d in s["device"]["available"]] == ["fm9"]
     assert client.post("/api/device/select", json={"kind": "vp4"}).status_code == 404
@@ -374,7 +378,8 @@ def test_page_wires_the_card_into_the_poll_the_stream_and_dismiss():
     assert "if (ev === 'devices') { renderDetected(d.detected); continue; }" in PAGE
     assert "$('devcardclose').addEventListener('click', () => {" in PAGE
     # refresh() reports what the card needs, on success and on failure
-    assert PAGE.count("return {connected: true, active: s.device && s.device.active, fresh: freshDevice};") == 2
+    # the named-device return, the read-only (#212) return and the FM9 return
+    assert PAGE.count("return {connected: true, active: s.device && s.device.active, fresh: freshDevice};") == 3
     assert "return {connected: false, fresh: pollGen === deviceGen, error: String((e && e.message) || e)};" in PAGE
     # the real io goes through the same select and reconnect routes a click uses
     assert "const r = await fetch('/api/reconnect', {method: 'POST'});" in PAGE
