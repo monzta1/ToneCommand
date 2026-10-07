@@ -4,6 +4,14 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.9 (2026-10-07)
+
+**An FM3 or FM9 that Windows cannot see now says why.** When the computer
+lists no MIDI input at all, ToneCommand says so and asks for a USB cable
+that carries data; on Windows it adds that a Fractal FM3 or FM9 needs
+Fractal's USB driver, the one FM3-Edit and FM9-Edit use. And ToneCommand
+now says what it is: multi-device.
+
 ### Changed
 - **ToneCommand says what it is now: multi-device.** The README, the
   website's home page and the package description no longer read as
