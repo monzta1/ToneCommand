@@ -33,14 +33,17 @@ them (supriya-midi) is wired in behind `TONECOMMAND_MIDI_BACKEND=supriya`
 and the ceiling lifts once it has had its hardware pass on the unit
 (issue #172). Until then, 3.12.
 
-## Step 2: install the FM9 USB driver
+## Step 2: install Fractal's USB driver (FM9 or FM3)
 
-Download Fractal's Windows USB driver from
-**https://www.fractalaudio.com/fm9-downloads/** and install it.
+Download Fractal's Windows USB driver for your unit and install it:
 
-This is the same driver FM9-Edit uses, so **if FM9-Edit already works on this
-computer, you can skip this step.** Without it, Windows cannot see the FM9 at
-all and ToneCommand will say it cannot find your unit.
+- FM9: **https://www.fractalaudio.com/fm9-downloads/**
+- FM3: **https://www.fractalaudio.com/fm3-downloads/**
+
+This is the same driver FM9-Edit and FM3-Edit use, so **if FM9-Edit or
+FM3-Edit already works on this computer, you can skip this step.** Without
+it, Windows cannot see the unit at all: Report a problem shows "MIDI in:
+none", and ToneCommand says this computer sees no MIDI input at all.
 
 ## Step 3: download ToneCommand
 
@@ -155,11 +158,12 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 **The page loads but the link indicator is red, or it says it cannot find the
-FM9**
-Check, in this order: the FM9 is switched on; the USB cable goes from the FM9
-to the computer and is a data cable rather than a charge-only one; Fractal's
-driver from Step 2 is installed; and FM9-Edit is **closed**, because only one
-program can hold the FM9's USB connection at a time.
+FM9 or FM3**
+Check, in this order: the unit is switched on; the USB cable goes from the
+unit to the computer and is a data cable rather than a charge-only one;
+Fractal's driver from Step 2 is installed; and FM9-Edit or FM3-Edit is
+**closed**, because only one program can hold the unit's USB connection at a
+time.
 
 **"Preparing metadata (pyproject.toml) did not run successfully"**, with
 **python-rtmidi** and **"Unknown compiler(s)"** in the red text, or

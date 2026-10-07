@@ -121,6 +121,123 @@ def test_the_transport_names_the_device_it_looked_for(monkeypatch):
         midi_transport.open_ports("fm9")
 
 
+# --- #216: the not-found message says what the bus shows ---------------------------
+
+NO_INPUT = "this computer sees no MIDI input at all"
+DRIVER = ("On Windows a Fractal FM3 or FM9 also needs Fractal's USB driver, "
+          "the one FM3-Edit and FM9-Edit use, from fractalaudio.com.")
+
+
+def _mido_bus(monkeypatch, ins, outs, system):
+    monkeypatch.setattr(midi_transport, "backend", lambda env=None: "mido")
+    monkeypatch.setattr(midi_transport.mido, "get_input_names", lambda: list(ins))
+    monkeypatch.setattr(midi_transport.mido, "get_output_names", lambda: list(outs))
+    monkeypatch.setattr(midi_transport, "_system", lambda: system)
+
+
+def _why(hint):
+    with pytest.raises(midi_transport.TransportError) as got:
+        midi_transport.open_ports(hint)
+    return str(got.value)
+
+
+@pytest.mark.parametrize("hint", ["fm9", "fm3"])
+def test_empty_bus_on_windows_names_the_driver_mido(monkeypatch, hint):
+    """The #216 report: no input at all, only the GS Wavetable Synth out."""
+    _mido_bus(monkeypatch, [], ["Microsoft GS Wavetable Synth 0"], "Windows")
+    why = _why(hint)
+    assert why.startswith(f"{hint.upper()} MIDI ports not found: ")
+    assert NO_INPUT in why and "USB cable that carries data" in why
+    assert why.endswith(DRIVER)
+
+
+class _NoPorts:
+    def __init__(self, names):
+        self.names = names
+
+    def get_ports(self):
+        return list(self.names)
+
+
+class _Supriya:
+    def __init__(self, ins, outs):
+        self.ins, self.outs = ins, outs
+
+    def MidiIn(self):
+        return _NoPorts(self.ins)
+
+    def MidiOut(self):
+        return _NoPorts(self.outs)
+
+
+@pytest.mark.parametrize("hint", ["fm9", "fm3"])
+def test_empty_bus_on_windows_names_the_driver_supriya(monkeypatch, hint):
+    monkeypatch.setattr(midi_transport, "_system", lambda: "Windows")
+    sm = _Supriya([], ["Microsoft GS Wavetable Synth 0"])
+    with pytest.raises(midi_transport.TransportError) as got:
+        midi_transport.SupriyaIn.open(sm, hint)
+    why = str(got.value)
+    assert why.startswith(f"{hint.upper()} MIDI ports not found: ")
+    assert NO_INPUT in why and why.endswith(DRIVER)
+
+
+def test_supriya_output_side_never_reports_empty_bus(monkeypatch):
+    """The output side only ever sees outputs, which say nothing about the unit."""
+    monkeypatch.setattr(midi_transport, "_system", lambda: "Darwin")
+    with pytest.raises(midi_transport.TransportError) as got:
+        midi_transport.SupriyaOut.open(_Supriya([], []), "fm9")
+    assert str(got.value) == "FM9 MIDI ports not found; is it connected and powered on?"
+
+
+def test_empty_bus_off_windows_has_no_driver_sentence(monkeypatch):
+    _mido_bus(monkeypatch, [], [], "Darwin")
+    why = _why("fm3")
+    assert NO_INPUT in why and "driver" not in why
+
+
+def test_other_ports_on_windows_keep_the_driver_but_not_the_empty_bus_clause(monkeypatch):
+    _mido_bus(monkeypatch, ["USB Keyboard"], ["Microsoft GS Wavetable Synth 0"], "Windows")
+    why = _why("fm9")
+    assert why == "FM9 MIDI ports not found; is it connected and powered on? " + DRIVER
+    assert NO_INPUT not in why
+
+
+def test_other_ports_off_windows_are_unchanged(monkeypatch):
+    _mido_bus(monkeypatch, ["IAC Driver Bus 1"], ["IAC Driver Bus 1"], "Linux")
+    assert _why("fm9") == "FM9 MIDI ports not found; is it connected and powered on?"
+
+
+@pytest.mark.parametrize("ins", [[], ["USB Keyboard"]])
+def test_not_fractal_hint_gets_no_driver_sentence(monkeypatch, ins):
+    """#216 review: an empty bus gave every device the new wording."""
+    _mido_bus(monkeypatch, ins, [], "Windows")
+    assert _why("ir-2") == "IR-2 MIDI ports not found; is it connected and powered on?"
+
+
+def test_the_driver_advice_reaches_the_report(log, monkeypatch):
+    """The real FM9 class raises the transport's message as FM9NotFound; the
+    poll logs it for Report a problem."""
+    from fm9.device import FM9
+    _mido_bus(monkeypatch, [], ["Microsoft GS Wavetable Synth 0"], "Windows")
+    monkeypatch.setattr(server, "_gig_mode", {"on": False})
+    monkeypatch.setattr(server, "_context", server._default_context)
+    monkeypatch.setattr(server, "_fm9", None)
+    monkeypatch.setattr(server, "get_fm9", lambda: FM9(server.reg))
+    assert TestClient(server.app).get("/api/state").json()["connected"] is False
+    body = diagnostics.package_for_sharing(path=log)["body"]
+    assert NO_INPUT in body and DRIVER in body
+
+
+def test_windows_doc_step_2_covers_the_fm3_driver():
+    from pathlib import Path
+    doc = (Path(__file__).resolve().parent.parent / "docs" / "WINDOWS.md").read_text(encoding="utf-8")
+    step2 = doc.split("## Step 2", 1)[1].split("\n## ", 1)[0]
+    assert "https://www.fractalaudio.com/fm9-downloads/" in step2
+    assert "https://www.fractalaudio.com/fm3-downloads/" in step2
+    assert "FM3" in step2.splitlines()[0] and "FM3-Edit" in step2
+    assert chr(0x2014) not in doc
+
+
 def test_a_failed_reconnect_leaves_no_dead_handle(log, monkeypatch):
     """Review: the closed adapter stayed in the context, so the report said
     'handle open' for a device that was gone."""
