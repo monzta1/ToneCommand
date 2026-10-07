@@ -12,6 +12,16 @@ Notable changes to ToneCommand. Dates are UTC.
   can do on the devices page, which gains the FM3. The README's stale
   "ToneCommand 1.0.0" line is gone.
 
+### Fixed
+- **An FM3 or FM9 that Windows cannot see now says why (#216).** A Windows
+  FM3 owner's report listed no MIDI input at all, and ToneCommand only said
+  "FM9 MIDI ports not found; is it connected and powered on?". When the
+  computer has no MIDI input, the message now says so and asks for a USB
+  cable that carries data; on Windows it adds that a Fractal FM3 or FM9
+  needs Fractal's USB driver, the one FM3-Edit and FM9-Edit use. The same
+  line reaches the LINK log and Report a problem. The Windows guide's
+  driver step now covers the FM3, with both download pages.
+
 ## 1.5.8 (2026-10-06)
 
 **FM3 owners: plug it in.** The FM3 now connects through the FM9's own code,

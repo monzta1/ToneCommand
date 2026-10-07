@@ -23,6 +23,7 @@ wire. The supriya path is fake-port proven here and hardware-pass pending
 from __future__ import annotations
 
 import os
+import platform
 from types import SimpleNamespace
 from typing import Any
 
@@ -123,10 +124,11 @@ def open_ports(hint: str, env: dict | None = None, supriya_module: Any = None) -
     b = backend(env)
     hint = hint.lower()
     if b == "mido":
-        ins = [n for n in mido.get_input_names() if hint in n.lower()]
+        every_in = list(mido.get_input_names())
+        ins = [n for n in every_in if hint in n.lower()]
         outs = [n for n in mido.get_output_names() if hint in n.lower()]
         if not ins or not outs:
-            raise TransportError(_not_found(hint))
+            raise TransportError(_not_found(hint, inputs=every_in))
         return mido.open_input(ins[0]), mido.open_output(outs[0])
     sm = supriya_module or __import__("supriya_midi")
     return SupriyaIn.open(sm, hint), SupriyaOut.open(sm, hint)
@@ -163,17 +165,45 @@ def _encode(msg: Any) -> list[int]:
     raise TransportError(f"the transport does not send {t!r} messages")
 
 
-def _pick(names: list[str], hint: str) -> int:
+def _pick(names: list[str], hint: str, inputs: bool = False) -> int:
     for i, n in enumerate(names):
         if hint in str(n).lower():
             return i
-    raise TransportError(_not_found(hint))
+    raise TransportError(_not_found(hint, inputs=names if inputs else None))
 
 
-def _not_found(hint: str) -> str:
+#: #216: the units the bus advice is for; on Windows they need Fractal's
+#: own USB driver. Any other device keeps the plain message.
+FRACTAL_HINTS = ("fm9", "fm3")
+
+
+def _system() -> str:
+    return platform.system()
+
+
+def _not_found(hint: str, inputs: list[str] | None = None,
+               system: str | None = None) -> str:
     """#212: name the device that was looked for. Before, an FM3 owner was
-    told the FM9 was missing."""
-    return f"{hint.upper()} MIDI ports not found; is it connected and powered on?"
+    told the FM9 was missing.
+
+    #216: say what the bus shows. A Windows FM3 owner's report listed no
+    MIDI input at all, which is what Windows looks like without Fractal's
+    USB driver; "is it connected and powered on?" sent them nowhere.
+    `inputs` is the input port list when the caller has it (an output list
+    says nothing: Windows always lists its GS Wavetable Synth there)."""
+    head = f"{hint.upper()} MIDI ports not found"
+    if hint not in FRACTAL_HINTS:
+        return f"{head}; is it connected and powered on?"
+    if inputs is not None and not inputs:
+        msg = (f"{head}: this computer sees no MIDI input at all. Is it "
+               "connected and powered on, with a USB cable that carries data?")
+    else:
+        msg = f"{head}; is it connected and powered on?"
+    system = _system() if system is None else system
+    if system == "Windows":
+        msg += (" On Windows a Fractal FM3 or FM9 also needs Fractal's USB "
+                "driver, the one FM3-Edit and FM9-Edit use, from fractalaudio.com.")
+    return msg
 
 
 class SupriyaIn:
@@ -185,7 +215,7 @@ class SupriyaIn:
     @classmethod
     def open(cls, sm: Any, hint: str) -> "SupriyaIn":
         port = sm.MidiIn()
-        idx = _pick(list(port.get_ports()), hint)
+        idx = _pick(list(port.get_ports()), hint, inputs=True)
         port.set_buffer_size(*SUPRIYA_BUFFER)
         port.open_port(idx, "ToneCommand in")
         port.ignore_types(sysex=False, timing=True, active_sense=True)
