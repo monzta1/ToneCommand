@@ -13,7 +13,7 @@ header and a build is refused until you say which device it is for.
 |---|---|---|---|
 | **Fractal FM9** | Full | From the unit | The reference implementation. Blocks, scenes, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full, all 7 parameters, plus IR install | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. Load your own cab IRs |
-| **Fractal FM3** | Read-only: preset and scene switching | From the unit | Through the FM9's own code, since 1.5.8. Shows preset, scenes and blocks; nothing that changes the sound is sent yet (#40) |
+| **Fractal FM3** | Not yet connectable | n/a | No MIDI over USB: it needs a USB MIDI interface on its 5-pin MIDI ports, and connecting through one is being built (#221). Unverified on a real FM3 |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
 
@@ -34,47 +34,44 @@ unit back. The full capability matrix per firmware is in
 claim is [PROTOCOL.md](PROTOCOL.md).
 
 Other FM9 variants share the model byte and should behave identically but are
-untested. The FM3 connects read-only (below); the Axe-Fx III uses a different
+untested. The FM3 is a different case (below); the Axe-Fx III uses a different
 model byte and is not supported yet.
 
-## Fractal FM3 (read-only)
+## Fractal FM3 (through a MIDI interface, read-only)
 
-The FM3 has **no MIDI over USB**. Its USB carries Fractal's own communication
-channel (COM over USB) for FM3-Edit, Fractal-Bot and Cab-Lab. ToneCommand needs
-a **USB MIDI interface** connected to the FM3's **5-pin MIDI IN and MIDI OUT**:
-interface OUT to FM3 IN, and FM3 OUT to interface IN. The FM9 does support MIDI
-over USB; its USB connection and Windows driver guidance are unchanged.
+**The FM3 does not do MIDI over USB.** Its USB port carries only Fractal's own
+channel (COM over USB) for FM3-Edit, Fractal-Bot and Cab-Lab; it never appears
+as a MIDI device on Windows or macOS, and installing Fractal's USB driver does
+not change that ([Fractal wiki: USB](https://wiki.fractalaudio.com/wiki/index.php?title=USB),
+[MIDI](https://wiki.fractalaudio.com/wiki/index.php?title=MIDI)). The FM9 is
+different: it does MIDI over USB, which is how ToneCommand reaches it, and its
+USB and Windows driver guidance is unchanged.
 
-Open **Devices** in ToneCommand, choose your interface's port on the **Fractal
-FM3** card, and press **Save**. The name must be available for both MIDI input
-and output. ToneCommand remembers it in `fm3_port.json` beside its other local
-settings and uses that exact name; if the port disappears it will not choose
-another interface. Saving a different port while connected reconnects the FM3
-through the new port. Without a saved port, an FM3-named port is still found
-automatically.
+ToneCommand reaches an FM3 through a **USB MIDI interface** connected to the
+FM3's **5-pin MIDI IN and MIDI OUT**: interface OUT to FM3 IN, and FM3 OUT to
+interface IN (#221, unreleased after 1.5.9). Open **Devices**, choose your
+interface's port on the **Fractal FM3** card, and press **Save**. The name must
+be available for both MIDI input and output. ToneCommand remembers it in
+`fm3_port.json` beside its other local settings and uses that exact name; if
+the port disappears it will not choose another interface. Saving a different
+port while connected reconnects the FM3 through the new port. Without a saved
+port, an FM3-named port is still found automatically.
 
 For a fixed configuration, set `TONECOMMAND_FM3_PORT` to the exact interface
 port name. It takes precedence over the saved choice. Devices shows that the
 environment fixes the port and disables Save; change or remove that environment
 setting to choose a different port.
 
-**Not yet verified on a real FM3.** The interface route still needs a hardware
-check by an FM3 owner; simulator checks do not establish hardware support.
+Once connected, ToneCommand addresses the FM3 through the FM9's own code with
+the FM3's model byte: it shows the loaded preset, the eight scenes and which
+blocks are on, and switches presets and scenes. Read-only is enforced at the
+FM3's MIDI port (only Fractal's documented queries plus preset and scene
+switching), because the FM3's block and parameter map has only been proven on
+an FM9.
 
-Since 1.5.8 the FM3 connects through the FM9's own code, addressed with the
-FM3's model byte. It shows the loaded preset, the eight scenes and which
-blocks are on, and switches presets and scenes from the header.
-
-Nothing that changes your sound is sent to it. The FM3's block and parameter
-map, grid and cables have only been proven on an FM9, and each needs
-write-plus-read-back on a real FM3 before it is trusted. This is enforced at
-the FM3's MIDI port, which passes only Fractal's documented queries plus
-preset and scene switching, so no part of the app can go around it. Asking
-for a tone with the FM3 selected says so in one line.
-
-The FM3's model byte comes from preset files and has not yet been seen live
-from a unit. FM3 owners: press Report a problem once after connecting; that
-report is the hardware proof, and the start of full support (#40).
+**Not yet verified on a real FM3.** The interface route and the model byte
+(taken from preset files) still need a hardware check by an FM3 owner;
+simulator checks do not establish hardware support. Full support is #40.
 
 ## BOSS IR-2
 
