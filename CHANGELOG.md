@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.11 (2026-10-08)
+
+**Show it a picture of a rig.** Paste a screenshot, drop a photo or attach
+a picture, and ToneCommand reads the gear and how it is wired into the rig
+view, then asks the build question. Also fixes the rig view pushing the app
+off the screen on laptop-height windows.
+
 ### Added
 - **Show it a picture of a rig (#227; Rig Reconstruction, #224).** Paste a
   screenshot into the request box (Cmd/Ctrl+V), drop a picture onto it, use
