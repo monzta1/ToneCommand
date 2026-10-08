@@ -40,6 +40,8 @@ reviewer = "default"
 # Each criterion's evidence should point at one of these having run, not a
 # free-text claim. Example: commands = ["pytest tests/ -q", "npm test"]
 commands = [
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_fm3_readonly.py tests/test_report_bus.py tests/test_device_picker.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_fm3_interface.py -q",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_tone3000_auth.py -q -k 'pkce or url or exchange or refresh or store'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_tone3000_auth.py -q -k 'route or callback or status or logout'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_tone3000_auth.py -q -k 'fetch or entitle or replacement or ui'",
