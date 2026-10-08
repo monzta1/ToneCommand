@@ -153,10 +153,15 @@ def port_names(env: dict | None = None, supriya_module: Any = None) -> list[str]
         b = backend(env)
     except TransportError:
         return []
-    if b == "mido":
-        return [str(n) for n in mido.get_input_names()]
-    sm = supriya_module or __import__("supriya_midi")
-    port = sm.MidiIn()
+    # #221: a machine with no MIDI system (CI without ALSA) has no ports;
+    # the backend raising there must not turn into an error page.
+    try:
+        if b == "mido":
+            return [str(n) for n in mido.get_input_names()]
+        sm = supriya_module or __import__("supriya_midi")
+        port = sm.MidiIn()
+    except Exception:  # noqa: BLE001  any enumeration failure reads as no ports
+        return []
     try:
         return [str(n) for n in port.get_ports()]
     finally:
@@ -175,10 +180,15 @@ def output_names(env: dict | None = None, supriya_module: Any = None) -> list[st
         b = backend(env)
     except TransportError:
         return []
-    if b == "mido":
-        return [str(n) for n in mido.get_output_names()]
-    sm = supriya_module or __import__("supriya_midi")
-    port = sm.MidiOut()
+    # #221: a machine with no MIDI system (CI without ALSA) has no ports;
+    # the backend raising there must not turn into an error page.
+    try:
+        if b == "mido":
+            return [str(n) for n in mido.get_output_names()]
+        sm = supriya_module or __import__("supriya_midi")
+        port = sm.MidiOut()
+    except Exception:  # noqa: BLE001  any enumeration failure reads as no ports
+        return []
     try:
         return [str(n) for n in port.get_ports()]
     finally:

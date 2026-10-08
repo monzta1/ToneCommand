@@ -133,7 +133,7 @@ def test_fm3_failure_matrix(monkeypatch, isolated_binding, backend, system, fail
     monkeypatch.setattr(T, "_system", lambda: system)
     names = ["MIDI Interface 2"]
     if failure != "unbound":
-        isolated_binding.write_text(json.dumps({"port": "MIDI Interface"}))
+        isolated_binding.write_text(json.dumps({"port": "MIDI Interface"}), encoding="utf-8")
     if failure == "silent":
         names.append("MIDI Interface")
     inp, out = bus(monkeypatch, backend, names, names, silent=True)
@@ -155,7 +155,7 @@ def test_binding_round_trip_and_exact_simulated_connection(monkeypatch, isolated
     assert T.port_names() == names and T.output_names() == names
     assert inp.opened is None and out.opened is None
     assert T.save_fm3_binding("MIDI Interface") == {"port": "MIDI Interface", "source": "file"}
-    assert json.loads(isolated_binding.read_text()) == {"port": "MIDI Interface"}
+    assert json.loads(isolated_binding.read_text(encoding="utf-8")) == {"port": "MIDI Interface"}
     assert T.load_fm3_binding() == {"port": "MIDI Interface", "source": "file"}
     dev = FM3()
     try:
@@ -169,7 +169,7 @@ def test_binding_round_trip_and_exact_simulated_connection(monkeypatch, isolated
 @pytest.mark.parametrize("backend", ["mido", "supriya"])
 @pytest.mark.parametrize("missing_side", ["input", "output", "both"])
 def test_missing_bound_name_never_falls_back(monkeypatch, isolated_binding, backend, missing_side):
-    isolated_binding.write_text(json.dumps({"port": "MIDI Interface"}))
+    isolated_binding.write_text(json.dumps({"port": "MIDI Interface"}), encoding="utf-8")
     other = ["MIDI Interface 2", "midi interface", "FM3 MIDI"]
     ins = other if missing_side in ("input", "both") else ["MIDI Interface", *other]
     outs = other if missing_side in ("output", "both") else ["MIDI Interface", *other]
@@ -234,7 +234,7 @@ def test_explicit_fm3_port_hint_is_exact_without_binding(monkeypatch, backend):
 @pytest.mark.parametrize("contents", ["{", "[]", '{"port": null}', '{"port": ""}'])
 def test_damaged_binding_refuses_instead_of_discovering(monkeypatch, isolated_binding, contents):
     inp, out = bus(monkeypatch, "mido", ["FM3 MIDI"], ["FM3 MIDI"])
-    isolated_binding.write_text(contents)
+    isolated_binding.write_text(contents, encoding="utf-8")
     with pytest.raises(FM9NotFound, match="binding"):
         FM3()
     assert inp.opened is None and out.opened is None

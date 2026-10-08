@@ -82,7 +82,7 @@ def test_save_persists_lists_fm3_and_connects_exact_port(rig):
     assert response.status_code == 200
     assert response.json() == {"ok": True, "port": "Interface B",
                                "source": "file", "reconnected": False}
-    assert json.loads(rig.path.read_text()) == {"port": "Interface B"}
+    assert json.loads(rig.path.read_text(encoding="utf-8")) == {"port": "Interface B"}
     binding = rig.client.get("/api/fm3/port").json()
     assert (binding["port"], binding["source"], binding["fixed"]) == ("Interface B", "file", False)
     assert "fm3" in [d["kind"] for d in rig.client.get("/api/device").json()["available"]]
@@ -94,7 +94,7 @@ def test_save_persists_lists_fm3_and_connects_exact_port(rig):
 
 @pytest.mark.parametrize("value", ["Interface B", "missing", ""])
 def test_environment_precedes_file_and_refuses_save(rig, monkeypatch, value):
-    rig.path.write_text(json.dumps({"port": "Interface A"}))
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
     before = rig.path.read_bytes()
     monkeypatch.setenv(transport.FM3_PORT_ENV, value)
     binding = rig.client.get("/api/fm3/port").json()
@@ -110,7 +110,7 @@ def test_environment_precedes_file_and_refuses_save(rig, monkeypatch, value):
                                   {"port": "unknown"}, {"port": "Interface"},
                                   {"port": "Input Only"}, {"port": "Output Only"}])
 def test_invalid_name_refused_without_changing_binding(rig, body):
-    rig.path.write_text(json.dumps({"port": "Interface A"}))
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
     before = rig.path.read_bytes()
     response = rig.client.post("/api/fm3/port", json=body)
     assert response.status_code == 400
@@ -119,7 +119,7 @@ def test_invalid_name_refused_without_changing_binding(rig, body):
 
 
 def test_save_connected_closes_a_and_opens_b_under_switch_lock(rig, monkeypatch):
-    rig.path.write_text(json.dumps({"port": "Interface A"}))
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
     assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
     old = server.device_context().adapter
     original_save = transport.save_fm3_binding
@@ -141,7 +141,7 @@ def test_save_connected_closes_a_and_opens_b_under_switch_lock(rig, monkeypatch)
 
 
 def test_bound_port_disappears_without_fallback(rig):
-    rig.path.write_text(json.dumps({"port": "Interface B"}))
+    rig.path.write_text(json.dumps({"port": "Interface B"}), encoding="utf-8")
     rig.ins.remove("Interface B")
     rig.outs.remove("Interface B")
     response = rig.client.post("/api/device/select", json={"kind": "fm3"})
@@ -151,7 +151,7 @@ def test_bound_port_disappears_without_fallback(rig):
 
 
 def test_failed_reconnect_drops_closed_adapter_and_keeps_new_binding(rig, monkeypatch):
-    rig.path.write_text(json.dumps({"port": "Interface A"}))
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
     assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
     original_save = transport.save_fm3_binding
 
@@ -166,7 +166,7 @@ def test_failed_reconnect_drops_closed_adapter_and_keeps_new_binding(rig, monkey
     assert response.status_code == 200
     assert response.json()["reconnected"] is False
     assert server.device_context().adapter is None
-    assert json.loads(rig.path.read_text()) == {"port": "Interface B"}
+    assert json.loads(rig.path.read_text(encoding="utf-8")) == {"port": "Interface B"}
     assert set(rig.events) == {("close_input", "Interface A"), ("close_output", "Interface A")}
     assert "USB MIDI interface" in rig.notes[-1][1]
     # #221 review: the next state poll keeps the FM3 guidance for the report
@@ -176,3 +176,18 @@ def test_failed_reconnect_drops_closed_adapter_and_keeps_new_binding(rig, monkey
     assert polled, rig.notes
     assert "USB MIDI interface" in polled[-1][1] and "no fm3 adapter" not in polled[-1][1]
     assert "driver" not in polled[-1][1].lower()
+
+
+def test_no_midi_system_reads_as_no_ports_not_an_error(rig, monkeypatch):
+    """CI without ALSA: the backend raises on enumeration. The port list is
+    empty, GET still answers, and a save is refused in plain words."""
+    def no_alsa():
+        raise RuntimeError("MidiInAlsa::initialize: error creating ALSA sequencer client object.")
+    monkeypatch.setattr(transport.mido, "get_input_names", no_alsa)
+    monkeypatch.setattr(transport.mido, "get_output_names", no_alsa)
+    assert transport.port_names() == [] and transport.output_names() == []
+    response = rig.client.get("/api/fm3/port")
+    assert response.status_code == 200 and response.json()["ports"] == []
+    refused = rig.client.post("/api/fm3/port", json={"port": "Interface A"})
+    assert refused.status_code == 400 and refused.json()["ok"] is False
+    assert not rig.path.exists()
