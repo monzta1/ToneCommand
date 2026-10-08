@@ -4,6 +4,16 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **FM3 connection guidance and MIDI interface selection (#221, #219).**
+  The #216 message incorrectly treated the FM3's USB as MIDI and recommended
+  Fractal's USB driver. The FM3's USB carries Fractal's own channel for
+  FM3-Edit, Fractal-Bot and Cab-Lab, not MIDI. FM3 failures now explain the
+  USB MIDI interface needed on its 5-pin MIDI IN and MIDI OUT. The Devices
+  page saves the interface port, shows when `TONECOMMAND_FM3_PORT` fixes it,
+  and retains the read-only and not-yet-hardware-verified caveats. FM9 USB
+  and driver advice is unchanged.
+
 ## 1.5.9 (2026-10-07)
 
 **An FM3 or FM9 that Windows cannot see now says why.** When the computer

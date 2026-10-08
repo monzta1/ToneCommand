@@ -22,8 +22,11 @@ wire. The supriya path is fake-port proven here and hardware-pass pending
 """
 from __future__ import annotations
 
+import json
 import os
 import platform
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -31,6 +34,7 @@ import mido
 
 BACKENDS = ("auto", "mido", "supriya")
 ENV = "TONECOMMAND_MIDI_BACKEND"
+FM3_PORT_ENV = "TONECOMMAND_FM3_PORT"
 #: a CABINET bulk read is about 2,100 frames of up to 3 KB; the input
 #: queue must hold them all while the reader drains
 SUPRIYA_BUFFER = (4096, 8)
@@ -38,6 +42,75 @@ SUPRIYA_BUFFER = (4096, 8)
 
 class TransportError(RuntimeError):
     """One line, written for the person at the rig, naming what to install."""
+
+
+def fm3_binding_path() -> Path:
+    """#221: beside the other local settings, not the working directory."""
+    return Path(__file__).resolve().parent.parent / "fm3_port.json"
+
+
+def load_fm3_binding(env: dict | None = None, path: Path | None = None) -> dict:
+    """#221: {port, source}; an environment binding always wins, even empty.
+
+    A missing file means no binding. A damaged file fails closed rather than
+    silently selecting some other port. Callers can show source='env' as fixed.
+    """
+    env = os.environ if env is None else env
+    if FM3_PORT_ENV in env:
+        return {"port": env[FM3_PORT_ENV], "source": "env"}
+    path = fm3_binding_path() if path is None else Path(path)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"port": None, "source": "none"}
+    except (OSError, ValueError) as e:
+        raise TransportError("FM3 port binding could not be read; choose the "
+                             "USB MIDI interface port on the Devices page.") from e
+    if not isinstance(value, dict) or not isinstance(value.get("port"), str) or not value["port"]:
+        raise TransportError("FM3 port binding is invalid; choose the USB MIDI "
+                             "interface port on the Devices page.")
+    return {"port": value["port"], "source": "file"}
+
+
+def save_fm3_binding(port: str, env: dict | None = None, path: Path | None = None) -> dict:
+    """#221: validate both directions and atomically persist an exact name.
+
+    The server must hold its device-switch lock around saving and reconnecting.
+    No MIDI port is opened here, and an environment binding cannot be changed.
+    """
+    env = os.environ if env is None else env
+    if FM3_PORT_ENV in env:
+        raise TransportError(f"FM3 port is fixed by {FM3_PORT_ENV}; Save is unavailable.")
+    if not isinstance(port, str) or not port or port not in port_names(env) or port not in output_names(env):
+        raise TransportError("Choose an FM3 USB MIDI interface port present in both "
+                             "the MIDI input and output lists on the Devices page.")
+    path = fm3_binding_path() if path is None else Path(path)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".fm3_port-", suffix=".tmp", delete=False) as f:
+            tmp = Path(f.name)
+            json.dump({"port": port}, f)
+            f.write("\n")
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+    return {"port": port, "source": "file"}
+
+
+FM3_INTERFACE_GUIDANCE = (
+    "The FM3 has no MIDI over USB; its USB carries Fractal's own channel for "
+    "FM3-Edit, Fractal-Bot and Cab-Lab. Connect a USB MIDI interface to the FM3's "
+    "5-pin MIDI IN and MIDI OUT (interface OUT to FM3 IN, FM3 OUT to interface IN). "
+    "Choose that interface's port in the FM3 card on the Devices page.")
+
+
+def fm3_connection_failure(reason: str = "missing") -> str:
+    """#221: shared by transport, preflight and the server's failure surfaces."""
+    head = ("FM3 port opened but the device did not answer. " if reason == "silent"
+            else "FM3 MIDI ports not found. ")
+    return head + FM3_INTERFACE_GUIDANCE
 
 
 def _importable(name: str) -> bool:
@@ -117,21 +190,62 @@ def output_names(env: dict | None = None, supriya_module: Any = None) -> list[st
                 pass
 
 
-def open_ports(hint: str, env: dict | None = None, supriya_module: Any = None) -> tuple[Any, Any]:
+def open_ports(hint: str, env: dict | None = None, supriya_module: Any = None,
+               *, exact_name: str | None = None) -> tuple[Any, Any]:
     """(inp, outp) for the first input and output whose names contain
     `hint` (case-insensitive), through the resolved backend. Raises
-    TransportError when the ports are not there, one line."""
+    TransportError when the ports are not there, one line. An FM3 binding
+    overrides discovery and matches both directions exactly (#221)."""
     b = backend(env)
     hint = hint.lower()
+    if hint == "fm3":
+        binding = load_fm3_binding(env)
+        if binding["source"] != "none":
+            exact_name = binding["port"]
     if b == "mido":
         every_in = list(mido.get_input_names())
-        ins = [n for n in every_in if hint in n.lower()]
-        outs = [n for n in mido.get_output_names() if hint in n.lower()]
+        ins = [n for n in every_in if (n == exact_name if exact_name is not None else hint in n.lower())]
+        outs = [n for n in mido.get_output_names()
+                if (n == exact_name if exact_name is not None else hint in n.lower())]
         if not ins or not outs:
             raise TransportError(_not_found(hint, inputs=every_in))
+        if hint == "fm3":
+            inp = mido.open_input(ins[0])
+            opened = False
+            try:
+                outp = mido.open_output(outs[0])
+                opened = True
+                return inp, outp
+            finally:
+                if not opened:
+                    inp.close()
         return mido.open_input(ins[0]), mido.open_output(outs[0])
     sm = supriya_module or __import__("supriya_midi")
+    if hint == "fm3":
+        return _open_fm3_supriya(sm, exact_name)
     return SupriyaIn.open(sm, hint), SupriyaOut.open(sm, hint)
+
+
+def _open_fm3_supriya(sm: Any, exact_name: str | None) -> tuple[Any, Any]:
+    """Check both directions before opening either; never fall back."""
+    inp, outp = sm.MidiIn(), None
+    opened = False
+    try:
+        outp = sm.MidiOut()
+        ins, outs = list(inp.get_ports()), list(outp.get_ports())
+        i = _pick(ins, "fm3", inputs=True, exact_name=exact_name)
+        o = _pick(outs, "fm3", exact_name=exact_name)
+        inp.set_buffer_size(*SUPRIYA_BUFFER)
+        inp.open_port(i, "ToneCommand in")
+        inp.ignore_types(sysex=False, timing=True, active_sense=True)
+        outp.open_port(o, "ToneCommand out")
+        opened = True
+        return SupriyaIn(inp), SupriyaOut(outp)
+    finally:
+        if not opened:
+            inp.close_port()
+            if outp is not None:
+                outp.close_port()
 
 
 # --- supriya-midi behind the mido-shaped ports -----------------------------------------
@@ -165,16 +279,16 @@ def _encode(msg: Any) -> list[int]:
     raise TransportError(f"the transport does not send {t!r} messages")
 
 
-def _pick(names: list[str], hint: str, inputs: bool = False) -> int:
+def _pick(names: list[str], hint: str, inputs: bool = False,
+          exact_name: str | None = None) -> int:
     for i, n in enumerate(names):
-        if hint in str(n).lower():
+        if (n == exact_name if exact_name is not None else hint in str(n).lower()):
             return i
     raise TransportError(_not_found(hint, inputs=names if inputs else None))
 
 
-#: #216: the units the bus advice is for; on Windows they need Fractal's
-#: own USB driver. Any other device keeps the plain message.
-FRACTAL_HINTS = ("fm9", "fm3")
+#: #221: only the FM9 uses MIDI over USB and needs this Windows advice.
+FRACTAL_HINTS = ("fm9",)
 
 
 def _system() -> str:
@@ -186,11 +300,12 @@ def _not_found(hint: str, inputs: list[str] | None = None,
     """#212: name the device that was looked for. Before, an FM3 owner was
     told the FM9 was missing.
 
-    #216: say what the bus shows. A Windows FM3 owner's report listed no
-    MIDI input at all, which is what Windows looks like without Fractal's
-    USB driver; "is it connected and powered on?" sent them nowhere.
+    #221 corrects #216 for the FM3: its USB never enumerates as MIDI.
+    The FM9's #216 text remains byte-identical.
     `inputs` is the input port list when the caller has it (an output list
     says nothing: Windows always lists its GS Wavetable Synth there)."""
+    if hint == "fm3":
+        return fm3_connection_failure()
     head = f"{hint.upper()} MIDI ports not found"
     if hint not in FRACTAL_HINTS:
         return f"{head}; is it connected and powered on?"

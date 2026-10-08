@@ -27,7 +27,7 @@ layer guards all of them.
 |---|---|
 | **Fractal FM9** | Full: blocks, scenes, amps, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full: all seven parameters, every amp voicing, and your own cab IRs |
-| **Fractal FM3** | Connects read-only: presets, scenes and blocks; full support next ([#40](https://github.com/monzta1/ToneCommand/issues/40)) |
+| **Fractal FM3** | Connects read-only through a USB MIDI interface on its 5-pin MIDI ports (the FM3 has no MIDI over USB): presets, scenes and blocks; full support next ([#40](https://github.com/monzta1/ToneCommand/issues/40)) |
 | **HeadRush, IK ToneX** | HeadRush rigs and parameters; ToneX captures listed, read-only by design |
 
 Every device and exactly what it can do: [docs/DEVICES.md](docs/DEVICES.md).

@@ -268,7 +268,10 @@ class FM9:
             # and hands back the same port shape the simulator uses.
             from fm9 import midi_transport
             try:
-                self.inp, self.outp = midi_transport.open_ports(port_hint or self.PORT_HINT)
+                if self.PORT_HINT == "fm3":
+                    self.inp, self.outp = midi_transport.open_ports("fm3", exact_name=port_hint)
+                else:
+                    self.inp, self.outp = midi_transport.open_ports(port_hint or self.PORT_HINT)
             except midi_transport.TransportError as e:
                 raise FM9NotFound(str(e))
         # Before the first frame below: a model that restricts what it sends
@@ -285,6 +288,9 @@ class FM9:
         self._drain()
         if self.current_preset() is None:
             self.close()
+            if self.PORT_HINT == "fm3":
+                from fm9 import midi_transport
+                raise FM9NotFound(midi_transport.fm3_connection_failure("silent"))
             raise FM9NotFound(
                 f"{self.LABEL} port opened but the device did not answer a preset-name "
                 "query. Either it is still booting, FM9-Edit is running, or a "

@@ -33,17 +33,21 @@ them (supriya-midi) is wired in behind `TONECOMMAND_MIDI_BACKEND=supriya`
 and the ceiling lifts once it has had its hardware pass on the unit
 (issue #172). Until then, 3.12.
 
-## Step 2: install Fractal's USB driver (FM9 or FM3)
+## Step 2: connect your unit (FM9: USB driver; FM3: a MIDI interface)
 
-Download Fractal's Windows USB driver for your unit and install it:
+**FM9.** Download Fractal's Windows USB driver and install it:
+**https://www.fractalaudio.com/fm9-downloads/**
 
-- FM9: **https://www.fractalaudio.com/fm9-downloads/**
-- FM3: **https://www.fractalaudio.com/fm3-downloads/**
+This is the same driver FM9-Edit uses, so **if FM9-Edit already works on this
+computer, you can skip this step.** Without it, Windows cannot see the FM9 at
+all: Report a problem shows "MIDI in: none", and ToneCommand says this
+computer sees no MIDI input at all.
 
-This is the same driver FM9-Edit and FM3-Edit use, so **if FM9-Edit or
-FM3-Edit already works on this computer, you can skip this step.** Without
-it, Windows cannot see the unit at all: Report a problem shows "MIDI in:
-none", and ToneCommand says this computer sees no MIDI input at all.
+**FM3.** The FM3 has no MIDI over USB: its USB port carries Fractal's own
+channel for FM3-Edit, Fractal-Bot and Cab-Lab and never shows up as a MIDI
+device, with or without a driver. Connect a USB MIDI interface to the FM3's
+5-pin MIDI ports (interface OUT to FM3 IN, FM3 OUT to interface IN), then
+choose that interface's port in the FM3 card on the Devices page.
 
 ## Step 3: download ToneCommand
 
@@ -159,11 +163,13 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 **The page loads but the link indicator is red, or it says it cannot find the
 FM9 or FM3**
-Check, in this order: the unit is switched on; the USB cable goes from the
-unit to the computer and is a data cable rather than a charge-only one;
-Fractal's driver from Step 2 is installed; and FM9-Edit or FM3-Edit is
-**closed**, because only one program can hold the unit's USB connection at a
-time.
+For an FM9, check in this order: the unit is switched on; the USB cable goes
+from the unit to the computer and is a data cable rather than a charge-only
+one; Fractal's driver from Step 2 is installed; and FM9-Edit is **closed**,
+because only one program can hold the unit's USB connection at a time. For an
+FM3, check the MIDI interface instead: both 5-pin cables are connected the
+right way round, and the FM3 card on the Devices page names that interface's
+port.
 
 **"Preparing metadata (pyproject.toml) did not run successfully"**, with
 **python-rtmidi** and **"Unknown compiler(s)"** in the red text, or
