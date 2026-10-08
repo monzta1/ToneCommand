@@ -2986,11 +2986,12 @@
      a scene strip, a chain legend, or the chain's reserved height. */
   body.named-device #context .scenes { display: none; }
   /* #227: the attached picture, waiting to be sent. */
-  .picchip { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
+  .picrow { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 0 0 6px; }
+  .picrow .attach { padding: 3px 10px; font-size: var(--fs-badge); opacity: 0.85; }
+  .picchip { display: flex; align-items: center; gap: 10px; margin-right: auto; }
   .picchip[hidden] { display: none; }
   .picchip img { max-height: 54px; max-width: 120px; border: 1px solid var(--line); border-radius: 4px; }
   .picchip #picname { font-size: var(--fs-hint); color: var(--text); }
-  .promptrow .attach { flex: 0 0 auto; }
   /* #226: the rig, as read. Audio solid, control dashed, guesses marked. */
   .rigwrap { overflow-x: auto; margin: 4px 0 6px; }
   .rigsvg { display: block; }
@@ -3634,21 +3635,24 @@
           <div id="cscroll"></div>
         </div>
         <div class="composer">
-          <!-- #227: a picture of a rig, waiting to be sent with the request -->
-          <div class="picchip" id="picchip" hidden>
-            <img id="picthumb" alt="the rig picture you attached">
-            <span id="picname"></span>
-            <button id="picremove" title="remove the picture">REMOVE</button>
+          <!-- #227: a picture of a rig, waiting to be sent with the request.
+               Its button sits outside the prompt row, which keeps one action. -->
+          <div class="picrow">
+            <div class="picchip" id="picchip" hidden>
+              <img id="picthumb" alt="the rig picture you attached">
+              <span id="picname"></span>
+              <button id="picremove" title="remove the picture">REMOVE</button>
+            </div>
+            <button id="attachpic" class="attach" title="attach a picture of a rig (PNG, JPEG or WebP)">ATTACH A PICTURE</button>
+            <input type="file" id="picfile" accept="image/png,image/jpeg,image/webp" hidden>
           </div>
           <div class="promptrow">
             <span class="prompt-prefix">&gt;</span>
             <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
                       placeholder="Describe the sound, paste a link, or a picture of a rig..."></textarea>
-            <button id="attachpic" class="attach" title="attach a picture of a rig (PNG, JPEG or WebP)">PICTURE</button>
-            <input type="file" id="picfile" accept="image/png,image/jpeg,image/webp" hidden>
             <button id="engage">GENERATE PLAN</button>
           </div>
-          <div class="hint composerhint">Press Enter. Nothing changes on your amp until you say go. Drop a rig picture or .nam captures here.</div>
+          <div class="hint composerhint">Press Enter. Nothing changes on your amp until you say go. Drop pictures or .nam here.</div>
         </div>
         <!-- Source reading is reached through the same prompt. These controls
              retain the established implementation without exposing a second

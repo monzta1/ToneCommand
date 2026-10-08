@@ -207,6 +207,8 @@ def test_ready_reports_whether_pictures_can_be_read(client, monkeypatch):
 
 def test_page_takes_a_picture_by_paste_drop_and_attach():
     assert '<button id="attachpic" class="attach"' in PAGE
+    row = PAGE.split('<div class="promptrow">')[1].split("</div>")[0]
+    assert row.count("<button") == 1                              # the prompt row keeps one action
     assert '<input type="file" id="picfile" accept="image/png,image/jpeg,image/webp" hidden>' in PAGE
     assert "$('prompt').addEventListener('paste', e => {" in PAGE
     assert "const pic = files.find(f => PIC_TYPES.includes(f.type));" in PAGE

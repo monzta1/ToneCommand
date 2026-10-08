@@ -14,7 +14,7 @@ off the screen on laptop-height windows.
 ### Added
 - **Show it a picture of a rig (#227; Rig Reconstruction, #224).** Paste a
   screenshot into the request box (Cmd/Ctrl+V), drop a picture onto it, use
-  the new PICTURE button, or paste a link to a .png, .jpg or .webp. A
+  the new ATTACH A PICTURE button, or paste a link to a .png, .jpg or .webp. A
   thumbnail shows what is attached; send it, with or without a few words,
   and ToneCommand reads the gear and how it is wired into the same rig view
   as a pasted rundown, then asks the same build question. PNG, JPEG and
