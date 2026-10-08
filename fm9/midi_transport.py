@@ -164,6 +164,8 @@ def port_names(env: dict | None = None, supriya_module: Any = None) -> list[str]
         return []
     try:
         return [str(n) for n in port.get_ports()]
+    except Exception:  # noqa: BLE001  #221: an enumeration failure reads as no ports
+        return []
     finally:
         close = getattr(port, "delete", None) or getattr(port, "close_port", None)
         if close:
@@ -191,6 +193,8 @@ def output_names(env: dict | None = None, supriya_module: Any = None) -> list[st
         return []
     try:
         return [str(n) for n in port.get_ports()]
+    except Exception:  # noqa: BLE001  #221: an enumeration failure reads as no ports
+        return []
     finally:
         close = getattr(port, "delete", None) or getattr(port, "close_port", None)
         if close:

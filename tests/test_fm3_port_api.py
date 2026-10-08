@@ -191,3 +191,26 @@ def test_no_midi_system_reads_as_no_ports_not_an_error(rig, monkeypatch):
     refused = rig.client.post("/api/fm3/port", json={"port": "Interface A"})
     assert refused.status_code == 400 and refused.json()["ok"] is False
     assert not rig.path.exists()
+
+
+@pytest.mark.parametrize("names", ["port_names", "output_names"])
+def test_supriya_enumeration_failure_reads_as_no_ports_and_closes(names):
+    """#221 review: Supriya's get_ports() raising must not escape either."""
+    closed = []
+
+    class _Port:
+        def get_ports(self):
+            raise RuntimeError("enumeration failed")
+
+        def delete(self):
+            closed.append(True)
+
+    module = SimpleNamespace(MidiIn=_Port, MidiOut=_Port)
+    env = {"TONECOMMAND_MIDI_BACKEND": "supriya"}
+    original = transport.backend
+    try:
+        transport.backend = lambda env=None: "supriya"
+        assert getattr(transport, names)(env, supriya_module=module) == []
+    finally:
+        transport.backend = original
+    assert closed == [True]
