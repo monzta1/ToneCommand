@@ -49,7 +49,10 @@ class FakeReader:
 
 # -- REQ-001: kinds by bytes, refusals, the spec, the private folder ----------------
 
-@pytest.mark.parametrize("data, kind", [(DIAGRAM, "png"), (JPEG, "jpeg"), (WEBP, "webp")])
+# Short ids: pytest puts the test id in an environment variable, and on
+# Windows one longer than 32,767 characters (a whole PNG) cannot be set.
+@pytest.mark.parametrize("data, kind", [(DIAGRAM, "png"), (JPEG, "jpeg"), (WEBP, "webp")],
+                         ids=["png", "jpeg", "webp"])
 def test_image_kind_comes_from_the_bytes(data, kind):
     assert describe.image_kind(data) == kind
 
@@ -59,7 +62,7 @@ def test_image_kind_comes_from_the_bytes(data, kind):
     (b"GIF89a" + b"\x00" * 20, "not a PNG, JPEG or WebP"),
     (b"%PDF-1.7" + b"\x00" * 20, "not a PNG, JPEG or WebP"),
     (b"\x89PNG\r\n\x1a\n" + b"\x00" * (describe.MAX_IMAGE + 1), "pictures up to 10 MB"),
-])
+], ids=["empty", "gif", "pdf", "oversize"])
 def test_image_refusals_are_in_words(data, words):
     with pytest.raises(describe.SourceError, match=words):
         describe.check_image(data)
@@ -84,7 +87,12 @@ def test_temp_folder_is_private_and_removed_after_success(monkeypatch):
     monkeypatch.setattr(describe, "_ask", reader)
     describe.extract_image(JPEG)
     call = reader.calls[0]
-    assert call["mode"] == "0o700" and call["files"] == ["rig.jpg"]
+    assert call["files"] == ["rig.jpg"]
+    if sys.platform == "win32":
+        # Windows ignores POSIX modes; the folder is in the per-user temp dir
+        assert os.path.dirname(call["cwd"]) == __import__("tempfile").gettempdir()
+    else:
+        assert call["mode"] == "0o700"
     assert not os.path.exists(call["cwd"])
 
 
