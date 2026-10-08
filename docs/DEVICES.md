@@ -13,7 +13,7 @@ header and a build is refused until you say which device it is for.
 |---|---|---|---|
 | **Fractal FM9** | Full | From the unit | The reference implementation. Blocks, scenes, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full, all 7 parameters, plus IR install | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. Load your own cab IRs |
-| **Fractal FM3** | Read-only: preset and scene switching | From the unit | Through the FM9's own code, since 1.5.8. Shows preset, scenes and blocks; nothing that changes the sound is sent yet (#40) |
+| **Fractal FM3** | Not yet connectable | n/a | No MIDI over USB: it needs a USB MIDI interface on its 5-pin MIDI ports, and connecting through one is being built (#221). Unverified on a real FM3 |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
 
@@ -34,25 +34,28 @@ unit back. The full capability matrix per firmware is in
 claim is [PROTOCOL.md](PROTOCOL.md).
 
 Other FM9 variants share the model byte and should behave identically but are
-untested. The FM3 connects read-only (below); the Axe-Fx III uses a different
+untested. The FM3 is a different case (below); the Axe-Fx III uses a different
 model byte and is not supported yet.
 
-## Fractal FM3 (read-only)
+## Fractal FM3 (not yet connectable)
 
-Since 1.5.8 the FM3 connects through the FM9's own code, addressed with the
-FM3's model byte. It shows the loaded preset, the eight scenes and which
-blocks are on, and switches presets and scenes from the header.
+**The FM3 does not do MIDI over USB.** Its USB port carries only Fractal's own
+channels for FM3-Edit, Fractal-Bot and Cab-Lab; it never appears as a MIDI
+device on Windows or macOS, and installing Fractal's USB driver does not
+change that ([Fractal wiki: USB](https://wiki.fractalaudio.com/wiki/index.php?title=USB),
+[MIDI](https://wiki.fractalaudio.com/wiki/index.php?title=MIDI)). The FM9 is
+different: it does MIDI over USB, which is how ToneCommand reaches it.
 
-Nothing that changes your sound is sent to it. The FM3's block and parameter
-map, grid and cables have only been proven on an FM9, and each needs
-write-plus-read-back on a real FM3 before it is trusted. This is enforced at
-the FM3's MIDI port, which passes only Fractal's documented queries plus
-preset and scene switching, so no part of the app can go around it. Asking
-for a tone with the FM3 selected says so in one line.
+An FM3 is reached through a USB MIDI interface connected to its 5-pin MIDI IN
+and OUT. Choosing that interface for the FM3 in ToneCommand is being built
+(#221). Until it ships, ToneCommand cannot reach an FM3, whatever the cable.
 
-The FM3's model byte comes from preset files and has not yet been seen live
-from a unit. FM3 owners: press Report a problem once after connecting; that
-report is the hardware proof, and the start of full support (#40).
+What is ready for when it can: ToneCommand addresses the FM3 through the
+FM9's own code with the FM3's model byte, and read-only is enforced at its
+MIDI port (only Fractal's documented queries plus preset and scene
+switching), because the FM3's block and parameter map has only been proven
+on an FM9. None of this has run on a real FM3 yet; the model byte comes from
+preset files. Full support is #40.
 
 ## BOSS IR-2
 
