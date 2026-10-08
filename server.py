@@ -610,6 +610,11 @@ def get_fm9() -> DeviceAdapter:
     ctx = device_context()
     if ctx.kind != "fm9" or ctx.adapter is not None:
         if ctx.adapter is None:
+            if ctx.kind == "fm3":
+                # #221 review: a dropped FM3 keeps its interface guidance in
+                # the polls (and so in Report a problem), not a bare notice.
+                from fm9 import midi_transport
+                raise FM9NotFound(midi_transport.fm3_connection_failure("missing"))
             raise FM9NotFound(f"no {ctx.kind} adapter is connected")
         return GatedDevice(ctx.adapter)
     if _fm9 is None:

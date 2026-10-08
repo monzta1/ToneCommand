@@ -169,3 +169,10 @@ def test_failed_reconnect_drops_closed_adapter_and_keeps_new_binding(rig, monkey
     assert json.loads(rig.path.read_text()) == {"port": "Interface B"}
     assert set(rig.events) == {("close_input", "Interface A"), ("close_output", "Interface A")}
     assert "USB MIDI interface" in rig.notes[-1][1]
+    # #221 review: the next state poll keeps the FM3 guidance for the report
+    rig.notes.clear()
+    rig.client.get("/api/state")
+    polled = [note for note in rig.notes if note and note[0] is False]
+    assert polled, rig.notes
+    assert "USB MIDI interface" in polled[-1][1] and "no fm3 adapter" not in polled[-1][1]
+    assert "driver" not in polled[-1][1].lower()
