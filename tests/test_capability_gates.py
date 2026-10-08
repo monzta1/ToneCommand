@@ -204,6 +204,8 @@ def _stub_world(monkeypatch, tmp_path) -> list[str]:
     monkeypatch.setattr(describe, "read_source", lambda raw, on_stage=None: {
         "text": "a bright clean tone", "kind": "text", "url": None,
         "title": "", "notes": ""})
+    monkeypatch.setattr(describe, "_ask", lambda prompt, cancel=None:
+                        '{"ops": [{"op": "set_node", "id": "ts", "label": "Klon"}]}')
     monkeypatch.setattr(describe, "extract", lambda text, cancel=None: {
         "found": True, "summary": "bright clean", "stated": [], "vague": [],
         "quotes": []})
@@ -292,6 +294,8 @@ def _table(sim) -> list[dict]:
         ("POST", "/api/describe/read", {}, {"source": "a bright clean tone"}, None),
         ("POST", "/api/describe/read/stream", {}, {"source": "a bright clean tone"}, None),
         ("POST", "/api/describe/build", {}, {"spec": {"summary": "bright clean"}}, None),
+        ("POST", "/api/rig/correct", {}, {"graph": {"nodes": [{"id": "ts", "role": "drive"}], "edges": []},
+                                          "text": "that pedal is a Klon"}, None),
         ("POST", "/api/describe/build/stream", {}, {"spec": {"summary": "bright clean"}}, None),
         ("POST", "/api/plan", {}, {"prompt": "a bit more drive"}, None),
         ("GET", "/api/tone-dir", {}, None, None),

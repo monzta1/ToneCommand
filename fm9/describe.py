@@ -418,7 +418,13 @@ Return JSON and nothing else, exactly this shape:
   ],
   "stated": ["each specific setting the source ACTUALLY states, close to its own words"],
   "vague": ["each tone instruction that is directional rather than numeric"],
-  "quotes": [{"about": "what this supports", "text": "the sentence from the source", "at": "timestamp if the source has one, else null"}]
+  "quotes": [{"about": "what this supports", "text": "the sentence from the source", "at": "timestamp if the source has one, else null"}],
+  "rig": {
+    "schema_version": 1,
+    "nodes": [{"id": "short_id", "role": "one of: instrument, wah, drive, compressor, modulation, delay, reverb, pitch, volume, preamp, amp, power_amp, cab, switcher, controller, rack_fx, interface, other", "label": "the gear as the source names it", "provenance": "observed or inferred"}],
+    "edges": [{"from": "node id", "to": "node id", "kind": "one of: audio, audio_mono, audio_stereo, send_return, control, expression, other, unknown", "provenance": "observed or inferred", "channel": "L or R, only on an audio_stereo cable, else omit", "route": "a label shared by the cables of one switcher alternative, else omit"}],
+    "unknowns": ["each thing about the rig the source does not say, such as knob settings"]
+  }
 }
 
 If the source states no tone information at all, return
@@ -429,6 +435,15 @@ Rules:
 - Do not resolve gear to model names. "a Tube Screamer" stays "a Tube Screamer".
 - If there are no scenes described, return a single scene.
 - Keep it compact. This is handed to a builder next.
+- "rig" is the gear and how it is connected. Only gear and connections the
+  source shows or states are "observed"; anything you concluded is
+  "inferred". A MIDI or control line (a switcher changing channels, a
+  controller) is "control", an expression pedal is "expression"; neither is
+  ever an audio cable. A cable that carries sound but whose mono or stereo
+  the source does not say is "audio"; "unknown" is only for a connection
+  you cannot tell is audio at all. Two separate alternatives through a switcher get
+  different "route" labels. If the source says nothing about the gear,
+  return "rig": null.
 
 SOURCE:
 """
@@ -446,6 +461,74 @@ def extract(source_text: str, cancel=None) -> dict:
     raises SourceCancelled: a STOP button that leaves a minute of model time
     running in the background is only pretending to stop.
     """
+    body = _ask(EXTRACT_TASK + source_text, cancel=cancel)
+    try:
+        spec = json.loads(body[body.index("{"):body.rindex("}") + 1])
+    except (json.JSONDecodeError, ValueError):
+        raise SourceError("could not read a tone description out of that source")
+    if not isinstance(spec, dict):
+        raise SourceError("the reader returned something unusable")
+    spec.setdefault("found", False)
+    for key in ("scenes", "stated", "vague", "quotes"):
+        if not isinstance(spec.get(key), list):
+            spec[key] = []
+    _settle_rig(spec)
+    return spec
+
+
+def _settle_rig(spec: dict) -> None:
+    """#225: keep the reader's rig graph only if it validates. A bad one is
+    dropped with its problems listed, and the flat fields are left as they
+    are, so the build never depends on a graph the reader got wrong."""
+    from fm9 import riggraph
+    raw = spec.get("rig")
+    if raw in (None, {}):
+        spec["rig"] = None
+        return
+    try:
+        spec["rig"] = riggraph.load(raw)
+    except riggraph.RigGraphError as exc:
+        spec["rig"] = None
+        spec["rig_problems"] = [str(exc)]
+
+
+CORRECT_TASK = """A guitarist is correcting how a rig was read. Below is the
+rig as JSON, then what they said. Reply with JSON and nothing else:
+
+{"ops": [ ... ]}
+
+Each op is one of:
+  {"op": "set_node", "id": "existing node id", "label": "...", "role": "..."}
+  {"op": "add_edge", "from": "node id", "to": "node id", "kind": "audio|audio_mono|audio_stereo|send_return|control|expression|other|unknown", "channel": "L|R (stereo only)", "route": "switcher alternative label"}
+  {"op": "set_edge", "id": "existing edge id", "kind": "...", "channel": "...", "route": "..."}
+  {"op": "remove_edge", "id": "existing edge id"}
+
+Use only ids that are in the rig. Target a cable by its edge id. Change only
+what they asked about. If what they said does not map to these ops, reply
+{"ops": []}.
+
+RIG:
+"""
+
+
+def correct(graph: dict, sentence: str, cancel=None) -> tuple[dict, list[str]]:
+    """#226: a correction said in words, applied as structured edits, all or
+    nothing. Returns (new graph, what changed); raises RigGraphError with the
+    reason and leaves the graph as it was when the edits do not apply."""
+    from fm9 import riggraph
+    g = riggraph.load(graph)
+    body = _ask(CORRECT_TASK + json.dumps(g) + "\n\nTHEY SAID:\n" + str(sentence),
+                cancel=cancel)
+    try:
+        ops = json.loads(body[body.index("{"):body.rindex("}") + 1]).get("ops")
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        raise riggraph.RigGraphError("could not understand that as a change to the rig")
+    return riggraph.apply_ops(g, ops)
+
+
+def _ask(prompt: str, cancel=None) -> str:
+    """One question to the reader (the Claude CLI), its text answer back.
+    Shared by extract and correct, with the same timeout and STOP."""
     cli = planner.find_claude_cli()
     if not cli:
         raise SourceError(
@@ -454,7 +537,7 @@ def extract(source_text: str, cancel=None) -> dict:
     import time as _time
     try:
         proc = subprocess.Popen(
-            [cli, "-p", EXTRACT_TASK + source_text, "--output-format", "json",
+            [cli, "-p", prompt, "--output-format", "json",
              "--model", planner.cli_model()],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             cwd=tempfile.gettempdir(),
@@ -485,17 +568,9 @@ def extract(source_text: str, cancel=None) -> dict:
     if proc.returncode != 0:
         raise SourceError(f"the reader failed: {(proc.stderr or '').strip()[:200]}")
     try:
-        body = json.loads(proc.stdout).get("result") or ""
-        spec = json.loads(body[body.index("{"):body.rindex("}") + 1])
-    except (json.JSONDecodeError, ValueError):
-        raise SourceError("could not read a tone description out of that source")
-    if not isinstance(spec, dict):
+        return json.loads(proc.stdout).get("result") or ""
+    except (json.JSONDecodeError, AttributeError):
         raise SourceError("the reader returned something unusable")
-    spec.setdefault("found", False)
-    for key in ("scenes", "stated", "vague", "quotes"):
-        if not isinstance(spec.get(key), list):
-            spec[key] = []
-    return spec
 
 
 def brief_from(spec: dict, scenes: int | None = None,

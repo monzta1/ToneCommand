@@ -2407,6 +2407,7 @@ def api_describe_read(body: DescribeBody):
              "found": False}, status_code=422)
     spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
     spec["words"] = len(src["text"].split())
+    _with_rig_explain(spec)
     return spec
 
 
@@ -2447,9 +2448,36 @@ def api_describe_read_stream(body: DescribeBody):
             return
         spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
         spec["words"] = len(src["text"].split())
+        _with_rig_explain(spec)
         emit("spec", spec)
 
     return _stream_response(work, final=("spec", "error"))
+
+
+def _with_rig_explain(spec: dict) -> None:
+    """#226: the rig in plain lines, beside the graph the page draws."""
+    from fm9 import riggraph
+    spec["rig_explain"] = riggraph.explain(spec["rig"]) if spec.get("rig") else []
+
+
+class RigCorrectBody(BaseModel):
+    graph: dict
+    text: str
+
+
+@app.post("/api/rig/correct")
+def api_rig_correct(body: RigCorrectBody):
+    """#226: correct how a rig was read, in words. The reader turns the
+    sentence into structured edits, applied all or nothing; a refusal leaves
+    the graph as it was and says why. Reads and writes no device."""
+    from fm9 import riggraph
+    try:
+        graph, changed = describe.correct(body.graph, body.text)
+    except riggraph.RigGraphError as exc:
+        return JSONResponse({"error": str(exc), "graph": body.graph}, status_code=400)
+    except describe.SourceError as exc:
+        return JSONResponse({"error": str(exc), "graph": body.graph}, status_code=502)
+    return {"graph": graph, "changed": changed, "explain": riggraph.explain(graph)}
 
 
 @app.post("/api/describe/build")

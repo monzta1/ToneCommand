@@ -2980,6 +2980,20 @@
   /* What a named-parameter device does not have, and must not be shown:
      a scene strip, a chain legend, or the chain's reserved height. */
   body.named-device #context .scenes { display: none; }
+  /* #226: the rig, as read. Audio solid, control dashed, guesses marked. */
+  .rigwrap { overflow-x: auto; margin: 4px 0 6px; }
+  .rigsvg { display: block; }
+  .rigsvg .rgbox { fill: rgba(87,214,255,0.08); stroke: var(--cyan); stroke-width: 1.2; }
+  .rigsvg .rgbox.guess { stroke-dasharray: 4 3; stroke: var(--amber); }
+  .rigsvg .rgbox.ctl { fill: rgba(255,180,84,0.06); }
+  .rigsvg .rgtx { fill: var(--text); font-size: 11px; text-anchor: middle; }
+  .rigsvg .rgroute { fill: var(--amber); font-size: 10px; }
+  .rigsvg .rgline { stroke: var(--cyan); stroke-width: 1.4; }
+  .rigsvg .rgline.ctl { stroke: var(--amber); stroke-dasharray: 4 3; }
+  .rigexplain { margin: 4px 0 8px 18px; font-size: var(--fs-hint); }
+  .rigfix { display: flex; gap: 8px; }
+  .rigfix input { flex: 1; }
+  .rignote { font-size: var(--fs-hint); color: var(--muted, #9ab); }
   /* #212: a read-only device: nothing that would change the sound. */
   body.readonly-device #auditionbtn,
   body.readonly-device #storeafter,
@@ -3067,7 +3081,10 @@
   .stageintro p { margin: 8px 0 0; color: var(--muted);
     font-size: var(--fs-hint); line-height: 1.45; }
 
-  body.chat-empty #pane-request { justify-content: center; padding: 4vh 32px; }
+  /* "safe": centred while it fits, top-aligned when it does not. Plain
+     centring pushed a tall card (a rig with its diagram, #226) up past the
+     top of this scroll box, where scrolling can never reach it. */
+  body.chat-empty #pane-request { justify-content: safe center; padding: 4vh 32px; }
   body.chat-empty #pane-request #chat { margin: 0; }
   body.chat-empty #pane-request .cempty { padding: 0; gap: 18px; }
   body.chat-empty #pane-request .cask {
@@ -7722,7 +7739,7 @@ function askAboutBuild(spec, note) {
   srcAnswers = {scenes: found, name: suggestName(spec)};
 
   const counts = [...new Set([1, found])].sort((a, b) => a - b);
-  $('srcask').innerHTML = `
+  $('srcask').innerHTML = `<div id="rigcard">${rigCardHtml(spec)}</div>
     <h4>Before I build it</h4>
     <p>This source describes ${found} scene${found === 1 ? '' : 's'}, which is
        what the player in it happens to run. How much of it do you want?</p>
@@ -7752,6 +7769,126 @@ function askAboutBuild(spec, note) {
     srcAnswers.name = $('qname').value.trim();
     $('srcask').hidden = true;
     runBuild(spec, note);
+  };
+  wireRigCard(spec);
+  // The card is the answer to what the player just pasted: bring it into
+  // view rather than leave it below the request hero on a short window.
+  try { $('srcask').scrollIntoView({block: 'start', behavior: 'smooth'}); } catch (e) { /* older engines */ }
+}
+
+// --- #226: the rig, as read ---------------------------------------------------
+// What the reader recognised and how it is connected: the audio chain drawn
+// solid, control lines dashed, anything inferred marked with a question
+// mark. Corrections are said in words and come back as edits to the rig.
+const RIG_AUDIO = new Set(['audio', 'audio_mono', 'audio_stereo', 'send_return']);
+
+function rigLabel(g, id) {
+  const n = (g.nodes || []).find(x => x.id === id);
+  return n ? n.label : id;
+}
+
+function rigSvg(g) {
+  // One row per audio path (from the server's explanation order is not
+  // needed: the paths are walked here the same simple way), then one row of
+  // control links. Boxes are fixed width; long labels are cut with an ellipsis.
+  const nodes = Object.fromEntries((g.nodes || []).map(n => [n.id, n]));
+  const out = {};
+  const hasIn = new Set();
+  for (const e of g.edges || []) {
+    if (!RIG_AUDIO.has(e.kind)) continue;
+    (out[e.from] = out[e.from] || []).push(e);
+    hasIn.add(e.to);
+  }
+  const audio = new Set([...Object.keys(out), ...hasIn]);
+  const paths = [];
+  const walk = (id, trail, route) => {
+    const next = (out[id] || []).filter(e => !e.route || !route || e.route === route);
+    let extended = false;
+    for (const e of next) {
+      if (trail.includes(e.to)) continue;
+      extended = true;
+      walk(e.to, [...trail, e.to], e.route || route);
+    }
+    if (!extended) paths.push({route, ids: trail});
+  };
+  for (const id of audio) if (!hasIn.has(id)) walk(id, [id], null);
+  const controls = (g.edges || []).filter(e => e.kind === 'control' || e.kind === 'expression');
+  const W = 118, H = 26, GX = 22, GY = 14;
+  const rows = paths.length + (controls.length ? 1 : 0);
+  const cols = Math.max(1, ...paths.map(p => p.ids.length), controls.length * 2);
+  const svgW = cols * (W + GX) + 70, svgH = Math.max(1, rows) * (H + GY) + 4;
+  const cut = s => (s.length > 15 ? s.slice(0, 14) + '...' : s);
+  const box = (x, y, n, dashed) => {
+    const guess = n && n.provenance !== 'observed' && n.provenance !== 'user_confirmed';
+    return `<rect x="${x}" y="${y}" width="${W}" height="${H}" rx="5" class="rgbox${guess ? ' guess' : ''}${dashed ? ' ctl' : ''}"/>`
+      + `<text x="${x + W / 2}" y="${y + H / 2 + 4}" class="rgtx">${esc(cut((n && n.label) || '?'))}${guess ? ' ?' : ''}</text>`;
+  };
+  let svg = '';
+  paths.forEach((p, r) => {
+    const y = r * (H + GY) + 2;
+    if (p.route) svg += `<text x="2" y="${y + H / 2 + 4}" class="rgroute">${esc(p.route)}</text>`;
+    p.ids.forEach((id, c) => {
+      const x = 66 + c * (W + GX);
+      svg += box(x, y, nodes[id], false);
+      if (c > 0) svg += `<line x1="${x - GX}" y1="${y + H / 2}" x2="${x}" y2="${y + H / 2}" class="rgline"/>`;
+    });
+  });
+  if (controls.length) {
+    const y = paths.length * (H + GY) + 2;
+    svg += `<text x="2" y="${y + H / 2 + 4}" class="rgroute">control</text>`;
+    controls.forEach((e, i) => {
+      const x = 66 + i * 2 * (W + GX);
+      svg += box(x, y, nodes[e.from], true) + box(x + W + GX, y, nodes[e.to], true)
+        + `<line x1="${x + W}" y1="${y + H / 2}" x2="${x + W + GX}" y2="${y + H / 2}" class="rgline ctl"/>`;
+    });
+  }
+  return `<svg class="rigsvg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" role="img" aria-label="the rig as read">${svg}</svg>`;
+}
+
+function rigCardHtml(spec) {
+  if (!spec.rig) {
+    return (spec.rig_problems && spec.rig_problems.length)
+      ? `<p class="rignote">The gear in this source could not be laid out as a rig, so the build works from the description alone.</p>`
+      : '';
+  }
+  const lines = (spec.rig_explain || []).map(l => `<li>${esc(l)}</li>`).join('');
+  return `<h4>The rig, as read</h4>
+    <div class="rigwrap">${rigSvg(spec.rig)}</div>
+    <ul class="rigexplain">${lines}</ul>
+    <div class="rigfix">
+      <input type="text" id="rigfix" maxlength="300"
+             placeholder="Something wrong? Say it, e.g. the second pedal is a chorus">
+      <button id="rigfixgo">CORRECT</button>
+    </div>
+    <p class="rignote" id="rigfixsaid">Corrections change the rig shown here. Building straight from the corrected rig comes next; for now the build follows the description.</p>`;
+}
+
+function wireRigCard(spec) {
+  const go = $('rigfixgo');
+  if (!go) return;
+  go.onclick = async () => {
+    const text = $('rigfix').value.trim();
+    if (!text) return;
+    go.disabled = true;
+    try {
+      const r = await fetch('/api/rig/correct', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({graph: spec.rig, text})});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        $('rigfixsaid').textContent = `Not changed: ${d.error || `the server said ${r.status}`}`;
+        return;
+      }
+      spec.rig = d.graph;
+      spec.rig_explain = d.explain || [];
+      $('rigcard').innerHTML = rigCardHtml(spec);
+      $('rigfixsaid').textContent = `Changed: ${(d.changed || []).join('; ')}.`;
+      wireRigCard(spec);
+    } catch (e) {
+      $('rigfixsaid').textContent = `Not changed: ${e.message || e}`;
+    } finally {
+      if ($('rigfixgo')) $('rigfixgo').disabled = false;
+    }
   };
 }
 
