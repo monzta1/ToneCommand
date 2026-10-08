@@ -120,8 +120,12 @@ def _shape_problems(graph: dict) -> list[str]:
     for i, x in enumerate(graph.get("nodes") or [] if isinstance(graph.get("nodes"), list) else []):
         if not isinstance(x, dict):
             problems.append(f"node {i + 1} is not an object")
-        elif not isinstance(x.get("id"), str):
+            continue
+        if not isinstance(x.get("id"), str):
             problems.append(f"node {i + 1} has no text id")
+        for f in ("label", "role", "provenance"):
+            if x.get(f) is not None and not isinstance(x.get(f), str):
+                problems.append(f"node {i + 1} {f} is not text")
     for i, x in enumerate(graph.get("edges") or [] if isinstance(graph.get("edges"), list) else []):
         if not isinstance(x, dict):
             problems.append(f"edge {i + 1} is not an object")
@@ -129,8 +133,12 @@ def _shape_problems(graph: dict) -> list[str]:
         for end in ("from", "to"):
             if not isinstance(x.get(end), str):
                 problems.append(f"edge {i + 1} {end} is not a node id")
-        if x.get("kind") is not None and not isinstance(x.get("kind"), str):
-            problems.append(f"edge {i + 1} kind is not text")
+        for f in ("id", "kind", "provenance", "channel", "route"):
+            if x.get(f) is not None and not isinstance(x.get(f), str):
+                problems.append(f"edge {i + 1} {f} is not text")
+    for i, u in enumerate(graph.get("unknowns") or [] if isinstance(graph.get("unknowns"), list) else []):
+        if not isinstance(u, str):
+            problems.append(f"unknown {i + 1} is not text")
     return problems
 
 
@@ -261,6 +269,12 @@ def apply_ops(graph: dict, ops: list) -> tuple[dict, list[str]]:
     for i, op in enumerate(ops, 1):
         if not isinstance(op, dict):
             raise RigGraphError(f"edit {i} is not an object")
+        # Every field an edit may carry is text, or null where clearing is
+        # allowed. Checked before any field is used, so a reader that sends
+        # a list or a number is refused in words, never crashes the route.
+        for f, v in op.items():
+            if v is not None and not isinstance(v, str):
+                raise RigGraphError(f"edit {i}: {f} is not text")
         kind = op.get("op")
         if kind == "set_node":
             n = next((n for n in g["nodes"] if n["id"] == op.get("id")), None)

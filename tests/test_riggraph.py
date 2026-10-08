@@ -1,5 +1,7 @@
 """#225: the rig graph. Typed edges, honest provenance, routes that never
 combine, cycles reported rather than looped, edits all or nothing."""
+import json
+
 import pytest
 
 from fm9 import riggraph as rg
@@ -198,3 +200,41 @@ def test_a_missing_node_op_cannot_be_hidden_by_a_later_op():
 def test_bad_op_fields_are_refused_in_words(op, words):
     with pytest.raises(rg.RigGraphError, match=words):
         rg.apply_ops(LINEAR, [op])
+
+
+# -- review attempt 2: the whole malformed-input class ---------------------------------
+
+BAD_VALUES = [[], ["A"], {}, 7, 1.5, True]
+
+
+@pytest.mark.parametrize("where", ["node.id", "node.label", "node.role", "node.provenance",
+                                   "edge.from", "edge.to", "edge.id", "edge.kind",
+                                   "edge.provenance", "edge.channel", "edge.route", "unknowns"])
+@pytest.mark.parametrize("bad", BAD_VALUES, ids=repr)
+def test_every_graph_field_with_a_wrong_type_is_refused_in_words(where, bad):
+    g = json.loads(json.dumps(LINEAR))
+    g["edges"][0]["kind"] = "audio_stereo"           # so channel is meaningful
+    part, field = where.split(".") if "." in where else (where, None)
+    if part == "node":
+        g["nodes"][1][field] = bad
+    elif part == "edge":
+        g["edges"][0][field] = bad
+    else:
+        g["unknowns"] = [bad]
+    with pytest.raises(rg.RigGraphError):
+        rg.load(g)
+
+
+OPS = [{"op": "set_node", "id": "ts", "label": "x", "role": "drive"},
+       {"op": "add_edge", "from": "amp", "to": "cab", "kind": "audio", "route": "A"},
+       {"op": "set_edge", "id": "e1", "kind": "audio_stereo", "channel": "L", "route": "A"},
+       {"op": "remove_edge", "id": "e1"}]
+
+
+@pytest.mark.parametrize("base", OPS, ids=lambda o: o["op"])
+@pytest.mark.parametrize("bad", BAD_VALUES, ids=repr)
+def test_every_edit_field_with_a_wrong_type_is_refused_in_words(base, bad):
+    for field in base:
+        op = {**base, field: bad}
+        with pytest.raises(rg.RigGraphError):
+            rg.apply_ops(LINEAR, [op])

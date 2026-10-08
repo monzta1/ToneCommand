@@ -173,3 +173,21 @@ def test_page_keeps_the_build_note_beside_the_status():
     assert ("<p class=\"rignote\">Corrections change the rig shown here. Building straight from the "
             "corrected rig comes next; for now the build follows the description.</p>") in PAGE
     assert "$('rigfixsaid').textContent = `" not in PAGE        # status goes through rigSaid only
+
+
+@pytest.mark.parametrize("op", [{"op": "add_edge", "from": [], "to": "amp", "kind": "audio"},
+                                {"op": "set_edge", "id": "e1", "route": ["A"]}])
+def test_route_refuses_wrong_typed_edits_in_words_not_a_500(client, monkeypatch, op):
+    monkeypatch.setattr(describe, "_ask", _reader([op]))
+    r = client.post("/api/rig/correct", json={"graph": LINEAR, "text": "x"})
+    assert r.status_code == 400 and "is not text" in r.json()["error"]
+    assert r.json()["graph"] == LINEAR
+
+
+def test_extract_drops_a_wrong_typed_route_and_keeps_the_flat_fields(monkeypatch):
+    bad = {**LINEAR, "edges": [{**LINEAR["edges"][0], "route": ["A"]}] + LINEAR["edges"][1:]}
+    monkeypatch.setattr(describe, "_ask", lambda p, cancel=None: json.dumps(
+        {"found": True, "summary": "s", "scenes": [], "stated": ["x"], "vague": [], "quotes": [], "rig": bad}))
+    spec = describe.extract("text")
+    assert spec["rig"] is None and "route is not text" in spec["rig_problems"][0]
+    assert spec["summary"] == "s" and spec["stated"] == ["x"]
