@@ -165,6 +165,18 @@ Fractal's driver from Step 2 is installed; and FM9-Edit or FM3-Edit is
 **closed**, because only one program can hold the unit's USB connection at a
 time.
 
+To check that FM3-Edit or FM9-Edit is not holding the connection: close its
+window, then press **Ctrl+Shift+Esc** to open Task Manager. If FM3-Edit or
+FM9-Edit is still listed there, select it and click **End task**. Then click
+the link indicator in ToneCommand to look for the unit again.
+
+If **Report a problem** shows **"MIDI in: none"**, the editor is not the cause:
+a port another program holds is still listed. Windows is not presenting the
+unit at all. Install the driver from Step 2, then restart ToneCommand (close
+its window and run `.venv\Scripts\tonecommand` again), with the unit switched
+on and plugged in. If it still shows "MIDI in: none", restart the computer and try
+another USB port and cable.
+
 **"Preparing metadata (pyproject.toml) did not run successfully"**, with
 **python-rtmidi** and **"Unknown compiler(s)"** in the red text, or
 **"requires a different Python"**

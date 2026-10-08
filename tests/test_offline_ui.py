@@ -143,9 +143,12 @@ def test_a_failed_reconnect_says_why():
     import inspect
     import server
     src = inspect.getsource(server.api_reconnect)
-    assert '"why"' in src
+    # #219: every failure answers through _reconnect_failed, which keeps `why`.
+    assert "_reconnect_failed(kind, str(e))" in src
+    assert '"why": why' in inspect.getsource(server._reconnect_failed)
     fn = SCRIPT.split("async function reconnect()")[1].split("\n}\n")[0]
-    assert "still no FM9" in fn and "FM9-Edit is not holding the port" in fn
+    # #219: the editor advice comes from the server's answer, per device.
+    assert "still not connected" in fn and "d.advice" in fn
 
 
 def test_the_poll_does_not_stamp_over_a_reconnect_in_progress():

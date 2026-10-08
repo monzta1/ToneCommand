@@ -194,7 +194,8 @@ def _not_found(hint: str, inputs: list[str] | None = None,
     head = f"{hint.upper()} MIDI ports not found"
     if hint not in FRACTAL_HINTS:
         return f"{head}; is it connected and powered on?"
-    if inputs is not None and not inputs:
+    empty = inputs is not None and not inputs
+    if empty:
         msg = (f"{head}: this computer sees no MIDI input at all. Is it "
                "connected and powered on, with a USB cable that carries data?")
     else:
@@ -203,7 +204,35 @@ def _not_found(hint: str, inputs: list[str] | None = None,
     if system == "Windows":
         msg += (" On Windows a Fractal FM3 or FM9 also needs Fractal's USB "
                 "driver, the one FM3-Edit and FM9-Edit use, from fractalaudio.com.")
+        if empty:
+            # #219: the same owner installed the driver while ToneCommand was
+            # running and still saw no input.
+            msg += " After installing it, restart ToneCommand."
     return msg
+
+
+#: #219: how to tell an editor is not holding the unit's port. The page used
+#: to say "check FM9-Edit is not holding the port" to an FM3 owner, who asked
+#: how.
+EDITOR_ADVICE = ("If FM3-Edit or FM9-Edit is open, close it: only one program "
+                 "can hold the unit's USB connection. On Windows, Task Manager "
+                 "(Ctrl+Shift+Esc) shows whether either is still running.")
+
+
+def editor_advice(hint: str) -> str | None:
+    """#219: EDITOR_ADVICE for a failed FM9 or FM3 connect, or None.
+
+    None for any other device, and None when the bus lists no MIDI input at
+    all: an editor holding the port does not take it off the list, so the
+    not-found message's driver advice is the one that applies. Reads names
+    only and never raises; a bus that cannot be listed means no advice."""
+    if hint not in FRACTAL_HINTS:
+        return None
+    try:
+        inputs = port_names()
+    except Exception:
+        return None
+    return EDITOR_ADVICE if inputs else None
 
 
 class SupriyaIn:

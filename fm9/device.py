@@ -287,7 +287,7 @@ class FM9:
             self.close()
             raise FM9NotFound(
                 f"{self.LABEL} port opened but the device did not answer a preset-name "
-                "query. Either it is still booting, FM9-Edit is running, or a "
+                "query. Either it is still booting, FM3-Edit or FM9-Edit is running, or a "
                 "zombie process is holding the MIDI port (ps aux | grep python).")
 
     # What the FM9 can actually answer. Every field here is backed by

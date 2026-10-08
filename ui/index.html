@@ -5188,8 +5188,11 @@ async function reconnect() {
     if (d.connected) {
       log(`FM9 found: ${d.preset ? d.preset.label + ' "' + d.preset.name + '"' : 'connected'}`, 'ok');
     } else {
-      log(`still no FM9: ${d.why || 'not found'}. Check it is powered on and `
-          + `that FM9-Edit is not holding the port.`, 'err');
+      // #219: the advice comes from the server, which knows the device and
+      // whether the bus lists anything. A fixed line here named the wrong
+      // editor to an FM3 owner and gave the IR-2 an editor it does not have.
+      log(`still not connected: ${d.why || 'not found'}`
+          + (d.advice ? ` ${d.advice}` : ''), 'err');
     }
   } catch (e) {
     log(`could not look for the FM9: ${e.message}`, 'err');

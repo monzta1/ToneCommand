@@ -2184,15 +2184,27 @@ def api_reconnect():
         except FM9NotFound as e:
             note_connection(False, str(e))
             drop_fm9()
-            return {"connected": False, "why": str(e)}
+            return _reconnect_failed(kind, str(e))
         except CapabilityDeclined:
             raise
         except Exception as e:
             note_connection(False, str(e))           # #212: in the report too
             drop_fm9()
-            return {"connected": False, "why": str(e)}
+            return _reconnect_failed(kind, str(e))
     note_connection(True)
     return {"connected": True, "preset": snap.get("preset")}
+
+
+def _reconnect_failed(kind: str, why: str) -> dict:
+    """#219: a failed reconnect's answer. For the FM9 or FM3 it carries
+    `advice` on closing FM3-Edit or FM9-Edit when the bus lists any input;
+    the page used to say that to every device on every failure."""
+    from fm9 import midi_transport
+    out = {"connected": False, "why": why}
+    advice = midi_transport.editor_advice(kind)
+    if advice:
+        out["advice"] = advice
+    return out
 
 
 #: #212: the last connection failure written to the diagnostics log, so a
@@ -2234,7 +2246,7 @@ def _reconnect_device(kind: str) -> dict:
             ctx = device_context()
             select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
             note_connection(False, f"{DEVICE_KINDS.get(kind, kind)}: {e}")
-            return {"connected": False, "why": str(e)}
+            return _reconnect_failed(kind, str(e))
     note_connection(True)
     return {"connected": True}
 

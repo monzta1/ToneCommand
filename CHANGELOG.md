@@ -4,6 +4,20 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **A failed reconnect says how to rule out FM3-Edit or FM9-Edit, and only
+  when that can be the cause (#219).** A Windows FM3 owner was told to
+  "check FM9-Edit is not holding the port" and did not know how. The page
+  said that to every device on every failure. Now the FM9 or FM3 reconnect
+  answer carries advice that names both editors and points at Task Manager
+  (Ctrl+Shift+Esc) on Windows, and only when the computer lists some MIDI
+  input: an editor holding the port does not take it off the list, so on an
+  empty bus the driver advice is the one shown. The IR-2 and ToneX get no
+  editor advice. On Windows an empty bus also says to restart ToneCommand
+  after installing the driver. The "port opened but the device did not
+  answer" message names FM3-Edit as well as FM9-Edit. The Windows guide's
+  troubleshooting says how to check, and what "MIDI in: none" means.
+
 ## 1.5.9 (2026-10-07)
 
 **An FM3 or FM9 that Windows cannot see now says why.** When the computer

@@ -126,6 +126,8 @@ def test_the_transport_names_the_device_it_looked_for(monkeypatch):
 NO_INPUT = "this computer sees no MIDI input at all"
 DRIVER = ("On Windows a Fractal FM3 or FM9 also needs Fractal's USB driver, "
           "the one FM3-Edit and FM9-Edit use, from fractalaudio.com.")
+#: #219: an empty Windows bus adds this after the driver sentence.
+RESTART = " After installing it, restart ToneCommand."
 
 
 def _mido_bus(monkeypatch, ins, outs, system):
@@ -148,7 +150,7 @@ def test_empty_bus_on_windows_names_the_driver_mido(monkeypatch, hint):
     why = _why(hint)
     assert why.startswith(f"{hint.upper()} MIDI ports not found: ")
     assert NO_INPUT in why and "USB cable that carries data" in why
-    assert why.endswith(DRIVER)
+    assert why.endswith(DRIVER + RESTART)
 
 
 class _NoPorts:
@@ -178,7 +180,7 @@ def test_empty_bus_on_windows_names_the_driver_supriya(monkeypatch, hint):
         midi_transport.SupriyaIn.open(sm, hint)
     why = str(got.value)
     assert why.startswith(f"{hint.upper()} MIDI ports not found: ")
-    assert NO_INPUT in why and why.endswith(DRIVER)
+    assert NO_INPUT in why and why.endswith(DRIVER + RESTART)
 
 
 def test_supriya_output_side_never_reports_empty_bus(monkeypatch):
