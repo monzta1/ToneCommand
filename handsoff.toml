@@ -142,6 +142,11 @@ commands = [
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_fm3_readonly.py -q -k 'model or guard or refuse'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_fm3_readonly.py -q -k 'state or select or plan or catalog or page'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_report_bus.py -q",
+  ".venv/bin/python -m pytest tests/test_riggraph.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_extract.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_explain.py -q -k 'explain or correct or route'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_explain.py -q -k 'page or ui'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_describe.py tests/test_device_handle.py tests/test_capability_gates.py tests/test_ui_warning.py tests/test_ui_syntax.py -q",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_device_handle.py tests/test_capability_gates.py tests/test_ui_warning.py tests/test_device_picker.py tests/test_ui_syntax.py tests/test_device_catalog.py tests/test_diagnostics.py tests/test_midi_transport.py tests/test_ir2_product_loop.py -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these

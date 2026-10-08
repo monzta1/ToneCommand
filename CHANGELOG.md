@@ -4,6 +4,30 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.10 (2026-10-08)
+
+**Explain this rig.** Paste a rig rundown, a forum post or a video, and
+ToneCommand now shows the gear and how it is wired before it builds
+anything: the signal chain, what is audio and what is MIDI control, what is
+stereo, what it only guessed, and what the source never said. Say what it
+got wrong and it corrects the rig. Also: the FM3 can now be reached through
+a USB MIDI interface (#221).
+
+### Added
+- **Explain this rig (#225, #226; Rig Reconstruction, #224).** When you
+  paste a rig rundown, a forum post or a video link, ToneCommand now also
+  reads the gear and how it is connected, and shows it before building: the
+  signal chain in order, a small diagram (audio solid, control lines
+  dashed), which connections are MIDI or expression rather than audio, what
+  is stereo, what it only inferred (marked with a question mark), and what
+  the source never said. A switcher's alternatives stay separate routes
+  instead of being run together as one chain. Say what is wrong ("the
+  second pedal is a chorus") and the rig is corrected; an edit that names
+  something not in the rig, or would leave it inconsistent, changes nothing
+  and says why. Nothing here touches your device. Building straight from
+  the corrected rig is the next step (#228); for now the build still follows
+  the description.
+
 ### Fixed
 - **FM3 connection guidance and MIDI interface selection (#221, #219).**
   The #216 message incorrectly treated the FM3's USB as MIDI and recommended
