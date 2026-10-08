@@ -214,7 +214,7 @@ def test_it_says_what_it_found_before_the_slow_part():
     wider still: reading, then what was found, then the questions, and only
     then the wait.
     """
-    fn = SCRIPT.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
+    fn = SCRIPT.split("async function analyzeSource(sourceText, pic)")[1].split("\n}\n")[0]
     assert "srcProgress('found', note)" in fn
     assert "settings stated in the source" in fn
     assert "/api/describe/build" not in fn
@@ -494,7 +494,7 @@ def test_the_browser_shows_that_before_the_transmit_button():
 def test_the_questions_come_between_reading_and_building():
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     script = ui.split("<script>")[1]
-    fn = script.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
+    fn = script.split("async function analyzeSource(sourceText, pic)")[1].split("\n}\n")[0]
     assert "askAboutBuild(spec, note)" in fn
     assert "/api/describe/build" not in fn, "building must wait for the answers"
     ask = script.split("function askAboutBuild(spec, note)")[1].split("\n}\n")[0]
@@ -621,5 +621,5 @@ def test_the_ui_build_goes_through_the_stream(client):
     build = SCRIPT.split("async function runBuild(spec, note)")[1].split("\n}\n")[0]
     assert "/api/describe/build/stream" in build
     assert "srcWork" in build, "the sticky working strip must light"
-    read = SCRIPT.split("async function analyzeSource(sourceText)")[1].split("\n}\n")[0]
+    read = SCRIPT.split("async function analyzeSource(sourceText, pic)")[1].split("\n}\n")[0]
     assert "/api/describe/read/stream" in read

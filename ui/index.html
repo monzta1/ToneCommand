@@ -2217,6 +2217,11 @@
 
   /* Global operation strip: the fixed pill re-anchors above the shelf. */
   #opstrip { flex: 0 0 auto; }
+  /* #227: while the build question is open the request pane is a scroll box.
+     Without this, once a conversation existed the pane was ~100px tall with
+     overflow visible, and the card (taller since the rig view) was drawn
+     over the progress panel and the footer. Present since before 1.5.10. */
+  #pane-request:has(> #srcask:not([hidden])) { overflow-y: auto; min-height: 0; }
   /* In-flow, not floating: the strip claims its own row above the shelf so
      it can never cover a stage's actions. */
   #opstrip #working { position: static; transform: none; max-width: none;
@@ -2980,6 +2985,12 @@
   /* What a named-parameter device does not have, and must not be shown:
      a scene strip, a chain legend, or the chain's reserved height. */
   body.named-device #context .scenes { display: none; }
+  /* #227: the attached picture, waiting to be sent. */
+  .picchip { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
+  .picchip[hidden] { display: none; }
+  .picchip img { max-height: 54px; max-width: 120px; border: 1px solid var(--line); border-radius: 4px; }
+  .picchip #picname { font-size: var(--fs-hint); color: var(--text); }
+  .promptrow .attach { flex: 0 0 auto; }
   /* #226: the rig, as read. Audio solid, control dashed, guesses marked. */
   .rigwrap { overflow-x: auto; margin: 4px 0 6px; }
   .rigsvg { display: block; }
@@ -3623,13 +3634,21 @@
           <div id="cscroll"></div>
         </div>
         <div class="composer">
+          <!-- #227: a picture of a rig, waiting to be sent with the request -->
+          <div class="picchip" id="picchip" hidden>
+            <img id="picthumb" alt="the rig picture you attached">
+            <span id="picname"></span>
+            <button id="picremove" title="remove the picture">REMOVE</button>
+          </div>
           <div class="promptrow">
             <span class="prompt-prefix">&gt;</span>
             <textarea id="prompt" rows="1" autocomplete="off" spellcheck="false"
-                      placeholder="Describe the sound, or paste a link..."></textarea>
+                      placeholder="Describe the sound, paste a link, or a picture of a rig..."></textarea>
+            <button id="attachpic" class="attach" title="attach a picture of a rig (PNG, JPEG or WebP)">PICTURE</button>
+            <input type="file" id="picfile" accept="image/png,image/jpeg,image/webp" hidden>
             <button id="engage">GENERATE PLAN</button>
           </div>
-          <div class="hint composerhint">Press Enter. Nothing changes on your amp until you say go. Drop .nam captures here.</div>
+          <div class="hint composerhint">Press Enter. Nothing changes on your amp until you say go. Drop a rig picture or .nam captures here.</div>
         </div>
         <!-- Source reading is reached through the same prompt. These controls
              retain the established implementation without exposing a second
@@ -7528,9 +7547,9 @@ function srcSplitHtml(from) {
   </div>`;
 }
 
-async function analyzeSource(sourceText) {
-  const raw = String(sourceText || $('srcinput').value).trim();
-  if (!raw) return;
+async function analyzeSource(sourceText, pic) {
+  const raw = String(sourceText || (pic ? '' : $('srcinput').value)).trim();
+  if (!raw && !pic) return;
   const btn = $('engage');
   btn.disabled = true;
   const was = btn.textContent;
@@ -7552,7 +7571,7 @@ async function analyzeSource(sourceText) {
     const r = await fetch('/api/describe/read/stream', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       signal: srcWork.abort.signal,
-      body: JSON.stringify({source: raw})});
+      body: JSON.stringify(pic ? {source: raw, image: pic.data} : {source: raw})});
     if (!r.ok || !r.body) throw new Error(`the server said ${r.status}`);
     let spec = null;
     for await (const [ev, d] of sseFrom(r)) {
@@ -7606,6 +7625,7 @@ async function analyzeSource(sourceText) {
 (async () => {
   try {
     const d = await (await fetch('/api/describe/ready')).json();
+    if (d.images === false) picsReadable = false;     // #227
     const bits = [];
     if (!d.youtube) bits.push('Videos cannot be read automatically here');
     else if (!d.transcribe) bits.push('Videos without captions cannot be read here');
@@ -7758,6 +7778,10 @@ function askAboutBuild(spec, note) {
        keep it. I will list what that covers before you transmit.</p>
     <button class="go" id="qgo">BUILD IT</button>`;
   $('srcask').hidden = false;
+  // The reading is done and its summary heads this card, so the progress
+  // panel steps aside instead of being drawn over (#227). runBuild shows it
+  // again through srcProgress when the build starts.
+  $('srcprogress').hidden = true;
 
   $('qscenes').onclick = e => {
     const b = e.target.closest('button[data-n]');
@@ -7773,7 +7797,11 @@ function askAboutBuild(spec, note) {
   wireRigCard(spec);
   // The card is the answer to what the player just pasted: bring it into
   // view rather than leave it below the request hero on a short window.
-  try { $('srcask').scrollIntoView({block: 'start', behavior: 'smooth'}); } catch (e) { /* older engines */ }
+  // Only the request pane scrolls. scrollIntoView also scrolled #shell, the
+  // app's fixed frame, by 408px in 1.5.10: the header left the screen and
+  // the footer and progress panel slid over this card.
+  const pane = $('pane-request'), ask = $('srcask');
+  if (pane && ask) pane.scrollTop += ask.getBoundingClientRect().top - pane.getBoundingClientRect().top;
 }
 
 // --- #226: the rig, as read ---------------------------------------------------
@@ -9003,8 +9031,66 @@ function namDropSetup() {
   ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
     stop(e); zone.classList.remove('dropping');
   }));
-  zone.addEventListener('drop', e => runNamIntake(Array.from(e.dataTransfer.files || [])));
+  zone.addEventListener('drop', e => {
+    // #227: a picture goes to the rig reader; .nam captures to the intake.
+    const files = Array.from(e.dataTransfer.files || []);
+    const pic = files.find(f => PIC_TYPES.includes(f.type));
+    if (pic) { setPicture(pic); return; }
+    runNamIntake(files);
+  });
 }
+
+// --- #227: a picture of a rig in the request box --------------------------------
+// Paste it, drop it or attach it; it waits as a thumbnail until the request is
+// sent, then goes to the rig reader with whatever was typed as its note. The
+// server decides what the file really is from its bytes; this only filters.
+const PIC_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const PIC_MAX = 10 * 1024 * 1024;
+let pendingPic = null;
+let picsReadable = true;
+
+function setPicture(file) {
+  if (!file || !PIC_TYPES.includes(file.type)) {
+    chatNote('Pictures can be PNG, JPEG or WebP.'); return;
+  }
+  if (file.size > PIC_MAX) {
+    chatNote('That picture is over 10 MB; save a smaller copy and try again.'); return;
+  }
+  if (!picsReadable) {
+    chatNote('Reading a picture needs the Claude CLI on this computer. Install it, '
+             + 'or type or paste the gear list instead.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingPic = {name: file.name || 'pasted picture', data: String(reader.result)};
+    $('picthumb').src = pendingPic.data;
+    $('picname').textContent = pendingPic.name;
+    $('picchip').hidden = false;
+    $('prompt').focus();
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPicture() {
+  pendingPic = null;
+  $('picchip').hidden = true;
+  $('picthumb').removeAttribute('src');
+  $('picfile').value = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('attachpic').addEventListener('click', () => $('picfile').click());
+  $('picfile').addEventListener('change', e => setPicture((e.target.files || [])[0]));
+  $('picremove').addEventListener('click', clearPicture);
+  $('prompt').addEventListener('paste', e => {
+    const item = Array.from((e.clipboardData || {}).items || [])
+      .find(i => i.kind === 'file' && PIC_TYPES.includes(i.type));
+    if (!item) return;                 // text pastes behave exactly as before
+    e.preventDefault();
+    setPicture(item.getAsFile());
+  });
+});
 
 function namLibraryKnown() {
   try { return JSON.parse(localStorage.getItem('namLibrary') || '[]'); }
@@ -11897,6 +11983,17 @@ function requestRoute(text) {
 async function submitRequest() {
   if (chatBusy) return;
   const said = $('prompt').value.trim();
+  // #227: a picture is read like any other source; the words are its note.
+  if (pendingPic) {
+    const pic = pendingPic;
+    chatLog.push({role: 'user', content: (said ? said + ' ' : '') + `[picture: ${pic.name}]`});
+    $('prompt').value = '';
+    growPrompt();
+    renderChat();
+    clearPicture();
+    analyzeSource(said, pic);
+    return;
+  }
   if (!said) return;
   // an artist's name goes to the catalog first (#158); only when no pack
   // exists does the sentence continue to the planner, with the line shown

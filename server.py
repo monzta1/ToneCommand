@@ -2356,7 +2356,41 @@ def api_state():
 
 
 class DescribeBody(BaseModel):
-    source: str
+    source: str = ""
+    #: #227: a picture of a rig, base64 or a data URL; `source` is then the
+    #: player's note about it.
+    image: str | None = None
+
+
+def _read_spec(body: DescribeBody, on_stage=None, cancel=None) -> dict:
+    """A source (text, page, video) or a picture (#227) into a spec, with
+    where it came from attached. Raises describe.SourceError in words."""
+    if body.image or describe.looks_like_image_link(body.source):
+        url = None if body.image else body.source.strip()
+        if body.image:
+            data = describe.decode_image(body.image)
+        else:
+            if on_stage:
+                on_stage("fetch", "fetching the picture")
+            data = describe.fetch_image(url)
+        if on_stage:
+            on_stage("extract", "reading the picture")
+        spec = describe.extract_image(data, note="" if url else body.source, cancel=cancel)
+        spec["source"] = {"kind": "image", "url": url, "title": "", "notes": []}
+        spec["words"] = 0
+        return spec
+    # The non-streaming route has always called this without on_stage.
+    src = (describe.read_source(body.source, on_stage=on_stage) if on_stage
+           else describe.read_source(body.source))
+    if cancel is not None and cancel.is_set():
+        raise describe.SourceCancelled("stopped")
+    if on_stage:
+        on_stage("extract", "working out what tone it describes")
+    spec = (describe.extract(src["text"], cancel=cancel) if cancel is not None
+            else describe.extract(src["text"]))
+    spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
+    spec["words"] = len(src["text"].split())
+    return spec
 
 
 class BuildBody(BaseModel):
@@ -2381,7 +2415,9 @@ def api_describe_ready():
         video = False
     can_transcribe, why = describe.whisper_ready()
     return {"youtube": video, "transcribe": can_transcribe, "note": why,
-            "model": describe.whisper_model_name()}
+            "model": describe.whisper_model_name(),
+            # #227: pictures are read by the Claude CLI, the only source reader
+            "images": bool(planner.find_claude_cli())}
 
 
 @app.post("/api/describe/read")
@@ -2394,8 +2430,7 @@ def api_describe_read(body: DescribeBody):
     rather than staring at a spinner for four minutes.
     """
     try:
-        src = describe.read_source(body.source)
-        spec = describe.extract(src["text"])
+        spec = _read_spec(body)
     except describe.SourceError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
@@ -2405,8 +2440,6 @@ def api_describe_read(body: DescribeBody):
         return JSONResponse(
             {"error": spec.get("why") or "that source does not describe a tone",
              "found": False}, status_code=422)
-    spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
-    spec["words"] = len(src["text"].split())
     _with_rig_explain(spec)
     return spec
 
@@ -2426,14 +2459,11 @@ def api_describe_read_stream(body: DescribeBody):
     """
     def work(emit, cancel):
         try:
-            src = describe.read_source(
-                body.source,
-                on_stage=lambda k, n: emit("stage", {"key": k, "note": n}))
+            spec = _read_spec(
+                body, on_stage=lambda k, n: emit("stage", {"key": k, "note": n}),
+                cancel=cancel)
             if cancel.is_set():
                 return
-            emit("stage", {"key": "extract",
-                           "note": "working out what tone it describes"})
-            spec = describe.extract(src["text"], cancel=cancel)
         except describe.SourceCancelled:
             return
         except describe.SourceError as exc:
@@ -2446,8 +2476,6 @@ def api_describe_read_stream(body: DescribeBody):
             emit("error", spec.get("why")
                  or "that source does not describe a tone")
             return
-        spec["source"] = {k: src[k] for k in ("kind", "url", "title", "notes")}
-        spec["words"] = len(src["text"].split())
         _with_rig_explain(spec)
         emit("spec", spec)
 

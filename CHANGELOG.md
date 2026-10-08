@@ -4,6 +4,34 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Show it a picture of a rig (#227; Rig Reconstruction, #224).** Paste a
+  screenshot into the request box (Cmd/Ctrl+V), drop a picture onto it, use
+  the new PICTURE button, or paste a link to a .png, .jpg or .webp. A
+  thumbnail shows what is attached; send it, with or without a few words,
+  and ToneCommand reads the gear and how it is wired into the same rig view
+  as a pasted rundown, then asks the same build question. PNG, JPEG and
+  WebP up to 10 MB, recognised by their content, not their name.
+  - The picture is read by the Claude CLI (the same reader as pasted
+    sources) and is confined to that one file: it gets the file-reading
+    tool only, none of your own Claude settings, hooks or connected MCP
+    services, and cannot read anything outside a private folder made for
+    this one read, which is deleted afterwards. Text inside a picture is
+    treated as part of the picture, never as an instruction. Without the
+    Claude CLI, attaching a picture says so and offers typing or pasting the
+    gear list instead.
+
+### Fixed
+- **The rig view no longer pushes the app off the screen (1.5.10).** On a
+  laptop-height window, showing the rig after a read scrolled the app's own
+  frame: the header disappeared and the footer and progress panel were drawn
+  over the card. Only the request area scrolls now.
+- **The build question no longer draws over the footer.** Once a
+  conversation existed, the question card spilled out of its area over the
+  progress panel and the footer (this predates 1.5.10; the rig view made it
+  much larger). The area now scrolls, and the finished reading progress
+  steps aside while you answer; it comes back when the build starts.
+
 ## 1.5.10 (2026-10-08)
 
 **Explain this rig.** Paste a rig rundown, a forum post or a video, and
