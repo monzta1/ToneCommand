@@ -41,6 +41,8 @@ tone_dir.json
 # names the owner gave their own user-cab slots.
 ir_service.json
 user_cabs.json
+# #221: the MIDI interface port this machine reaches its FM3 through.
+fm3_port.json
 
 # generated site (site/build.py); deployed to Cloudflare Pages, never committed
 site/dist/

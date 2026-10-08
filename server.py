@@ -174,6 +174,12 @@ def available_devices() -> list[dict]:
 
 
 def _fm3_port_present() -> bool:
+    from fm9 import midi_transport
+    try:
+        if midi_transport.load_fm3_binding()["source"] in ("env", "file"):
+            return True
+    except midi_transport.TransportError:
+        return False
     return any(d["kind"] == "fm3" for d in detected_devices())
 
 
@@ -320,6 +326,37 @@ def api_device_select(body: dict):
             note_connection(True)
         _selected_kind["kind"] = kind
     return {"ok": True, "selected": kind, "active": device_context().kind}
+
+
+@app.get("/api/fm3/port")
+def api_fm3_port():
+    """#221: current binding and visible names, without opening any port."""
+    from fm9 import midi_transport
+    binding = midi_transport.load_fm3_binding()
+    return {"port": binding["port"],
+            "source": None if binding["source"] == "none" else binding["source"],
+            "fixed": binding["source"] == "env",
+            # only names a save can accept: present as both an input and an output
+            "ports": [name for name in dict.fromkeys(midi_transport.port_names())
+                      if name in set(midi_transport.output_names())]}
+
+
+@app.post("/api/fm3/port")
+def api_fm3_port_save(body: dict):
+    """#221: save and replace an open FM3 under the device-switch lock."""
+    import os
+    from fm9 import midi_transport
+    with _lock:
+        try:
+            binding = midi_transport.save_fm3_binding(body.get("port"))
+        except midi_transport.TransportError as e:
+            status = 409 if midi_transport.FM3_PORT_ENV in os.environ else 400
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=status)
+        ctx = device_context()
+        reconnected = False
+        if ctx.kind == "fm3" and ctx.adapter is not None:
+            reconnected = _reconnect_device("fm3", lock_held=True)["connected"]
+        return {"ok": True, **binding, "reconnected": reconnected}
 
 
 _lock = threading.Lock()
@@ -573,6 +610,11 @@ def get_fm9() -> DeviceAdapter:
     ctx = device_context()
     if ctx.kind != "fm9" or ctx.adapter is not None:
         if ctx.adapter is None:
+            if ctx.kind == "fm3":
+                # #221 review: a dropped FM3 keeps its interface guidance in
+                # the polls (and so in Report a problem), not a bare notice.
+                from fm9 import midi_transport
+                raise FM9NotFound(midi_transport.fm3_connection_failure("missing"))
             raise FM9NotFound(f"no {ctx.kind} adapter is connected")
         return GatedDevice(ctx.adapter)
     if _fm9 is None:
@@ -2213,13 +2255,14 @@ def note_connection(ok: bool, message: str = "") -> None:
     diagnostics.log_error("connection", message, device=device_context().kind)
 
 
-def _reconnect_device(kind: str) -> dict:
+def _reconnect_device(kind: str, *, lock_held: bool = False) -> dict:
     """#209: the selected device that is not the FM9, connected afresh. A
     replug leaves its MIDI handles dead (the IR-2's client holds the ports it
     opened), so the old adapter is closed and the context rebuilt. Opening
     the ports is all this proves; the state read that follows is what proves
-    the device answers."""
-    with _lock:
+    the device answers. The binding route already holds _lock across its
+    save and reconnect, and passes lock_held to keep them atomic."""
+    with contextlib.nullcontext() if lock_held else _lock:
         old = device_context().adapter
         if old is not None:
             with contextlib.suppress(Exception):    # a dead handle is being dropped anyway

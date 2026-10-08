@@ -141,7 +141,7 @@ def _why(hint):
     return str(got.value)
 
 
-@pytest.mark.parametrize("hint", ["fm9", "fm3"])
+@pytest.mark.parametrize("hint", ["fm9"])
 def test_empty_bus_on_windows_names_the_driver_mido(monkeypatch, hint):
     """The #216 report: no input at all, only the GS Wavetable Synth out."""
     _mido_bus(monkeypatch, [], ["Microsoft GS Wavetable Synth 0"], "Windows")
@@ -170,7 +170,7 @@ class _Supriya:
         return _NoPorts(self.outs)
 
 
-@pytest.mark.parametrize("hint", ["fm9", "fm3"])
+@pytest.mark.parametrize("hint", ["fm9"])
 def test_empty_bus_on_windows_names_the_driver_supriya(monkeypatch, hint):
     monkeypatch.setattr(midi_transport, "_system", lambda: "Windows")
     sm = _Supriya([], ["Microsoft GS Wavetable Synth 0"])
@@ -191,8 +191,19 @@ def test_supriya_output_side_never_reports_empty_bus(monkeypatch):
 
 def test_empty_bus_off_windows_has_no_driver_sentence(monkeypatch):
     _mido_bus(monkeypatch, [], [], "Darwin")
-    why = _why("fm3")
+    why = _why("fm9")
     assert NO_INPUT in why and "driver" not in why
+
+
+@pytest.mark.parametrize("system", ["Windows", "Darwin"])
+def test_fm3_empty_bus_names_the_interface_route_never_a_driver(monkeypatch, system):
+    """#221: the FM3 has no MIDI over USB (its USB is COM over USB for
+    FM3-Edit), so #216's driver advice never applies to it."""
+    _mido_bus(monkeypatch, [], ["Microsoft GS Wavetable Synth 0"], system)
+    why = _why("fm3")
+    assert why.startswith("FM3 MIDI ports not found. ")
+    assert "MIDI interface" in why and "no MIDI over USB" in why
+    assert "driver" not in why.lower() and DRIVER not in why
 
 
 def test_other_ports_on_windows_keep_the_driver_but_not_the_empty_bus_clause(monkeypatch):
@@ -228,13 +239,16 @@ def test_the_driver_advice_reaches_the_report(log, monkeypatch):
     assert NO_INPUT in body and DRIVER in body
 
 
-def test_windows_doc_step_2_covers_the_fm3_driver():
+def test_windows_doc_step_2_keeps_the_fm9_driver_and_routes_the_fm3_through_an_interface():
+    """#221: the FM3 has no MIDI over USB, so step 2 gives it a MIDI interface,
+    never Fractal's USB driver; the FM9's driver step stays."""
     from pathlib import Path
     doc = (Path(__file__).resolve().parent.parent / "docs" / "WINDOWS.md").read_text(encoding="utf-8")
     step2 = doc.split("## Step 2", 1)[1].split("\n## ", 1)[0]
     assert "https://www.fractalaudio.com/fm9-downloads/" in step2
-    assert "https://www.fractalaudio.com/fm3-downloads/" in step2
-    assert "FM3" in step2.splitlines()[0] and "FM3-Edit" in step2
+    assert "https://www.fractalaudio.com/fm3-downloads/" not in step2
+    assert "FM3" in step2.splitlines()[0]
+    assert "no MIDI over USB" in step2 and "MIDI interface" in step2 and "5-pin" in step2
     assert chr(0x2014) not in doc
 
 
