@@ -159,3 +159,17 @@ def test_ui_draws_audio_solid_and_control_dashed(tmp_path):
     assert svg.count('class="rgline ctl"') == 1                    # the one control link, dashed
     assert '>Mark IV ?<' in svg and 'rgbox guess' in svg            # inferred, marked
     assert '>A<' in svg and '>B<' in svg and '>control<' in svg     # routes labelled, control row
+
+
+def test_route_refuses_a_cleared_kind_in_words_not_a_500(client, monkeypatch):
+    monkeypatch.setattr(describe, "_ask", _reader([{"op": "set_edge", "id": "e1", "kind": None}]))
+    r = client.post("/api/rig/correct", json={"graph": LINEAR, "text": "x"})
+    assert r.status_code == 400 and "is not a kind of connection" in r.json()["error"]
+    assert r.json()["graph"] == LINEAR
+
+
+def test_page_keeps_the_build_note_beside_the_status():
+    assert '<p class="rignote" id="rigfixsaid" hidden></p>' in PAGE
+    assert ("<p class=\"rignote\">Corrections change the rig shown here. Building straight from the "
+            "corrected rig comes next; for now the build follows the description.</p>") in PAGE
+    assert "$('rigfixsaid').textContent = `" not in PAGE        # status goes through rigSaid only

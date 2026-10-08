@@ -110,10 +110,38 @@ def validate(graph: dict) -> list[str]:
     return problems
 
 
+def _shape_problems(graph: dict) -> list[str]:
+    """What normalize would otherwise drop or choke on: wrong containers,
+    members that are not objects, ids and endpoints that are not text."""
+    problems = []
+    for key in ("nodes", "edges", "unknowns"):
+        if key in graph and graph[key] is not None and not isinstance(graph[key], list):
+            problems.append(f"{key} is not a list")
+    for i, x in enumerate(graph.get("nodes") or [] if isinstance(graph.get("nodes"), list) else []):
+        if not isinstance(x, dict):
+            problems.append(f"node {i + 1} is not an object")
+        elif not isinstance(x.get("id"), str):
+            problems.append(f"node {i + 1} has no text id")
+    for i, x in enumerate(graph.get("edges") or [] if isinstance(graph.get("edges"), list) else []):
+        if not isinstance(x, dict):
+            problems.append(f"edge {i + 1} is not an object")
+            continue
+        for end in ("from", "to"):
+            if not isinstance(x.get(end), str):
+                problems.append(f"edge {i + 1} {end} is not a node id")
+        if x.get("kind") is not None and not isinstance(x.get("kind"), str):
+            problems.append(f"edge {i + 1} kind is not text")
+    return problems
+
+
 def load(graph: dict) -> dict:
-    """Normalize and validate, or raise RigGraphError with every problem."""
+    """Normalize and validate, or raise RigGraphError with every problem.
+    Malformed input is refused, never quietly emptied."""
     if not isinstance(graph, dict):
         raise RigGraphError("the rig is not an object")
+    shape = _shape_problems(graph)
+    if shape:
+        raise RigGraphError("; ".join(shape))
     g = normalize(graph)
     problems = validate(g)
     if problems:
@@ -164,11 +192,13 @@ def audio_paths(graph: dict) -> dict:
 
     for s in sources:
         walk(s, [s], None)
-    # A pure cycle has no source; report it rather than dropping it.
-    if not sources:
-        for n in sorted(audio_nodes):
-            walk(n, [n], None)
-            break
+    # A part of the rig that is only a loop has no source. Every such part
+    # is walked from its first node, so each loop is reported, not dropped.
+    reached = {x for p in paths for x in p["nodes"]} | {x for c in cycles for x in c}
+    for nid in nodes:
+        if nid in audio_nodes and nid not in reached:
+            walk(nid, [nid], None)
+            reached |= {x for p in paths for x in p["nodes"]} | {x for c in cycles for x in c}
     return {"paths": paths, "cycles": cycles}
 
 
@@ -236,12 +266,22 @@ def apply_ops(graph: dict, ops: list) -> tuple[dict, list[str]]:
             n = next((n for n in g["nodes"] if n["id"] == op.get("id")), None)
             if n is None:
                 raise RigGraphError(f"edit {i}: there is no node {op.get('id')!r}")
+            if "role" in op and op["role"] not in ROLES:
+                raise RigGraphError(f"edit {i}: {op['role']!r} is not a role")
+            if "label" in op and not (isinstance(op["label"], str) and op["label"].strip()):
+                raise RigGraphError(f"edit {i}: a node needs a name")
             for f in ("label", "role"):
                 if f in op:
                     n[f] = op[f]
             n["provenance"] = "user_confirmed"
             changed.append(f"{n['label']} updated")
         elif kind == "add_edge":
+            ids = {x["id"] for x in g["nodes"]}
+            for end in ("from", "to"):
+                if op.get(end) not in ids:
+                    raise RigGraphError(f"edit {i}: there is no node {op.get(end)!r}")
+            if op.get("kind") not in EDGE_KINDS:
+                raise RigGraphError(f"edit {i}: {op.get('kind')!r} is not a kind of connection")
             e = {k: op[k] for k in ("from", "to", "kind", "channel", "route") if op.get(k) is not None}
             e["provenance"] = "user_confirmed"
             g["edges"].append(e)
@@ -251,10 +291,12 @@ def apply_ops(graph: dict, ops: list) -> tuple[dict, list[str]]:
             e = next((e for e in g["edges"] if e["id"] == op.get("id")), None)
             if e is None:
                 raise RigGraphError(f"edit {i}: there is no connection {op.get('id')!r}")
+            if "kind" in op and op["kind"] not in EDGE_KINDS:
+                raise RigGraphError(f"edit {i}: {op['kind']!r} is not a kind of connection")
             for f in _EDGE_FIELDS:
                 if f in op:
                     if op[f] is None:
-                        e.pop(f, None)
+                        e.pop(f, None)       # only channel and route can be cleared
                     else:
                         e[f] = op[f]
             e["provenance"] = "user_confirmed"

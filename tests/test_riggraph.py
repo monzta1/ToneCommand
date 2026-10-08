@@ -130,7 +130,7 @@ def test_a_valid_edit_then_an_invalid_one_leaves_the_graph_unchanged():
 
 def test_an_edit_that_leaves_the_graph_invalid_is_refused():
     with pytest.raises(rg.RigGraphError, match="would leave the rig invalid"):
-        rg.apply_ops(LINEAR, [{"op": "add_edge", "from": "amp", "to": "ghost", "kind": "audio_mono"}])
+        rg.apply_ops(LINEAR, [{"op": "add_edge", "from": "amp", "to": "cab", "kind": "audio_mono", "channel": "L"}])
 
 
 def test_edits_mark_what_they_touch_user_confirmed():
@@ -158,3 +158,43 @@ def test_audio_of_unstated_format_is_walked_and_unknown_is_not():
     # unknown is not walked: no path runs from the switcher into either amp
     for p in rg.audio_paths(unknown)["paths"]:
         assert not ("sw" in p["nodes"] and ("trx" in p["nodes"] or "mk4" in p["nodes"])), p
+
+
+# -- review findings ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad, words", [
+    ({"nodes": 7}, "nodes is not a list"),
+    ({"nodes": ["amp"]}, "node 1 is not an object"),
+    ({"nodes": [n("a")], "edges": [{"from": [], "to": "a", "kind": "audio"}]}, "edge 1 from is not a node id"),
+    ({"nodes": [{"role": "amp"}]}, "node 1 has no text id"),
+])
+def test_malformed_graphs_are_refused_not_emptied(bad, words):
+    with pytest.raises(rg.RigGraphError, match=words):
+        rg.load(bad)
+
+
+def test_a_loop_in_a_part_not_connected_to_the_guitar_is_reported():
+    g = {"nodes": [n("gtr"), n("amp"), n("fx1"), n("fx2")],
+         "edges": [e("gtr", "amp"), e("fx1", "fx2"), e("fx2", "fx1")]}
+    out = rg.audio_paths(g)
+    assert out["cycles"] == [["fx1", "fx2", "fx1"]]
+    assert {"route": None, "nodes": ["gtr", "amp"]} in out["paths"]
+    assert any(l.startswith("Unresolved loop: fx1 -> fx2 -> fx1") for l in rg.explain(g))
+
+
+def test_a_missing_node_op_cannot_be_hidden_by_a_later_op():
+    with pytest.raises(rg.RigGraphError, match="edit 2: there is no node 'ghost'"):
+        rg.apply_ops(LINEAR, [{"op": "set_node", "id": "ts", "label": "Klon"},
+                              {"op": "add_edge", "from": "amp", "to": "ghost", "kind": "audio"},
+                              {"op": "remove_edge", "id": "e4"}])
+
+
+@pytest.mark.parametrize("op, words", [
+    ({"op": "set_edge", "id": "e1", "kind": None}, "None is not a kind"),
+    ({"op": "set_edge", "id": "e1", "kind": "laser"}, "'laser' is not a kind"),
+    ({"op": "set_node", "id": "ts", "role": "toaster"}, "'toaster' is not a role"),
+    ({"op": "set_node", "id": "ts", "label": ""}, "needs a name"),
+])
+def test_bad_op_fields_are_refused_in_words(op, words):
+    with pytest.raises(rg.RigGraphError, match=words):
+        rg.apply_ops(LINEAR, [op])

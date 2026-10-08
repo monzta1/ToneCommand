@@ -7860,7 +7860,14 @@ function rigCardHtml(spec) {
              placeholder="Something wrong? Say it, e.g. the second pedal is a chorus">
       <button id="rigfixgo">CORRECT</button>
     </div>
-    <p class="rignote" id="rigfixsaid">Corrections change the rig shown here. Building straight from the corrected rig comes next; for now the build follows the description.</p>`;
+    <p class="rignote" id="rigfixsaid" hidden></p>
+    <p class="rignote">Corrections change the rig shown here. Building straight from the corrected rig comes next; for now the build follows the description.</p>`;
+}
+
+function rigSaid(text) {
+  const el = $('rigfixsaid');
+  el.textContent = text;
+  el.hidden = !text;
 }
 
 function wireRigCard(spec) {
@@ -7876,16 +7883,16 @@ function wireRigCard(spec) {
         body: JSON.stringify({graph: spec.rig, text})});
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
-        $('rigfixsaid').textContent = `Not changed: ${d.error || `the server said ${r.status}`}`;
+        rigSaid(`Not changed: ${d.error || `the server said ${r.status}`}`);
         return;
       }
       spec.rig = d.graph;
       spec.rig_explain = d.explain || [];
       $('rigcard').innerHTML = rigCardHtml(spec);
-      $('rigfixsaid').textContent = `Changed: ${(d.changed || []).join('; ')}.`;
+      rigSaid(`Changed: ${(d.changed || []).join('; ')}.`);
       wireRigCard(spec);
     } catch (e) {
-      $('rigfixsaid').textContent = `Not changed: ${e.message || e}`;
+      rigSaid(`Not changed: ${e.message || e}`);
     } finally {
       if ($('rigfixgo')) $('rigfixgo').disabled = false;
     }
