@@ -4,6 +4,15 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.10 (2026-10-08)
+
+**Explain this rig.** Paste a rig rundown, a forum post or a video, and
+ToneCommand now shows the gear and how it is wired before it builds
+anything: the signal chain, what is audio and what is MIDI control, what is
+stereo, what it only guessed, and what the source never said. Say what it
+got wrong and it corrects the rig. Also: the FM3 can now be reached through
+a USB MIDI interface (#221).
+
 ### Added
 - **Explain this rig (#225, #226; Rig Reconstruction, #224).** When you
   paste a rig rundown, a forum post or a video link, ToneCommand now also
