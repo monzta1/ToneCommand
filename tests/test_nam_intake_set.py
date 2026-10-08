@@ -180,10 +180,14 @@ def test_route_touches_nothing_on_the_unit(client, monkeypatch):
 
 def test_ui_has_the_drop_target_and_shows_the_line():
     assert "function namDropSetup()" in UI and "namDropSetup();" in UI
-    assert "zone.addEventListener('drop', e => runNamIntake(" in UI
+    # #227: the drop takes a picture first; everything else still goes to
+    # the capture intake exactly as before
+    drop = UI[UI.index("zone.addEventListener('drop', e => {"):]
+    drop = drop[:drop.index("\n  });")]
+    assert "if (pic) { setPicture(pic); return; }" in drop and "runNamIntake(files);" in drop
     assert "fetch('/api/captures/intake'" in UI
     assert "chatNote(d.line);" in UI
-    assert "Drop .nam captures here." in UI
+    assert "Drop pictures or .nam here." in UI
     assert ".composer.dropping" in UI
     # installing is not offered here: no install call in the intake path
     body = UI[UI.index("async function runNamIntake"):UI.index("function growPrompt()")]
