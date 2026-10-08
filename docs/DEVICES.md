@@ -13,7 +13,7 @@ header and a build is refused until you say which device it is for.
 |---|---|---|---|
 | **Fractal FM9** | Full | From the unit | The reference implementation. Blocks, scenes, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full, all 7 parameters, plus IR install | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. Load your own cab IRs |
-| **Fractal FM3** | Not yet connectable | n/a | No MIDI over USB: it needs a USB MIDI interface on its 5-pin MIDI ports, and connecting through one is being built (#221). Unverified on a real FM3 |
+| **Fractal FM3** | Read-only, through a USB MIDI interface (unreleased after 1.5.9) | From the unit | No MIDI over USB: choose the interface on its 5-pin MIDI ports in the Devices FM3 card (#221). Unverified on a real FM3 |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
 
