@@ -10925,13 +10925,19 @@ async function apply() {
     // Said in the strip that cannot be scrolled away from, not only in the
     // plan panel: the transmit's own indicator used to simply vanish at the
     // finish, and a vanishing indicator reads as nothing having happened.
-    workAnnounce(bad
-      ? `SENT ${good} OF ${acted.length}. Failed: ${failures[0] || 'see the plan panel'}`
+    // #249: the strip says the sent-unverified count in every outcome, not
+    // only in the phase line.
+    const unverifiedNote = unverified
+      ? ` ${unverified} more sent, not verifiable: ${tally.unverifiedResults.map(r => describe(r.action)).join('; ')}.`
+      : '';
+    workAnnounce((bad
+      ? `SENT ${good} OF ${acted.length}. Failed: ${failures[0] || 'see the plan panel'}.`
       : (stored.length
           ? `DONE: ${good} change${good === 1 ? '' : 's'} sent and stored to slot ${storedWhere}. The preset is ready; play it.`
           : devNamed()
             ? `DONE: ${good} change${good === 1 ? '' : 's'} on the ${devName()}. Play it. No undo here.`
-            : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
+            : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`))
+      + unverifiedNote,
       bad ? 'part' : 'ok');
     sendPhase((bad ? `PARTIAL · ${good} OF ${acted.length} VERIFIED`
                    : `COMPLETE · ${good} OF ${acted.length} VERIFIED`)

@@ -2786,9 +2786,11 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
     #
     # Prepended, so the buffer carries the right name from the first action on,
     # and validated below with everything else rather than around it.
+    # A rename the planner wrote is cut to what the unit stores whether or
+    # not the player named the build (#246 review).
+    _fit_planned_renames(result.get("actions", []))
     if (body.name or "").strip():
         want = _fit_build_name(body.name)       # run_action prefixes "FM9AI-"
-        _fit_planned_renames(result.get("actions", []))
         if not any(a.get("kind") == "rename_preset"
                    for a in result.get("actions", [])):
             result["actions"].insert(0, {"kind": "rename_preset",

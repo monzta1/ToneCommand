@@ -153,3 +153,20 @@ def test_page_names_only_failed_changes_and_says_sent_unverified():
     assert "+ (unverified ? ` · ${unverified} SENT UNVERIFIED` : ''));" in PAGE
     assert "cards[card].classList.add(res.ok ? 'done' : (res.sent ? 'unverified' : 'fail'));" in PAGE
     assert "sent but cannot be read back to verify: " in PAGE
+
+
+def test_the_strip_says_the_unverified_count_in_every_outcome():
+    start = PAGE.index("const unverifiedNote = unverified")
+    block = PAGE[start:PAGE.index("bad ? 'part' : 'ok');", start)]
+    assert "more sent, not verifiable: " in block
+    assert block.count("+ unverifiedNote") == 1 and "workAnnounce((bad" in block   # one suffix for all branches
+
+
+def test_a_planner_rename_is_cut_even_when_the_player_gave_no_name(monkeypatch):
+    from fm9 import planner
+    monkeypatch.setattr(server, "_fm9", SimFM9(server.reg))
+    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": [
+        {"kind": "rename_preset", "block": "PRESET", "instance": 1, "type_name": LONG}]})
+    d = TestClient(server.app).post("/api/describe/build", json={"spec": {"summary": "a rig"}}).json()
+    rename = next(a for a in d["actions"] if a["kind"] == "rename_preset")
+    assert rename["type_name"] == "Marco Sfogli's 2015-2016" and rename["validation_errors"] == []
