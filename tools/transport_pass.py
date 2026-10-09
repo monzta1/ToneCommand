@@ -70,8 +70,11 @@ def problems(rec: dict) -> list[str]:
             out.append(f"{key}: no blocks were read")
         elif any(not b.get("values") for b in blocks):
             out.append(f"{key}: {sum(1 for b in blocks if not b.get('values'))} block(s) read no values")
-    if (rec.get("capture_after_load") or {}).get("preset_name") == (rec.get("capture_before") or {}).get("preset_name") \
-            and rec.get("capture_before"):
+    names = {key: (rec.get(key) or {}).get("preset_name") for key in ("capture_before", "capture_after_load")}
+    for key, name in names.items():
+        if not name:
+            out.append(f"{key}: the edit buffer's name was not read")
+    if all(names.values()) and names["capture_before"] == names["capture_after_load"]:
         out.append("the edit buffer still shows the starting preset's name after the load")
     cab = rec.get("cab") or {}
     if not cab.get("verified"):
@@ -84,6 +87,7 @@ def problems(rec: dict) -> list[str]:
     if rec.get("error"):
         out.append(f"the pass stopped: {rec['error']}")
     return out
+
 
 
 def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int, cab_name: str) -> dict:
@@ -139,14 +143,23 @@ def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int, cab_name: st
     finally:
         # Put the starting preset back whatever happened, and read it back:
         # a read that settles and retries, not one that passes on timing.
-        end = None
+        # A transient error on one try does not end the restore: each try is
+        # caught, and only when all three fail is the record marked so.
+        end, restore_errors = None, []
         for _ in range(3):
-            fm9.select_preset(start[0])          # discards the edit-buffer load
-            time.sleep(0.5)
-            end = fm9.current_preset()
+            try:
+                fm9.select_preset(start[0])      # discards the edit-buffer load
+                time.sleep(0.5)
+                end = fm9.current_preset()
+            except Exception as exc:
+                restore_errors.append(f"{type(exc).__name__}: {exc}")
+                time.sleep(0.5)
+                continue
             if end and end[0] == start[0]:
                 break
         rec["end_preset"] = list(end) if end else None
+        if restore_errors:
+            rec["restore_errors"] = restore_errors
     rec["seconds"] = round(time.time() - t0, 1)
     return rec
 

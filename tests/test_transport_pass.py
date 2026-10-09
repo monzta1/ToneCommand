@@ -201,3 +201,47 @@ def test_an_unreadable_cab_slot_name_is_refused_before_anything_is_sent(files, m
     with pytest.raises(tp.PassError, match="did not answer its name read; nothing was sent"):
         tp.run(dev, server.reg, preset, cab, 522, CAB_NAME)
     assert sent == []
+
+
+def test_a_missing_edit_buffer_name_makes_the_record_incomplete(files):
+    preset, cab = files
+    rec = tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME)
+    for key in ("capture_before", "capture_after_load"):
+        broken = json.loads(json.dumps(rec))
+        broken[key]["preset_name"] = None
+        assert f"{key}: the edit buffer's name was not read" in tp.problems(broken)
+    both = json.loads(json.dumps(rec))
+    both["capture_before"]["preset_name"] = both["capture_after_load"]["preset_name"] = None
+    found = tp.problems(both)
+    assert "the edit buffer still shows the starting preset's name after the load" not in found
+    assert sum("name was not read" in x for x in found) == 2
+
+
+def test_a_transient_restore_error_is_retried_and_the_record_is_still_written(files, monkeypatch):
+    preset, cab = files
+    dev = sim()
+    start = dev.current_preset()
+    real = dev.select_preset
+    calls = []
+    def flaky(n):
+        calls.append(n)
+        if len(calls) == 1:
+            raise OSError("the port hiccuped")
+        return real(n)
+    monkeypatch.setattr(dev, "select_preset", flaky)
+    rec = tp.run(dev, server.reg, preset, cab, 522, CAB_NAME)
+    assert len(calls) == 2 and rec["end_preset"] == list(start)
+    assert rec["restore_errors"] == ["OSError: the port hiccuped"]
+    assert tp.problems(rec) == []
+
+
+def test_an_exhausted_restore_returns_an_incomplete_record(files, monkeypatch):
+    preset, cab = files
+    dev = sim()
+    def dead(n):
+        raise OSError("the port is gone")
+    monkeypatch.setattr(dev, "select_preset", dead)
+    rec = tp.run(dev, server.reg, preset, cab, 522, CAB_NAME)
+    assert len(rec["restore_errors"]) == 3
+    json.dumps(rec)                                   # still a record to write
+    assert any("did not end on the preset it started on" in x for x in tp.problems(rec))
