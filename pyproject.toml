@@ -8,19 +8,17 @@ version = "1.5.14"
 description = "Natural-language tone control over USB MIDI: Fractal FM9 and BOSS IR-2, more devices joining"
 readme = "README.md"
 license = {file = "LICENSE"}
-# 3.11 or 3.12 only: python-rtmidi 1.5.8 ships prebuilt wheels for CPython
-# 3.8 to 3.12 on every platform. On 3.13 or newer pip builds it from source
-# with meson, which needs a C++ toolchain most players do not have (seen on
-# Windows, 2026-09-20: "Unknown compiler(s)"). A ceiling turns that trace
-# into one line from pip naming the Python it wants. The ceiling is the gate
-# for #172: it lifts when the supriya-midi backend has passed on the unit.
-requires-python = ">=3.11,<3.13"
+# Any 3.11 or newer. python-rtmidi ships prebuilt wheels for CPython 3.8 to
+# 3.12 only, so from 3.13 on the MIDI binding is supriya-midi, which has
+# wheels to 3.14 (fm9/midi_transport.py picks whichever imports). That path
+# passed its hardware pass on the FM9 on 2026-10-09 (#172,
+# tools/transport_pass.py): every read and write matched python-rtmidi.
+requires-python = ">=3.11"
 dependencies = [
     "mido>=1.3,<2",
     # #172: python-rtmidi has wheels for CPython 3.8 to 3.12 only; supriya-midi
     # (a nanobind RtMidi binding) has them to 3.14. fm9/midi_transport.py picks
-    # whichever imports. The ceiling above lifts once the supriya path has had
-    # its hardware pass (#172 REQ-004); until then no 3.13+ install is offered.
+    # whichever imports; both passed the same hardware pass on the FM9.
     "python-rtmidi>=1.5,<2; python_version < '3.13'",
     "supriya-midi>=26.9b0; python_version >= '3.13'",
     "fastapi>=0.111,<1",

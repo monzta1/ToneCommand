@@ -305,6 +305,21 @@ def _in_order(seq: list[int]) -> set[int]:
     return keep
 
 
+def _cabled_from_input(cells: list[dict]) -> set[tuple]:
+    """Cells reached from an Input block by following cables forward, shunts
+    and bypassed blocks included: a scene's structure when no signal gets
+    through it (#240). A cell at column c+1 is reached when its feeds name a
+    row reached at column c."""
+    at = {(c["row"], c["col"]): c for c in cells}
+    reached = {(c["row"], c["col"]) for c in cells if c.get("family") == "INPUT"}
+    for col in range(1 + max((c["col"] for c in cells), default=0)):
+        for (r, cc), c in at.items():
+            if cc == col and (r, cc) not in reached \
+                    and any((x, col - 1) in reached for x in c.get("feeds") or []):
+                reached.add((r, cc))
+    return reached
+
+
 def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
     """What differs between a compiled rig scene and the loaded scene's grid.
 
@@ -318,7 +333,13 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
     sc = next((s for s in scenes if s["n"] == scene), scenes[0] if scenes else None)
     rig = list(sc["chain"]) if sc else []
     cells = grid.get("cells") or []
-    live = sorted((c for c in cells if c.get("live") and c.get("effect_id") is not None
+    # #240: on a dead scene no cell is live, and matching against nothing
+    # called every piece of gear missing. The preset's structure is still
+    # there: compare against what is cabled from Input instead, bypass
+    # ignored, and say first that no signal gets through.
+    dead = grid.get("alive") is False
+    on = _cabled_from_input(cells) if dead else {(c["row"], c["col"]) for c in cells if c.get("live")}
+    live = sorted((c for c in cells if (c["row"], c["col"]) in on and c.get("effect_id") is not None
                    and c.get("family") and c["family"] not in _ENDS),
                   key=lambda c: (c["col"], c["row"]))
 
@@ -338,14 +359,16 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
         else:
             missing.append({"what": step["label"], "block": step["block"],
                             "why": f"the rig has the {step['label']} ({step['block']}); "
-                                   f"the loaded scene has no {step['block']} block on its signal path for it"})
+                                   f"the loaded scene has no {step['block']} block "
+                                   f"{'cabled' if dead else 'on its signal path'} for it"})
     # An extra block bypassed in this scene passes the signal untouched: it
     # is listed, so every block is accounted for, but it is not a difference.
+    where = "is cabled into the loaded scene" if dead else "is on the loaded scene's path"
     extra = [{"what": c["label"], "bypassed": True,
-              "why": f"{c['label']} is on the loaded scene's path but bypassed, so it does not change the sound"}
+              "why": f"{c['label']} {where} but bypassed, so it does not change the sound"}
              if c.get("bypassed") else
              {"what": c["label"], "bypassed": False,
-              "why": f"{c['label']} is on the loaded scene's path; the rig has nothing there"}
+              "why": f"{c['label']} {where}; the rig has nothing there"}
              for i, c in enumerate(live) if i not in used]
     keep = _in_order([i for _, _, i in matches])
     out_of_order = []
@@ -358,10 +381,12 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
                                  "why": f"the {step['label']} is {c['label']}, which {where}; "
                                         + (f"the rig has it after the {before}" if before else "the rig has it first")})
     routing = []
+    if dead:
+        routing.append({"what": "path", "why": f"no signal reaches the output: {grid.get('why') or 'the path is broken'}"})
     # Forks and merges come from the cables (feeds), shunts included. A
     # serial path that steps from one row to another is still one path, so
     # rows alone never count as a split.
-    path = {(c["row"], c["col"]): c for c in cells if c.get("live")}
+    path = {(c["row"], c["col"]): c for c in cells if (c["row"], c["col"]) in on}
     for (r, col), c in sorted(path.items(), key=lambda x: (x[0][1], x[0][0])):
         fed = [x for x in c.get("feeds") or [] if (x, col - 1) in path]
         if len(fed) > 1:
@@ -376,8 +401,6 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
     for step, c, _ in matches:
         if c.get("bypassed"):
             routing.append({"what": c["label"], "why": f"{c['label']} (the {step['label']}) is bypassed in this scene"})
-    if grid.get("alive") is False:
-        routing.append({"what": "path", "why": f"no signal reaches the output: {grid.get('why') or 'the path is broken'}"})
     for state in ("changed", "not_reproduced"):
         for nid, (st, why) in (compiled.get("status", {}).get("nodes") or {}).items():
             if st == state and "#16" in why:

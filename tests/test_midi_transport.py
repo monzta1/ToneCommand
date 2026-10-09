@@ -198,15 +198,17 @@ def test_the_never_brick_guard_sits_above_the_transport():
 
 # --- REQ-003: packaging and docs ---------------------------------------------------------------------
 
-def test_pyproject_markers_keep_the_cap_until_the_hardware_pass():
+def test_pyproject_markers_and_no_ceiling_after_the_hardware_pass():
+    """The ceiling held until the supriya path passed on the unit (#172,
+    2026-10-09); now any 3.11 or newer installs, each Python on its binding."""
     src = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert '"python-rtmidi>=1.5,<2; python_version < \'3.13\'"' in src
     assert '"supriya-midi>=26.9b0; python_version >= \'3.13\'"' in src
-    assert 'requires-python = ">=3.11,<3.13"' in src
+    assert 'requires-python = ">=3.11"' in src and "<3.13" not in src.split("dependencies")[0]
     assert "#172" in src and "hardware pass" in src
 
 
-def test_docs_say_the_ceiling_lifts_after_the_pass_and_name_the_backend_variable():
+def test_docs_say_the_pass_happened_and_name_the_backend_variable():
     setup = (ROOT / "docs" / "SETUP.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for text in (setup, readme):

@@ -227,3 +227,35 @@ def test_page_offers_compare_and_build_to_match():
     start = PAGE.index("if ($('rigmatch')) $('rigmatch').onclick = () => {")
     assert "runBuild(spec, note);" in PAGE[start:start + 300]
     assert "fetch('/api/apply" not in PAGE[PAGE.index("function rigCompareHtml(d)"):PAGE.index("const go = $('rigfixgo');")]
+
+
+# -- #240: a scene where no signal reaches the output ---------------------------------
+
+def _dead(g, why="INPUT bypassed or missing"):
+    g = {**g, "alive": False, "why": why}
+    g["cells"] = [dict(c, live=False) for c in g["cells"]]
+    return g
+
+
+def test_compare_on_a_dead_scene_matches_the_cabled_gear_and_leads_with_the_dead_path():
+    g = serial("FUZZ", "FUZZ", "DISTORT", "CABINET", "DELAY")
+    g["cells"][0]["bypassed"] = True                       # Input 1 bypassed
+    d = diff(_dead(g))
+    assert d["missing"] == [] and d["extra"] == []
+    assert [m["live"] for m in d["matches"]] == ["Drive 1", "Drive 2", "Amp 1", "Cab 1", "Delay 1"]
+    assert d["routing"][0] == {"what": "path", "why": "no signal reaches the output: INPUT bypassed or missing"}
+    assert d["summary"] == "1 difference between this rig and the loaded scene."
+
+
+def test_compare_on_a_dead_scene_ignores_a_block_cabled_to_nothing():
+    g = serial("FUZZ", "FUZZ", "DISTORT", "CABINET", "DELAY")
+    g["cells"].append(cell(3, 4, "REVERB", feeds=[]))      # an orphan, no cable in
+    d = diff(_dead(g))
+    assert d["extra"] == []
+
+
+def test_compare_on_a_dead_scene_still_reports_what_is_missing():
+    g = serial("DISTORT", "CABINET")
+    d = diff(_dead(g, "Output cable severed"))
+    assert [x["what"] for x in d["missing"]] == ["TS808", "Klon", "Carbon Copy"]
+    assert d["routing"][0]["why"] == "no signal reaches the output: Output cable severed"

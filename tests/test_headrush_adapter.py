@@ -661,7 +661,9 @@ def test_a_derived_display_cannot_be_built_claiming_the_unit_said_it():
     with pytest.raises(TypeError):
         DerivedDisplay(value=1.0, text="1 Hz", curve="Linear",
                        provenance="x", api_readable=True)
-    with pytest.raises(ValueError):          # replace() refuses init=False
+    # replace() refuses an init=False field: ValueError up to Python 3.13,
+    # TypeError from 3.14 (#172 CI); either way it does not build one
+    with pytest.raises((ValueError, TypeError)):
         dataclasses.replace(got, api_readable=True)
     with pytest.raises(dataclasses.FrozenInstanceError):
         got.api_readable = True

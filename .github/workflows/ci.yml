@@ -99,18 +99,46 @@ jobs:
         env:
           TONECOMMAND_SIM: "1"
 
+  py314:
+    # #172: since the supriya-midi path passed on the unit, any 3.11 or newer
+    # installs. 3.14 gets the whole suite on Linux, and on Windows and macOS
+    # an install that may use prebuilt wheels only (a player has no compiler)
+    # plus the transport, hardware-pass and CLI tests.
+    name: py314 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install with prebuilt wheels only
+        run: 'pip install --only-binary=:all: -e ".[dev]"'
+      - name: The whole suite (Linux)
+        if: runner.os == 'Linux'
+        run: pytest tests/ -q -n auto
+      - name: Transport, hardware pass and CLI tests (Windows, macOS)
+        if: runner.os != 'Linux'
+        run: pytest tests/test_midi_transport.py tests/test_transport_pass.py tests/test_cli_stdin.py -q
+        env:
+          TONECOMMAND_SIM: "1"
+
   tests:
     # The one required check on main, kept under that exact name: a matrix
     # job reports as "suite (...)", which branch protection would wait for
     # forever. This gate fails unless every shard on every OS and both
     # accounts passed. A cancelled or skipped job is not coverage.
-    needs: [suite, account, cli]
+    needs: [suite, account, cli, py314]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Every shard, both accounts and the macOS CLI paths passed
+      - name: Every shard, both accounts, the macOS CLI paths and Python 3.14 passed
         run: |
-          echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}; cli: ${{ needs.cli.result }}"
+          echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}; cli: ${{ needs.cli.result }}; py314: ${{ needs.py314.result }}"
           test "${{ needs.suite.result }}" = "success"
           test "${{ needs.account.result }}" = "success"
           test "${{ needs.cli.result }}" = "success"
+          test "${{ needs.py314.result }}" = "success"
