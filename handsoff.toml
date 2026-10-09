@@ -169,6 +169,9 @@ commands = [
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_cli_stdin.py -q",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_planner_grok.py tests/test_planner_backends.py -q",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_targets.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_transport_pass.py -q",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_transport_pass.py -q -k packaging",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_compare.py -q",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval. This app has no hosted server;
