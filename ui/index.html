@@ -2992,6 +2992,10 @@
   .picchip[hidden] { display: none; }
   .picchip img { max-height: 54px; max-width: 120px; border: 1px solid var(--line); border-radius: 4px; }
   .picchip #picname { font-size: var(--fs-hint); color: var(--text); }
+  /* #228: what a build from a rig kept, changed and could not reproduce */
+  .fidelity { margin: 8px 0; }
+  .fidelity ul { margin: 2px 0 6px 18px; }
+  .fidelity .fidv { color: var(--cyan); }
   /* #226: the rig, as read. Audio solid, control dashed, guesses marked. */
   .rigwrap { overflow-x: auto; margin: 4px 0 6px; }
   .rigsvg { display: block; }
@@ -7755,12 +7759,12 @@ document.addEventListener('keydown', e => {
 
 // The two questions whose answers change the work. Modelled on how a careful
 // person takes a brief: confirm the shape and the name, then go.
-let srcAnswers = {scenes: null, name: ''};
+let srcAnswers = {scenes: null, name: '', mode: 'closest'};
 
 function askAboutBuild(spec, note) {
   const found = (spec.scenes || []).length || 1;
   const loaded = (lastState.preset || {}).name;
-  srcAnswers = {scenes: found, name: suggestName(spec)};
+  srcAnswers = {scenes: found, name: suggestName(spec), mode: 'closest'};
 
   const counts = [...new Set([1, found])].sort((a, b) => a - b);
   $('srcask').innerHTML = `<div id="rigcard">${rigCardHtml(spec)}</div>
@@ -7773,6 +7777,11 @@ function askAboutBuild(spec, note) {
         `<button data-n="${n}" class="${n === found ? 'on' : ''}">${
           n === 1 ? 'Just one scene' : `All ${n} scenes`}</button>`).join('')}</div>
     </div>
+    ${spec.rig ? `<div class="q">
+      <label>How faithful?</label>
+      <div class="opts" id="qmode">${RIG_MODES.map(([m, label, tip]) =>
+        `<button data-mode="${m}" title="${esc(tip)}" class="${m === 'closest' ? 'on' : ''}">${label}</button>`).join('')}</div>
+    </div>` : ''}
     <div class="q">
       <label>Name it</label>
       <input type="text" id="qname" maxlength="32" value="${esc(srcAnswers.name)}">
@@ -7793,6 +7802,12 @@ function askAboutBuild(spec, note) {
     srcAnswers.scenes = Number(b.dataset.n);
     [...$('qscenes').children].forEach(x => x.classList.toggle('on', x === b));
   };
+  if ($('qmode')) $('qmode').onclick = e => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    srcAnswers.mode = b.dataset.mode;
+    [...$('qmode').children].forEach(x => x.classList.toggle('on', x === b));
+  };
   $('qgo').onclick = () => {
     srcAnswers.name = $('qname').value.trim();
     $('srcask').hidden = true;
@@ -7806,6 +7821,65 @@ function askAboutBuild(spec, note) {
   // the footer and progress panel slid over this card.
   const pane = $('pane-request'), ask = $('srcask');
   if (pane && ask) pane.scrollTop += ask.getBoundingClientRect().top - pane.getBoundingClientRect().top;
+}
+
+// --- #228: building from the rig, and saying what was kept -------------------------
+const RIG_MODES = [
+  ['closest', 'Closest tone', 'the nearest sound on one FM9 signal path; every compromise is listed'],
+  ['faithful', 'Faithful routing', 'keep the routing exactly, or say why it cannot be built yet'],
+  ['simplified', 'Simplified live rig', 'one scene, one block of each kind: the easiest to gig'],
+];
+
+function fidelityHtml(f) {
+  if (!f) return '';
+  const kept = (f.kept || []).map(k =>
+    `<li data-names="${esc((k.names || [k.block]).join(' '))}" data-inst="${esc(k.instance)}" data-what="${esc(k.what)}">${esc(k.what)}: ${esc(k.block)} ${esc(k.instance)}`
+    + (k.model ? `, as ${esc(k.model)}` : '') + `<span class="fidv"></span></li>`).join('');
+  const why = xs => (xs || []).map(x => `<li>${esc(x.what)}: ${esc(x.why)}</li>`).join('');
+  const chosen = f.chosen || {};
+  return `<div class="fidelity" id="fidelity">
+    <h5 class="said">Kept from the rig</h5><ul id="fidkept">${kept || '<li>nothing</li>'}</ul>
+    ${(f.changed || []).length ? `<h5>Changed</h5><ul>${why(f.changed)}</ul>` : ''}
+    ${(f.not_reproduced || []).length ? `<h5 class="guessed">Not reproduced</h5><ul>${why(f.not_reproduced)}</ul>` : ''}
+    <h5 class="guessed">Chosen by us</h5><p>${esc(chosen.count || 0)} value${chosen.count === 1 ? '' : 's'} the source did not state`
+    + `${chosen.stated_used ? `; ${esc(chosen.stated_used)} taken straight from the source` : ''}.</p>
+    <p id="fidreadback" hidden></p>
+  </div>`;
+}
+
+// After sending: each kept piece of gear is verified when every action on its
+// block came back ok from the unit, partly when some did, not when none did.
+// Results echo the action as planned, so they are matched on the block's
+// names and its instance, the same identity the report was built with. The
+// count to reach is what the sent plan asked of that block, so a send that
+// stopped early cannot read as verified: a missing result is not a pass.
+// Returns the line for the transcript: the plan pane is hidden once the send
+// stage takes over, so a line written only there was never seen.
+function fidelityReadBack(f, acted, planned) {
+  let all = 0, some = 0, none = 0;
+  const short = [];
+  for (const li of document.querySelectorAll('#fidkept li[data-names]')) {
+    const names = li.dataset.names.split(' ');
+    const inst = Number(li.dataset.inst || 1);
+    const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())
+      && Number((a || {}).instance || 1) === inst;
+    // Every kept piece gets a mark: one the plan sent nothing for was not
+    // verified, it was not touched.
+    const want = (planned || []).filter(on).length;
+    const ok = want ? Math.min(want, acted.filter(r => on(r.action) && r.ok).length) : 0;
+    const word = want && ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');
+    if (want && ok === want) all++; else if (ok) some++; else none++;
+    if (ok !== want) short.push(`${li.dataset.what} ${word}`);
+    const tag = li.querySelector('.fidv');
+    if (tag) tag.textContent = ` (${word})`;
+  }
+  if (!(all + some + none)) return '';
+  const text = `Read back from the unit, gear kept from the rig: ${all} verified`
+    + (some ? `, ${some} partly` : '') + (none ? `, ${none} not verified` : '')
+    + (short.length ? ` (${short.join('; ')})` : '') + '.';
+  const line = $('fidreadback');
+  if (line) { line.hidden = false; line.textContent = text; }
+  return text;
 }
 
 // --- #226: the rig, as read ---------------------------------------------------
@@ -7976,7 +8050,7 @@ async function runBuild(spec, note) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       signal: srcWork.abort.signal,
       body: JSON.stringify({spec, scenes: srcAnswers.scenes,
-                            name: srcAnswers.name})});
+                            name: srcAnswers.name, mode: srcAnswers.mode || 'closest'})});
     if (!b.ok || !b.body) throw new Error(`the server said ${b.status}`);
     let plan = null;
     for await (const [ev, d] of sseFrom(b)) {
@@ -8218,7 +8292,8 @@ function showPlan(plan) {
       + `built for your rig. It gets you in the ballpark: review and tweak `
       + `before sending, and check anything marked below as interpreted.`
       + inheritsHtml(plan)
-      + srcSplitHtml(plan.from_source);
+      + srcSplitHtml(plan.from_source)
+      + fidelityHtml(plan.fidelity);
     // BEFORE the summary, not after. The summary runs to hundreds of words
     // on a multi-scene build, and provenance read at the end of that is
     // provenance nobody read: "this is an interpretation" has to arrive
@@ -10691,6 +10766,7 @@ async function apply() {
     const acted = out.results.filter(
       r => r.action && r.action.kind && r.action.kind !== 'snapshot'
         && r.action.kind !== 'build_chain');
+    const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted, currentPlan.actions) : '';   // #228
     const good = acted.filter(r => r.ok).length;
     const bad = acted.length - good;
     // NAME the failures. The old banner pointed at one card folded inside
@@ -10739,6 +10815,7 @@ async function apply() {
         + (devNamed() ? tail : bufferNote)
       : `Sent ${good} change${good === 1 ? '' : 's'} to the ${devName()}. Play it.`
         + tail);
+    if (fidLine) chatNote(fidLine);
     // Auto health after a build (issue #51): clone/dead/silent scenes the
     // plan-time review cannot see, because the final grid is the starter
     // template plus the plan. Surfaced here so a duplicate footswitch is

@@ -2397,6 +2397,9 @@ class BuildBody(BaseModel):
     spec: dict
     scenes: int | None = None
     name: str | None = None
+    #: #228: how faithful a build from a rig view is: closest (default),
+    #: faithful or simplified. Ignored when the source gave no rig.
+    mode: str = "closest"
 
 
 @app.get("/api/describe/ready")
@@ -2512,6 +2515,8 @@ def api_rig_correct(body: RigCorrectBody):
 def api_describe_build(body: BuildBody):
     """Pass two, in one request. Kept for callers that cannot hold a stream."""
     result = _describe_build_for(body)
+    if isinstance(result, dict) and result.get("blockers"):
+        return JSONResponse(result, status_code=409)          # #228: faithful cannot be
     if isinstance(result, dict) and "error" in result and len(result) == 1:
         return JSONResponse(result, status_code=502)
     return result
@@ -2548,7 +2553,23 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
     streaming twin cannot drift from the blocking one.
     """
     spec = body.spec or {}
-    brief = describe.brief_from(spec, scenes=body.scenes, name=body.name)
+    # #228: with a rig view, the chain is compiled before any model runs, and
+    # a faithful build that cannot be faithful is refused here, in words.
+    compiled = None
+    if spec.get("rig"):
+        from fm9 import riggraph, rigcompile
+        try:
+            compiled = rigcompile.compile(spec["rig"], body.mode, scenes=body.scenes)
+        except riggraph.RigGraphError as exc:
+            return {"error": f"that rig cannot be built: {exc}"}
+        if compiled["blockers"]:
+            return {"error": "That rig cannot be built faithfully on the FM9 yet: "
+                             + " ".join(compiled["blockers"])
+                             + " Choose closest tone to build the nearest single path.",
+                    "blockers": compiled["blockers"]}
+        brief = describe.brief_from_rig(spec, compiled, name=body.name)
+    else:
+        brief = describe.brief_from(spec, scenes=body.scenes, name=body.name)
 
     offline = False
     with _lock:
@@ -2655,12 +2676,21 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
         errs, warns = validate_action(Action(**a))
         a["validation_errors"] = errs
         a["validation_warnings"] = warns
+        # #228: the cab by name, as /api/plan does, so the review and the
+        # fidelity report say which cab rather than "bank 3 - ordinal 61"
+        if a.get("kind") == "set_cab" and a.get("value") is not None:
+            a["cab_name"] = cab_label(a.get("bank"), a.get("value"))
         if a.get("block"):
             try:
                 a["effect_id"] = reg.resolve_block(
                     a["block"], int(a.get("instance") or 1))[1]
             except Exception:
                 pass
+    # #228: the rig, read back against the validated plan.
+    if compiled is not None:
+        from fm9 import rigcompile
+        result["fidelity"] = rigcompile.fidelity(compiled, spec["rig"], result.get("actions", []),
+                                                 spec.get("stated") or [])
     return result
 
 
@@ -8030,9 +8060,6 @@ def main():
     uvicorn.run(app, host="127.0.0.1", port=port)
 
 
-if __name__ == "__main__":
-    main()
-
 
 @app.post("/api/plan/revise")
 def api_plan_revise(body: ApplyBody):
@@ -8067,3 +8094,11 @@ def api_plan_revise(body: ApplyBody):
         out["tone_coverage"] = {"status": "unknown", "checks_run": 0,
                                 "why": "the tone review did not run"}
     return out
+
+
+# Last, after every route: started as `python server.py`, main() blocks in
+# uvicorn, and a route defined below this line would never be registered
+# (found 2026-10-08: /api/plan/revise answered 404, so a re-reviewed plan
+# could not be sent from a server started that way).
+if __name__ == "__main__":
+    main()
