@@ -92,6 +92,11 @@
    "disposition": "unreachable: reg.resolve_block; no device handle in the try body"
   },
   {
+   "function": "_describe_build_for_device",
+   "ordinal": 1,
+   "disposition": "unreachable: wraps planner.plan with the device's own prompt and validator; no device handle in the try body (named_params is read before it)"
+  },
+  {
    "function": "_stream_response.events.runner",
    "ordinal": 1,
    "disposition": "converted: a preceding except CapabilityDeclined emits a distinct 'refused' event carrying the refusal payload rather than an error string; streaming twins that can reach a gate (api_apply_stream) check before the stream opens so a decline is a real 409"

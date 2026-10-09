@@ -296,6 +296,8 @@ def _table(sim) -> list[dict]:
         ("POST", "/api/describe/build", {}, {"spec": {"summary": "bright clean"}}, None),
         ("POST", "/api/rig/correct", {}, {"graph": {"nodes": [{"id": "ts", "role": "drive"}], "edges": []},
                                           "text": "that pedal is a Klon"}, None),
+        ("POST", "/api/rig/compare", {}, {"graph": {"nodes": [{"id": "ts", "role": "drive"}], "edges": []}},
+         None),
         ("POST", "/api/describe/build/stream", {}, {"spec": {"summary": "bright clean"}}, None),
         ("POST", "/api/plan", {}, {"prompt": "a bit more drive"}, None),
         ("GET", "/api/tone-dir", {}, None, None),
@@ -693,9 +695,9 @@ def test_audit_counts_are_reported_honestly():
     blocks = _except_exception_blocks(ast.parse(SERVER.read_text(encoding="utf-8")))
     reraised = sum(1 for _h, before, _b in blocks.values()
                    if _handles_decline_first(before))
-    assert len(blocks) == 90
+    assert len(blocks) == 91          # #230: the IR-2 rig build's planner call
     assert reraised == 36
-    assert len(blocks) - reraised == 54
+    assert len(blocks) - reraised == 55
 
 
 def test_capability_declined_is_its_own_type_and_the_handler_shapes_the_409(world):

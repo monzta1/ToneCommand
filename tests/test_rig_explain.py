@@ -140,9 +140,9 @@ def test_route_read_results_carry_the_explanation(monkeypatch):
 
 def test_page_shows_the_rig_card_in_the_build_question():
     assert "$('srcask').innerHTML = `<div id=\"rigcard\">${rigCardHtml(spec)}</div>" in PAGE
-    assert "wireRigCard(spec);" in PAGE
+    assert "wireRigCard(spec, note);" in PAGE
     assert "const r = await fetch('/api/rig/correct', {method: 'POST'," in PAGE
-    assert "for now the build follows the description." in PAGE
+    assert "Corrections change the rig shown here, and BUILD IT builds the corrected rig." in PAGE
 
 
 def test_ui_draws_audio_solid_and_control_dashed(tmp_path):
@@ -170,8 +170,9 @@ def test_route_refuses_a_cleared_kind_in_words_not_a_500(client, monkeypatch):
 
 def test_page_keeps_the_build_note_beside_the_status():
     assert '<p class="rignote" id="rigfixsaid" hidden></p>' in PAGE
-    assert ("<p class=\"rignote\">Corrections change the rig shown here. Building straight from the "
-            "corrected rig comes next; for now the build follows the description.</p>") in PAGE
+    # #228 made BUILD IT follow the rig, so the note says so (#229)
+    assert ("<p class=\"rignote\">Corrections change the rig shown here, and BUILD IT builds the "
+            "corrected rig.</p>") in PAGE
     assert "$('rigfixsaid').textContent = `" not in PAGE        # status goes through rigSaid only
 
 

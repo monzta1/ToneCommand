@@ -167,7 +167,7 @@ def test_page_offers_modes_and_shows_the_report_and_read_back():
     assert "if (fidLine) chatNote(fidLine);" in PAGE
     assert "const word = want && ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');" in PAGE
     # matched on block names and instance: send results carry no effect id
-    assert "const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())" in PAGE
+    assert ": names.includes(String((a || {}).block || '').trim().toLowerCase())" in PAGE
     # the target is what the sent plan asked of the block; a missing result is not a pass
     assert "const want = (planned || []).filter(on).length;" in PAGE
 

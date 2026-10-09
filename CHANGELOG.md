@@ -4,6 +4,41 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.13 (2026-10-09)
+
+**Is my preset the same as this rig? And the same rig on the IR-2.** Compare
+a rig with the preset loaded on the FM9, and build a rig on a BOSS IR-2 with
+an honest list of what that pedal can and cannot do.
+
+### Added
+- **Compare with the loaded preset (#229; Rig Reconstruction, #224).** The
+  rig card has COMPARE WITH THE LOADED PRESET. It reads the loaded scene's
+  grid (nothing is written) and lists, in plain words, the gear that is
+  missing, the blocks that are extra, what is out of order, and routing
+  differences: the signal splitting or joining, a block bypassed in this
+  scene, or no signal reaching the output. BUILD A PLAN TO MATCH builds the
+  rig on top of the loaded preset through the usual review and confirm.
+- **The same rig on other devices, BOSS IR-2 first (#230).** With the IR-2
+  selected, a rig builds from what the pedal publishes: the amp becomes its
+  amp voicing (with gain and the tone stack), the reverb becomes ambience,
+  and the voicing's own cab stands in for the cab. Drives, delays,
+  modulation, a second amp, extra routes and stereo are listed as not on the
+  pedal, never imitated. The plan carries the same kept, changed, not
+  reproduced and chosen-by-us report, and after sending each kept piece is
+  read back by parameter. Faithful routing refuses a rig the IR-2 cannot
+  hold, naming it.
+
+### Fixed
+- A rig build with the IR-2 selected no longer tries to read an FM9.
+- Sending a plan that has no preset under it (built offline, or on the
+  IR-2) no longer fails with "Cannot read properties of null" before
+  anything is sent.
+- After a build from a source, the button no longer stays on BUILDING...
+- COMPARE treats a block bypassed in this scene as passing the sound
+  through: it is listed, but it is not counted as a difference.
+- The rig card no longer says the build follows the description: since
+  1.5.12 BUILD IT builds the rig.
+
 ## 1.5.12 (2026-10-09)
 
 **Build it on my FM9, from the rig.** A rig read from a description or a

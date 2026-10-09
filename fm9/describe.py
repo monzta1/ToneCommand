@@ -771,3 +771,36 @@ def brief_from_rig(spec: dict, compiled: dict, name: str | None = None) -> str:
                      + "; ".join(str(x).rstrip(".") for x in vague) + ".")
     parts.append("Do not store to any preset slot.")
     return " ".join(parts)
+
+
+def brief_for_device(spec: dict, compiled: dict, device: str) -> str:
+    """#230: the brief for a rig built on a device that names its parameters
+    (the IR-2). Prose, like brief_from_rig: each kept piece of gear is named
+    as the parameter it becomes, and the gear the device does not have is
+    named too, so the plan does not try to imitate it with actions that do
+    not exist."""
+    nodes = {n["id"]: n for n in (spec.get("rig") or {}).get("nodes") or []}
+    chain = (compiled.get("scenes") or [{}])[0].get("chain") or []
+    parts = [f"On the {device}, build the closest sound to this rig: "
+             f"{spec.get('summary') or 'a rig a player described'}."]
+    if chain:
+        parts.append("Use " + ", and ".join(
+            f"the {s['label']} as {s['param']}"
+            + (f" (with {', '.join(p for p in s['params'] if p != s['param'])})"
+               if len(s.get("params") or []) > 1 else "")
+            for s in chain) + ".")
+    lost = [nodes.get(nid, {}).get("label", nid)
+            for nid, (state, _) in (compiled.get("status") or {}).get("nodes", {}).items()
+            if state == "not_reproduced"]
+    if lost:
+        parts.append(f"The {device} has no place for " + ", ".join(lost)
+                     + "; do not propose anything for them.")
+    stated = [x for x in spec.get("stated") or [] if str(x).strip()]
+    if stated:
+        parts.append("Use these settings exactly where they are given: "
+                     + "; ".join(str(x).rstrip(".") for x in stated) + ".")
+    vague = [x for x in spec.get("vague") or [] if str(x).strip()]
+    if vague:
+        parts.append("Choose sensible values for these, which the source described only loosely: "
+                     + "; ".join(str(x).rstrip(".") for x in vague) + ".")
+    return " ".join(parts)
