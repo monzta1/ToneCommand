@@ -121,6 +121,8 @@ def test_missing_replies_and_an_unverified_cab_make_a_record_incomplete(files):
 def test_compare_lists_expected_differences_and_fails_on_anything_else(files):
     preset, cab = files
     a = tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME)
+    # the simulator's record names whatever binding and Python run the test
+    a.update(backend="mido", python="3.12.13")
     b = json.loads(json.dumps(a))
     b.update(backend="supriya", python="3.14.4", seconds=9.9)
     b["cab"]["name_before"] = a["cab"]["name_after"]           # what a second run finds
@@ -166,7 +168,7 @@ def test_the_slot_s_own_cab_is_re_installed_and_must_read_back_by_name(files):
 
 def test_a_field_the_unit_varies_between_same_backend_runs_does_not_fail_the_compare(files):
     preset, cab = files
-    a = tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME)
+    a = dict(tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME), backend="mido")
     base = json.loads(json.dumps(a))
     b = json.loads(json.dumps(a))
     b.update(backend="supriya")
@@ -184,7 +186,7 @@ def test_a_field_the_unit_varies_between_same_backend_runs_does_not_fail_the_com
 
 def test_the_baseline_must_be_the_same_backend(files):
     preset, cab = files
-    a = tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME)
+    a = dict(tp.run(sim(), server.reg, preset, cab, 522, CAB_NAME), backend="mido")
     base = dict(a, backend="supriya")
     assert "the baseline must be a second run on a's backend" in tp.compare(a, dict(a), base)[2]
 
