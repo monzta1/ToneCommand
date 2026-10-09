@@ -492,7 +492,11 @@ def test_the_count_is_what_landed_not_what_was_asked_for():
     """A partial failure that reports "sent" is worse than no report."""
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     fn = ui.split("async function apply()")[1].split("\n}\n")[0]
-    assert "acted.filter(r => r.ok).length" in fn
+    # #249: counted through sendTally, which still counts only what the unit
+    # confirmed (ok) as landed; a sent-unverified change is neither
+    assert "const tally = sendTally(acted);" in fn
+    assert "const good = tally.verified, bad = tally.failed, unverified = tally.unverified;" in fn
+    assert "const verifiedResults = acted.filter(r => r.ok);" in ui
     assert "Did not apply:" in fn
 
 

@@ -25,12 +25,34 @@ MAX_SCENES = 8
 ROLE_BLOCK = {"wah": "wah", "drive": "drive", "compressor": "comp",
               "modulation": "chorus", "delay": "delay", "reverb": "reverb",
               "pitch": "pitch", "volume": "volume", "preamp": "amp",
-              "amp": "amp", "cab": "cab", "rack_fx": "delay"}
+              "amp": "amp", "cab": "cab"}
+
+#: #243: a rack effects unit becomes a block only when its label names an
+#: effect type. "Eventide effects" or an FX1 says nothing about which effects
+#: they are, and building them as a delay (the old default) was a guess.
+RACK_STEMS = (("delay", "delay"), ("echo", "delay"),
+              ("reverb", "reverb"), ("verb", "reverb"), ("hall", "reverb"),
+              ("plate", "reverb"), ("spring", "reverb"), ("room", "reverb"),
+              ("chorus", "chorus"), ("phase", "phaser"), ("flang", "flanger"),
+              ("trem", "tremolo"), ("rotary", "rotary"), ("leslie", "rotary"),
+              ("pitch", "pitch"), ("harmon", "pitch"), ("octave", "pitch"),
+              ("whammy", "pitch"), ("comp", "comp"), ("wah", "wah"))
 NO_BLOCK = {"instrument", "switcher", "controller", "interface"}
+
+
+def _rack_unnamed(node: dict) -> str:
+    return f"the source names the {node.get('label')} but not which effects it provides"
 
 
 def _block_for(node: dict) -> str | None:
     role = node.get("role")
+    if role == "rack_fx":
+        import re
+        label = node.get("label", "").lower()
+        # a stem counts only where a word starts: "harmonizer" is pitch, but
+        # the "hall" inside "Marshall" is not a reverb (#243 review)
+        return next((block for stem, block in RACK_STEMS
+                     if re.search(rf"(?<![a-z]){re.escape(stem)}", label)), None)
     if role == "modulation":
         label = node.get("label", "").lower()
         # stems, so an "MXR Phase 90" or a "Uni-Vibe-ish leslie" still lands
@@ -101,7 +123,8 @@ def compile(graph: dict, mode: str = "closest", scenes: int | None = None) -> di
             else:
                 block = _block_for(n)
             if block is None:
-                node_status.setdefault(nid, ["not_reproduced", f"no FM9 block stands in for the {n['label']}"])
+                node_status.setdefault(nid, ["not_reproduced", _rack_unnamed(n) if n["role"] == "rack_fx"
+                                             else f"no FM9 block stands in for the {n['label']}"])
                 continue
             if mode == "simplified" and block in counts:
                 node_status.setdefault(nid, ["not_reproduced", f"simplified: one {block} block kept"])
@@ -487,6 +510,12 @@ def compile_for_params(graph: dict, params: list[dict], device: str,
                 node_status.setdefault(nid, ["not_reproduced", f"the {device} has no cab block"])
                 lost.append(n["label"])
             continue
+        if role == "rack_fx" and _block_for(n) is None:
+            node_status.setdefault(nid, ["not_reproduced", _rack_unnamed(n)])
+            lost.append(n["label"])
+            continue
+        if role == "rack_fx":
+            role = _block_for(n)               # the effect type its label names
         param = next((k for k, v in PARAM_ROLES.items() if k in names and role in v["roles"]), None)
         block = _block_for({**n, "role": role}) or role
         if param is None:
