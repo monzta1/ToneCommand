@@ -3010,6 +3010,9 @@
   .rigfix { display: flex; gap: 8px; }
   .rigfix input { flex: 1; }
   .rignote { font-size: var(--fs-hint); color: var(--muted, #9ab); }
+  .rigcmp { display: flex; gap: 8px; margin-top: 8px; }
+  .rigcmpout h5 { margin: 8px 0 2px; }
+  .rigcmpout ul { margin: 0 0 4px; padding-left: 18px; }
   /* #212: a read-only device: nothing that would change the sound. */
   body.readonly-device #auditionbtn,
   body.readonly-device #storeafter,
@@ -7813,7 +7816,7 @@ function askAboutBuild(spec, note) {
     $('srcask').hidden = true;
     runBuild(spec, note);
   };
-  wireRigCard(spec);
+  wireRigCard(spec, note);
   // The card is the answer to what the player just pasted: bring it into
   // view rather than leave it below the request hero on a short window.
   // Only the request pane scrolls. scrollIntoView also scrolled #shell, the
@@ -7833,7 +7836,9 @@ const RIG_MODES = [
 function fidelityHtml(f) {
   if (!f) return '';
   const kept = (f.kept || []).map(k =>
-    `<li data-names="${esc((k.names || [k.block]).join(' '))}" data-inst="${esc(k.instance)}" data-what="${esc(k.what)}">${esc(k.what)}: ${esc(k.block)} ${esc(k.instance)}`
+    `<li data-names="${esc((k.names || [k.block]).join(' '))}" data-inst="${esc(k.instance)}" data-what="${esc(k.what)}"`
+    + ` data-params="${esc((k.params || []).join(' '))}">${esc(k.what)}: `
+    + (k.param ? `${esc(k.param)}` : `${esc(k.block)} ${esc(k.instance)}`)
     + (k.model ? `, as ${esc(k.model)}` : '') + `<span class="fidv"></span></li>`).join('');
   const why = xs => (xs || []).map(x => `<li>${esc(x.what)}: ${esc(x.why)}</li>`).join('');
   const chosen = f.chosen || {};
@@ -7861,8 +7866,13 @@ function fidelityReadBack(f, acted, planned) {
   for (const li of document.querySelectorAll('#fidkept li[data-names]')) {
     const names = li.dataset.names.split(' ');
     const inst = Number(li.dataset.inst || 1);
-    const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())
-      && Number((a || {}).instance || 1) === inst;
+    // #230: on a device that names its parameters, a kept piece is the
+    // parameters it became, and its results carry the parameter, not a block
+    const params = (li.dataset.params || '').split(' ').filter(Boolean);
+    const on = a => params.length
+      ? (a || {}).kind === 'set_device_param' && params.includes(String((a || {}).param || '').toUpperCase())
+      : names.includes(String((a || {}).block || '').trim().toLowerCase())
+        && Number((a || {}).instance || 1) === inst;
     // Every kept piece gets a mark: one the plan sent nothing for was not
     // verified, it was not touched.
     const want = (planned || []).filter(on).length;
@@ -7967,7 +7977,22 @@ function rigCardHtml(spec) {
       <button id="rigfixgo">CORRECT</button>
     </div>
     <p class="rignote" id="rigfixsaid" hidden></p>
-    <p class="rignote">Corrections change the rig shown here. Building straight from the corrected rig comes next; for now the build follows the description.</p>`;
+    <p class="rignote">Corrections change the rig shown here, and BUILD IT builds the corrected rig.</p>
+    ${devNamed() ? '' : `<div class="rigcmp"><button id="rigcmpgo">COMPARE WITH THE LOADED PRESET</button></div>
+    <div class="rigcmpout" id="rigcmpout" hidden></div>`}`;
+}
+
+// #229: the rig against the loaded preset, in words. Reading only; closing the
+// differences is the ordinary build, which the player asks for.
+function rigCompareHtml(d) {
+  const list = (title, xs) => (xs || []).length
+    ? `<h5>${title}</h5><ul>${xs.map(x => `<li>${esc(x.why)}</li>`).join('')}</ul>` : '';
+  const n = ['missing', 'extra', 'out_of_order', 'routing'].reduce((k, f) => k + (d[f] || []).length, 0);
+  return `<p class="rignote">${esc(d.note || '')} ${esc(d.summary || '')}</p>`
+    + list('Missing', d.missing) + list('Extra', d.extra)
+    + list('Out of order', d.out_of_order) + list('Routing', d.routing)
+    + (n ? `<button class="go" id="rigmatch">BUILD A PLAN TO MATCH</button>
+      <p class="rignote">Builds this rig on top of the loaded preset, through the usual review and confirm. Nothing changes on your ${esc(devName())} until you send it.</p>` : '');
 }
 
 function rigSaid(text) {
@@ -7976,7 +8001,32 @@ function rigSaid(text) {
   el.hidden = !text;
 }
 
-function wireRigCard(spec) {
+function wireRigCard(spec, note) {
+  const cmp = $('rigcmpgo');
+  if (cmp) cmp.onclick = async () => {
+    cmp.disabled = true;
+    const out = $('rigcmpout');
+    try {
+      const r = await fetch('/api/rig/compare', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({graph: spec.rig, mode: srcAnswers.mode || 'closest'})});
+      const d = await r.json().catch(() => ({}));
+      out.innerHTML = r.ok ? rigCompareHtml(d)
+        : `<p class="rignote">Could not compare: ${esc(d.error || `the server said ${r.status}`)}</p>`;
+      out.hidden = false;
+      if ($('rigmatch')) $('rigmatch').onclick = () => {
+        srcAnswers.mode = 'closest';
+        if ($('qname')) srcAnswers.name = $('qname').value.trim();
+        $('srcask').hidden = true;
+        runBuild(spec, note);
+      };
+    } catch (e) {
+      out.innerHTML = `<p class="rignote">Could not compare: ${esc(e.message || e)}</p>`;
+      out.hidden = false;
+    } finally {
+      if ($('rigcmpgo')) $('rigcmpgo').disabled = false;
+    }
+  };
   const go = $('rigfixgo');
   if (!go) return;
   go.onclick = async () => {
@@ -7996,7 +8046,7 @@ function wireRigCard(spec) {
       spec.rig_explain = d.explain || [];
       $('rigcard').innerHTML = rigCardHtml(spec);
       rigSaid(`Changed: ${(d.changed || []).join('; ')}.`);
-      wireRigCard(spec);
+      wireRigCard(spec, note);
     } catch (e) {
       rigSaid(`Not changed: ${e.message || e}`);
     } finally {

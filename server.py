@@ -2511,6 +2511,96 @@ def api_rig_correct(body: RigCorrectBody):
     return {"graph": graph, "changed": changed, "explain": riggraph.explain(graph)}
 
 
+class RigCompareBody(BaseModel):
+    graph: dict
+    mode: str = "closest"
+
+
+@app.post("/api/rig/compare")
+def api_rig_compare(body: RigCompareBody):
+    """#229: is the loaded preset the same as this rig? Read-only. Exactly
+    three reads under the device lock (the loaded scene's number, the grid,
+    the status dump) and no write; the differences come back in words, and
+    closing them is the ordinary build, which the player asks for."""
+    from fm9 import riggraph, rigcompile
+    from fm9.adapter import Topology
+    ad = device_context().adapter
+    if ad is not None and ad.capabilities().topology != Topology.CONSTRUCTED:
+        label = device_context().label or "this device"
+        return JSONResponse({"error": f"The {label} has no routing grid to compare a rig with."},
+                            status_code=409)
+    try:
+        compiled = rigcompile.compile(body.graph, body.mode)
+    except riggraph.RigGraphError as exc:
+        return JSONResponse({"error": f"that rig cannot be compared: {exc}"}, status_code=400)
+    with _lock:
+        try:
+            fm9 = get_fm9()
+            named = fm9.scene_name()          # one scene query: (number, name)
+            loaded = named[0] if named else None
+            grid = _grid_reading(fm9)
+        except CapabilityDeclined:
+            raise
+        except FM9NotFound:
+            drop_fm9()
+            return JSONResponse({"error": "No FM9 is connected, so there is no loaded preset to compare."},
+                                status_code=409)
+    have = {sc["n"] for sc in compiled["scenes"]}
+    scene = loaded if loaded in have else 1
+    out = rigcompile.compare(compiled, grid, scene)
+    out["loaded_scene"] = loaded
+    out["note"] = (f"Compared with scene {loaded}, the scene loaded now." if scene == loaded else
+                   f"The loaded scene is {loaded}; the rig has no scene {loaded}, so its "
+                   f"first scene is compared.")
+    return out
+
+
+def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None, cancel=None):
+    """#230: a rig built on a device that declares named parameters. The rig
+    is compiled against what the device publishes (rigcompile.compile_for_params),
+    the brief names each kept piece as its parameter and the gear the device
+    lacks, and the plan comes from the device's own prompt, schema and
+    validator, then the same validation every plan gets. No FM9 is read."""
+    from fm9 import riggraph, rigcompile
+    from devices.ir2 import planning as devplan
+    label = device_context().label or "this device"
+    try:
+        compiled = rigcompile.compile_for_params(spec["rig"], dev.named_params(), label, body.mode)
+    except riggraph.RigGraphError as exc:
+        return {"error": f"that rig cannot be built: {exc}"}
+    if compiled["blockers"]:
+        return {"error": f"That rig cannot be built faithfully on the {label}: "
+                         + " ".join(compiled["blockers"])
+                         + " Choose closest tone to build the nearest sound it has.",
+                "blockers": compiled["blockers"]}
+    brief = describe.brief_for_device(spec, compiled, label)
+    try:
+        if not _hold_settings(cancel, on_status):
+            return {"error": "stopped"}
+        try:
+            result = planner.plan(brief, devplan.device_state(dev), devplan.param_reference(dev),
+                                  system=devplan.SYSTEM, shape=devplan.SHAPE,
+                                  schema=devplan.SCHEMA, validate=devplan.validate)
+        finally:
+            _settings_lock.release()
+    except Exception as exc:
+        diagnostics.log_error("planner", str(exc))
+        return {"error": f"planner failed: {exc}"}
+    result["actions"] = [a for a in result.get("actions", [])
+                         if a.get("kind") not in describe.FORBIDDEN_KINDS]
+    result["device"] = {"preset": None, "scene": None, "target": label}
+    result["from_source"] = {"summary": spec.get("summary"), "stated": spec.get("stated") or [],
+                             "vague": spec.get("vague") or [], "quotes": spec.get("quotes") or [],
+                             "source": spec.get("source") or {}}
+    for a in result.get("actions", []):
+        errs, warns = validate_action(Action(**{k: v for k, v in a.items() if k in Action.model_fields}))
+        a["validation_errors"] = errs
+        a["validation_warnings"] = warns
+    result["fidelity"] = rigcompile.fidelity(compiled, spec["rig"], result.get("actions", []),
+                                             spec.get("stated") or [])
+    return result
+
+
 @app.post("/api/describe/build")
 def api_describe_build(body: BuildBody):
     """Pass two, in one request. Kept for callers that cannot hold a stream."""
@@ -2553,6 +2643,13 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
     streaming twin cannot drift from the blocking one.
     """
     spec = body.spec or {}
+    # #230: a rig on a device that names its parameters (the IR-2) is built
+    # from what that device publishes, with its own planner, and never reads
+    # an FM9.
+    _dev = device_context().adapter
+    if spec.get("rig") and _dev is not None and getattr(_dev, "capabilities", None) \
+            and _dev.capabilities().has_named_params:
+        return _describe_build_for_device(body, spec, _dev, on_status, cancel)
     # #228: with a rig view, the chain is compiled before any model runs, and
     # a faithful build that cannot be faithful is refused here, in words.
     compiled = None
@@ -5915,43 +6012,49 @@ def api_grid():
     """
     with _lock:
         try:
-            fm9 = get_fm9()
-            cells = fm9.read_grid() or []
-            status = fm9.status_dump() or []
-            st = {b.effect_id: b for b in status}
-            w = path_audit.walk(cells, st, reg)
-            live, resolved = w["live"], w["resolved"]
-            out = []
-            for c in cells:
-                if c.effect_id is None and not c.is_shunt:
-                    continue
-                eid = resolved.get((c.row, c.col)) if c.effect_id else None
-                fam = reg.family_of_effect_id(eid) if eid else None
-                blk = st.get(eid) if eid else None
-                out.append({
-                    "row": c.row, "col": c.col,
-                    "shunt": bool(c.effect_id is None and c.is_shunt),
-                    "effect_id": eid,
-                    "family": fam[0] if fam else None,
-                    "instance": fam[1] if fam else None,
-                    "label": (f"{FRIENDLY.get(fam[0], fam[0])} {fam[1]}"
-                              if fam else None),
-                    "bypassed": bool(blk.bypassed) if blk else None,
-                    "channel": "ABCD"[blk.channel] if blk else None,
-                    # feeds names the cells one column left that reach this
-                    # one, resolved here so the browser never has to know how
-                    # the cable bitmask is packed
-                    "feeds": [r for r in range(8)
-                              if c.cable_in_mask & (1 << (r + 1))],
-                    "live": (c.row, c.col) in live,
-                })
-            return {"cells": out, "alive": w["alive"], "why": w["why"],
-                    "rows": 1 + max((c["row"] for c in out), default=0),
-                    "cols": 1 + max((c["col"] for c in out), default=0)}
+            return _grid_reading(get_fm9())
         except CapabilityDeclined:
             raise
         except Exception as e:
             return {"error": str(e)}
+
+
+def _grid_reading(fm9) -> dict:
+    """One grid read and one status dump, walked: /api/grid's body, shared
+    with /api/rig/compare (#229) so the two cannot read the grid differently.
+    The caller holds _lock."""
+    cells = fm9.read_grid() or []
+    status = fm9.status_dump() or []
+    st = {b.effect_id: b for b in status}
+    w = path_audit.walk(cells, st, reg)
+    live, resolved = w["live"], w["resolved"]
+    out = []
+    for c in cells:
+        if c.effect_id is None and not c.is_shunt:
+            continue
+        eid = resolved.get((c.row, c.col)) if c.effect_id else None
+        fam = reg.family_of_effect_id(eid) if eid else None
+        blk = st.get(eid) if eid else None
+        out.append({
+            "row": c.row, "col": c.col,
+            "shunt": bool(c.effect_id is None and c.is_shunt),
+            "effect_id": eid,
+            "family": fam[0] if fam else None,
+            "instance": fam[1] if fam else None,
+            "label": (f"{FRIENDLY.get(fam[0], fam[0])} {fam[1]}"
+                      if fam else None),
+            "bypassed": bool(blk.bypassed) if blk else None,
+            "channel": "ABCD"[blk.channel] if blk else None,
+            # feeds names the cells one column left that reach this
+            # one, resolved here so the browser never has to know how
+            # the cable bitmask is packed
+            "feeds": [r for r in range(8)
+                      if c.cable_in_mask & (1 << (r + 1))],
+            "live": (c.row, c.col) in live,
+        })
+    return {"cells": out, "alive": w["alive"], "why": w["why"],
+            "rows": 1 + max((c["row"] for c in out), default=0),
+            "cols": 1 + max((c["col"] for c in out), default=0)}
 
 
 class ClearBody(BaseModel):
