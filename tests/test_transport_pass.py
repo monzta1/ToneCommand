@@ -1,0 +1,128 @@
+"""#172: the hardware pass that proves a MIDI backend on the unit. Run here on
+the simulator: what the record holds, what makes it incomplete, that the
+starting preset is always put back, and how two records are compared."""
+import json
+import re
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import server
+from fm9 import protocol as p
+from fm9.sim import SimFM9
+from tests.test_cabs import make_cab
+from tests.test_install import make_file
+from tools import transport_pass as tp
+
+
+@pytest.fixture
+def files(tmp_path, monkeypatch):
+    monkeypatch.delenv("TONECOMMAND_ALLOW_CAB_READ", raising=False)
+    monkeypatch.setenv("TONECOMMAND_CAB_SLOTS", "512-1023")
+    preset = tmp_path / "preset.syx"
+    preset.write_bytes(make_file(name="Pass Test"))
+    cab = tmp_path / "cab.syx"
+    cab.write_bytes(make_cab(model=p.MODEL_FM9))
+    return preset, cab
+
+
+def sim():
+    dev = SimFM9(server.reg)
+    dev.status_dump()
+    return dev
+
+
+def test_pass_on_the_simulator_is_complete_and_puts_the_preset_back(files):
+    preset, cab = files
+    dev = sim()
+    start = dev.current_preset()
+    rec = tp.run(dev, server.reg, preset, cab, 522)
+    assert tp.problems(rec) == [], tp.problems(rec)
+    assert rec["start_preset"] == rec["end_preset"] == list(start)
+    assert rec["preset_file"]["name"] == "Pass Test" and rec["preset_file"]["frames"] > 2
+    assert rec["capture_after_load"]["preset_name"] != rec["capture_before"]["preset_name"]
+    assert rec["cab"]["verified"] and rec["cab"]["slot"] == 522
+    json.dumps(rec)                                   # the record serialises as written
+
+
+def test_pass_never_stores(files, monkeypatch):
+    preset, cab = files
+    dev = sim()
+    monkeypatch.setattr(dev, "store_preset", lambda *a, **k: pytest.fail("the pass stored a preset"))
+    tp.run(dev, server.reg, preset, cab, 522)
+
+
+def test_a_cab_slot_outside_the_whitelist_is_refused_before_anything_is_sent(files):
+    preset, cab = files
+    dev = sim()
+    sent = []
+    real = dev.outp.send
+    dev.outp.send = lambda m: (sent.append(m), real(m))
+    with pytest.raises(PermissionError, match="not in TONECOMMAND_CAB_SLOTS"):
+        tp.run(dev, server.reg, preset, cab, 5)
+    assert sent == []
+
+
+def test_an_unreadable_starting_preset_refuses_before_any_write(files, monkeypatch):
+    preset, cab = files
+    dev = sim()
+    monkeypatch.setattr(dev, "current_preset", lambda: None)
+    monkeypatch.setattr(dev, "load_preset_buffer", lambda *a, **k: pytest.fail("wrote with no way back"))
+    with pytest.raises(tp.PassError, match="nothing was sent"):
+        tp.run(dev, server.reg, preset, cab, 522)
+
+
+def test_a_failure_mid_pass_still_puts_the_preset_back_and_is_incomplete(files, monkeypatch):
+    preset, cab = files
+    dev = sim()
+    start = dev.current_preset()
+    def boom(*a, **k):
+        raise TimeoutError("the unit stopped acking")
+    monkeypatch.setattr(dev, "install_user_cab_slot", boom)
+    rec = tp.run(dev, server.reg, preset, cab, 522)
+    assert rec["end_preset"] == list(start)
+    assert dev.current_preset() == start
+    assert any("the pass stopped: TimeoutError" in x for x in tp.problems(rec))
+
+
+def test_missing_replies_and_an_unverified_cab_make_a_record_incomplete(files):
+    preset, cab = files
+    rec = tp.run(sim(), server.reg, preset, cab, 522)
+    broken = json.loads(json.dumps(rec))
+    broken["status"] = []
+    broken["cabinet_bulk"] = None
+    broken["capture_after_load"]["blocks"][0]["values"] = []
+    broken["cab"]["verified"] = False
+    found = tp.problems(broken)
+    assert "the status dump came back empty" in found
+    assert "the CABINET bulk read came back empty" in found
+    assert "capture_after_load: 1 block(s) read no values" in found
+    assert any(x.startswith("the cab install was not verified") for x in found)
+
+
+def test_compare_lists_expected_differences_and_fails_on_anything_else(files):
+    preset, cab = files
+    a = tp.run(sim(), server.reg, preset, cab, 522)
+    b = json.loads(json.dumps(a))
+    b.update(backend="supriya", python="3.14.4", seconds=9.9)
+    b["cab"]["name_before"] = a["cab"]["name_after"]           # what a second run finds
+    unexpected, expected, bad = tp.compare(a, b)
+    assert unexpected == [] and bad == []
+    assert {e.split(":")[0] for e in expected} == {"/backend", "/python", "/seconds", "/cab/name_before"}
+    b["cabinet_bulk"][3] += 1                                  # one byte different
+    unexpected, _, _ = tp.compare(a, b)
+    assert unexpected == [f"/cabinet_bulk[3]: {a['cabinet_bulk'][3]!r} != {b['cabinet_bulk'][3]!r}"]
+
+
+# -- REQ-003: packaging, once the pass is green ------------------------------------
+
+def test_packaging_has_no_python_ceiling_and_ci_runs_3_14():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'^requires-python = ">=3\.11"$', pyproject, re.M)
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert 'python-version: "3.14"' in ci
+    assert "--only-binary=:all:" in ci
