@@ -5,6 +5,17 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- **Blocks a rig build adds land where the rig has them (#248).** A new
+  block can now be placed before or after a named block, and a build from a
+  rig places each added block next to its neighbour in the rig, in the rig's
+  order, before anything configures it. On the FM9 a second drive had
+  landed after the amp.
+- **A rig build that cannot fit the loaded preset says so before review
+  (#247).** The plan's added and moved blocks are rehearsed on a copy of the
+  loaded preset's grid, using the same placement code. If any would not
+  land, the build stops with each reason and a suggestion to load a preset
+  whose signal runs on one row, instead of a send that stops part-way (4 of
+  48 on a three-row preset).
 - **A rack effects unit is no longer built as a delay (#243).** An FX1,
   "Eventide effects" or "a chain of rack effects" says nothing about which
   effects they are, so a rig build now lists them as not reproduced, with

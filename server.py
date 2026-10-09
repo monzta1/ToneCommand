@@ -2638,8 +2638,8 @@ def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None,
 def api_describe_build(body: BuildBody):
     """Pass two, in one request. Kept for callers that cannot hold a stream."""
     result = _describe_build_for(body)
-    if isinstance(result, dict) and result.get("blockers"):
-        return JSONResponse(result, status_code=409)          # #228: faithful cannot be
+    if isinstance(result, dict) and (result.get("blockers") or result.get("fit_failures")):
+        return JSONResponse(result, status_code=409)          # #228 faithful, #247 does not fit
     if isinstance(result, dict) and "error" in result and len(result) == 1:
         return JSONResponse(result, status_code=502)
     return result
@@ -2804,6 +2804,24 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
         "quotes": spec.get("quotes") or [],
         "source": spec.get("source") or {},
     }
+    # #248: a rig's added blocks go where the rig puts them, anchored to the
+    # compiled chain, and are added before anything configures them.
+    # Present means on the grid: a block can sit in the status dump while no
+    # cell holds it (the starter template clears cells, not blocks).
+    grid_cells = grid_status = None
+    if compiled is not None and not offline:
+        with _lock:
+            try:
+                _dev = get_fm9()
+                grid_cells, grid_status = _dev.read_grid() or [], _dev.status_dump() or []
+            except CapabilityDeclined:
+                raise
+            except FM9NotFound:
+                grid_cells = grid_status = None
+    if compiled is not None:
+        present = _on_grid(grid_cells, grid_status) if grid_cells is not None else \
+            {b.get("effect_id") for b in (snap or {}).get("blocks", [])}
+        result["actions"] = _anchor_rig_adds(compiled, result.get("actions", []), present)
     # The identical validation every other plan gets. Not a lighter version.
     for a in result.get("actions", []):
         errs, warns = validate_action(Action(**a))
@@ -2819,6 +2837,16 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
                     a["block"], int(a.get("instance") or 1))[1]
             except Exception:
                 pass
+    # #247: rehearse the plan's structural changes on a copy of the loaded
+    # preset's grid before anyone reviews it; a plan that cannot land is
+    # refused here, with the placement code's own reasons.
+    if compiled is not None and grid_cells:
+        failures = _rehearse_fit(result.get("actions", []), grid_cells, grid_status)
+        if failures:
+            return {"error": ("This preset's routing cannot take that rig: "
+                              + "; ".join(f"{f['action']}: {f['detail']}" for f in failures)
+                              + ". Load a preset whose signal runs on one row, then build again."),
+                    "fit_failures": failures}
     # #228: the rig, read back against the validated plan.
     if compiled is not None:
         from fm9 import rigcompile
@@ -3521,8 +3549,17 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
         errors.append(str(e))
         return errors, warnings
     if a.kind == "add_block":
-        if a.position not in (None, "pre", "post", "any"):
-            errors.append(f"position must be pre/post/any, got {a.position!r}")
+        if a.position not in (None, "pre", "post", "any", "before", "after"):
+            errors.append(f"position must be pre/post/any, or before/after a ref block, got {a.position!r}")
+        elif a.position in ("before", "after"):
+            # #248: an anchor names the block the new one goes next to
+            if not a.ref or not str(a.ref).strip():
+                errors.append(f"add_block {a.position} needs a ref block to sit next to")
+            else:
+                try:
+                    _anchor_of(a)
+                except (KeyError, ValueError) as e:
+                    errors.append(f"add_block anchor: {e}")
     elif a.kind == "reorder":
         if a.position not in (None, "before", "after"):
             errors.append(f"reorder position must be before/after, got {a.position!r}")
@@ -3530,7 +3567,12 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
             errors.append("reorder requires a ref block to move relative to")
         else:
             try:
-                reg.resolve_block(a.ref, 1)
+                _ref_fam, ref_eid = reg.resolve_block(a.ref, 1)
+                if ref_eid == _eid:
+                    # "move drive 1 before drive" names the same block twice:
+                    # invalid, so it is shown in review and never sent (#247)
+                    errors.append(f"reorder moves {a.block} {a.instance} relative to itself "
+                                  f"(ref {a.ref!r} is the same block)")
             except (KeyError, ValueError) as e:
                 errors.append(f"reorder ref block: {e}")
     elif a.kind in ("bind_pedal", "unbind_pedal"):
@@ -3725,6 +3767,141 @@ def _splice_plan_for(fm9: DeviceAdapter, a: Action) -> dict | None:
     return intent
 
 
+def _merged_chain(compiled: dict) -> list[tuple[str, int]]:
+    """#248: one order for the shared grid: scene 1's chain, then each later
+    scene's steps not yet in it, each after its nearest earlier step there."""
+    order: list[tuple[str, int]] = []
+    for sc in compiled.get("scenes") or []:
+        steps = [(s["block"], int(s["instance"])) for s in sc["chain"]]
+        for i, step in enumerate(steps):
+            if step in order:
+                continue
+            prev = next((steps[j] for j in range(i - 1, -1, -1) if steps[j] in order), None)
+            nxt = next((steps[j] for j in range(i + 1, len(steps)) if steps[j] in order), None)
+            # after its scene's earlier neighbour; failing that, just before
+            # its later one, which is where its signal goes next
+            order.insert(order.index(prev) + 1 if prev else (order.index(nxt) if nxt else len(order)), step)
+    return order
+
+
+def _anchor_rig_adds(compiled: dict, actions: list, present: set) -> list:
+    """#248: every add_block for a compiled step is anchored next to its
+    neighbour in the merged chain and moved to the front of the plan, in
+    chain order, so nothing configures a block before it exists and the
+    planner's coarse pre/post/any no longer decides where it lands."""
+    order = _merged_chain(compiled)
+
+    def key(a):
+        try:
+            fam, _eid = reg.resolve_block(a.get("block") or "", int(a.get("instance") or 1))
+        except (KeyError, ValueError, TypeError):
+            return None
+        for blk, inst in order:
+            try:
+                if reg.resolve_block(blk, inst)[0] == fam and inst == int(a.get("instance") or 1):
+                    return (blk, inst)
+            except (KeyError, ValueError):
+                continue
+        return None
+
+    adds = [(key(a), a) for a in actions if a.get("kind") == "add_block"]
+    anchored = sorted([(k, a) for k, a in adds if k is not None], key=lambda ka: order.index(ka[0]))
+    if not anchored:
+        return actions
+    rest = [a for a in actions if not (a.get("kind") == "add_block" and key(a) is not None)]
+
+    def on_grid(step):
+        try:
+            return reg.resolve_block(*step)[1] in present
+        except (KeyError, ValueError):
+            return False
+
+    added: set = set()
+    out = []
+    for step, a in anchored:
+        i = order.index(step)
+        before = next((order[j] for j in range(i - 1, -1, -1) if on_grid(order[j]) or order[j] in added), None)
+        after = next((order[j] for j in range(i + 1, len(order)) if on_grid(order[j])), None)
+        if before is not None:
+            a = {**a, "position": "after", "ref": f"{before[0]} {before[1]}"}
+        elif after is not None:
+            a = {**a, "position": "before", "ref": f"{after[0]} {after[1]}"}
+        a["why"] = ((a.get("why") or "") + f" (placed {a.get('position')} {a.get('ref')}, where the rig has it)").strip()
+        out.append(a)
+        added.add(step)
+    return out + rest
+
+
+def _on_grid(cells, status) -> set:
+    """Effect ids that a grid cell actually holds, aliases resolved."""
+    present = {b.effect_id for b in status or []}
+    resolved = resolve_aliases(cells or [], present)
+    return {eid for eid in resolved.values() if eid}
+
+
+def _rehearse_fit(actions: list, cells, status) -> list[dict]:
+    """#247: run the plan's add_block and reorder actions, in order, on a
+    simulator seeded with the loaded preset's grid and block status (read
+    once from the unit by the caller). Returns what would fail and why."""
+    from fm9.sim import sim_from_reading
+    structural = [a for a in actions if a.get("kind") in ("add_block", "reorder")
+                  and not a.get("validation_errors")]
+    if not structural or not cells:
+        return []
+    twin = sim_from_reading(reg, cells, status)
+    failures = []
+    for a in structural:
+        try:
+            res = run_action(twin, Action(**{k: v for k, v in a.items() if k in Action.model_fields}))
+        except CapabilityDeclined:
+            raise
+        except Exception as exc:
+            res = {"ok": False, "detail": str(exc)}
+        if not res.get("ok"):
+            what = (f"add {a.get('block')} {a.get('instance') or 1}" if a.get("kind") == "add_block"
+                    else f"move {a.get('block')} {a.get('instance') or 1} {a.get('position') or 'before'} {a.get('ref')}")
+            failures.append({"action": what, "detail": res.get("detail") or "would not land"})
+    return failures
+
+
+def _anchor_of(a: Action) -> tuple[str, int]:
+    """(family, effect id) of an add_block anchor. ref is a block name with
+    an optional instance: "drive 2", "amp" (instance 1)."""
+    import re as _re
+    m = _re.match(r"^\s*(.*?)\s+(\d+)\s*$", str(a.ref or ""))
+    name, inst = (m.group(1), int(m.group(2))) if m else (str(a.ref or "").strip(), 1)
+    return reg.resolve_block(name, inst)
+
+
+def _add_block_anchored(fm9: DeviceAdapter, a: Action, eid: int, cells) -> dict:
+    """#248: put the new block next to its anchor, on the anchor's row: onto
+    the neighbouring cell when it is a free pass-through, else by splicing at
+    that column, so the splice code's own refusals and path check still
+    apply. An anchor that is not on the grid writes nothing."""
+    _fam, ref_eid = _anchor_of(a)
+    present = {b.effect_id for b in fm9.status_dump() or []}
+    resolved = resolve_aliases(cells, present)
+    anchor = next((c for c in cells if c.effect_id is not None
+                   and resolved.get((c.row, c.col)) == ref_eid), None)
+    if anchor is None:
+        return {"ok": False, "detail": f"the anchor {a.ref} is not on the grid, so {a.block} "
+                                       f"{a.instance} has nowhere to go next to it; nothing written"}
+    col = anchor.col + 1 if a.position == "after" else anchor.col - 1
+    cell = next((c for c in cells if (c.row, c.col) == (anchor.row, col)), None)
+    if cell is not None and cell.is_shunt:
+        return _place_on_shunt(fm9, a, eid, anchor.row, col, where=f"{a.position} {a.ref} ")
+    at_col = anchor.col + 2 if a.position == "after" else anchor.col + 1      # 1-based
+    plan = fm9.plan_splice(anchor.row + 1, at_col)
+    if not plan.get("ok"):
+        return {"ok": False, "detail": plan.get("detail") or "no room to splice next to the anchor",
+                "reason": plan.get("reason", "no_placement")}
+    res = fm9.splice_block(anchor.row + 1, at_col, eid)
+    res["spliced"] = True
+    res["detail"] = f"{a.block} spliced in {a.position} {a.ref} at row {anchor.row + 1} col {at_col}; " \
+                    + res.get("detail", "")
+    return res
+
+
 def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
     """Insert a block onto a free shunt cell. Refuses when no sane placement
     exists rather than guessing (no cable drawing in the planner path)."""
@@ -3741,6 +3918,11 @@ def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
     cells = fm9.read_grid()
     if cells is None:
         return {"ok": False, "detail": _no_placement_detail(a, a.position or "any", None)}
+    if a.position in ("before", "after"):
+        try:
+            return _add_block_anchored(fm9, a, eid, cells)
+        except (KeyError, ValueError) as exc:
+            return {"ok": False, "detail": f"the anchor {a.ref!r} is not a block: {exc}; nothing written"}
     amp_cols = [c.col for c in cells if c.effect_id in (58, 59, 60, 61)]
     amp_col = min(amp_cols) if amp_cols else None
     shunts = [(c.row, c.col) for c in cells if c.is_shunt]
@@ -3767,6 +3949,15 @@ def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
                          f"{intent['at_col']}; " + res.get("detail", ""))
         return res
     row, col = sorted(shunts, key=lambda rc: rc[1])[0]
+    return _place_on_shunt(fm9, a, eid, row, col)
+
+
+def _place_on_shunt(fm9: DeviceAdapter, a: Action, eid: int, row: int, col: int,
+                    where: str = "") -> dict:
+    """Put a block onto the free pass-through at 0-based (row, col), then prove
+    it landed with its cables in AND out, redrawing a lost outgoing cable.
+    One path for a coarse placement and an anchored one (#248 review): the
+    unit can drop the outgoing cable when a shunt is replaced."""
     fm9.place_block((row + 1, col + 1), eid)
     after = fm9.read_grid() or []
     placed = [c for c in after
@@ -3798,8 +3989,8 @@ def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
                                   f"outgoing cable was lost and could not be "
                                   f"redrawn; downstream is disconnected"}
     return {"ok": ok,
-            "detail": f"placed at row {row + 1} col {col + 1}, cables verified "
-                      f"in and out" if ok else "placement failed grid verification"}
+            "detail": f"placed {where}at row {row + 1} col {col + 1}, cables verified "
+                      f"in and out" if ok else f"placement {where}failed grid verification"}
 
 
 def _resolve_param(fam: str, name: str, instance: int):

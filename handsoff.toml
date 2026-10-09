@@ -175,6 +175,9 @@ commands = [
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_rackfx.py -q",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_rackfx.py -q -k 'name or rename'",
   "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_rackfx.py -q -k 'tempo or tally'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_placement.py -q -k 'anchor'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_placement.py -q -k 'rig'",
+  "TONECOMMAND_SIM=1 .venv/bin/python -m pytest tests/test_rig_placement.py -q -k 'fit or dry'",
 ]
 # Commands that verify the deployed system. Phase 8 is blocked until these
 # run successfully after deployment approval. This app has no hosted server;

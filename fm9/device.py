@@ -249,11 +249,26 @@ class SetResult:
     display_after: float | str | None
 
 
+def _settle(dev, seconds: float) -> None:
+    """Wait for the unit to settle, scaled by the handle's settle_scale (1 by
+    default, so a stand-in object without the attribute waits in full; a
+    rehearsal twin sets 0, #247)."""
+    scale = getattr(dev, "settle_scale", 1.0)
+    if scale:
+        time.sleep(seconds * scale)
+
+
 class FM9:
     #: #212: what this class talks to. An FM3 is the same family through the
     #: same code, addressed with its own model byte (FM3 below).
     LABEL = "FM9"
     PORT_HINT = "fm9"
+
+    #: #247: how long this handle waits for the unit to settle, as a
+    #: fraction of each wait. 1 for every real device; a rehearsal twin
+    #: (fm9.sim.sim_from_reading) sets 0, since the simulator answers at once.
+    settle_scale: float = 1.0
+
 
     def __init__(self, registry: Registry | None = None, port_hint: str | None = None,
                  ports=None):
@@ -440,7 +455,7 @@ class FM9:
                     raise RuntimeError(
                         f"device rejected fn 0x{fn:02X}: "
                         f"{RESULT_CODES.get(code, f'result 0x{code:02X}')}")
-            time.sleep(0.005)
+            _settle(self, 0.005)
         return None
 
     # --- official surface ---
@@ -590,7 +605,7 @@ class FM9:
         bank, pc = divmod(preset, 128)
         self.outp.send(mido.Message("control_change", control=0, value=bank))
         self.outp.send(mido.Message("program_change", program=pc))
-        time.sleep(0.4)
+        _settle(self, 0.4)
         return self.current_preset()
 
     # --- editor protocol (community, fw 11.x) ---
@@ -630,7 +645,7 @@ class FM9:
                     continue
                 if p.is_fractal(data, p.FN_BCAST_END):
                     return values if head and len(values) >= head[1] else values or None
-            time.sleep(0.002)
+            _settle(self, 0.002)
         return values or None
 
     def read_grid(self, timeout: float = 2.0):
@@ -647,9 +662,9 @@ class FM9:
         row_1based, col_1based = GridPos(*position)
         self._drain()
         self._send(p.build_select_grid_cell(row_1based, col_1based))
-        time.sleep(0.05)
+        _settle(self, 0.05)
         self._send(p.build_set_grid_cell(row_1based, col_1based, effect_id))
-        time.sleep(0.3)
+        _settle(self, 0.3)
 
     def send_preset_file(self, syx_bytes: bytes) -> bool:
         """Send a .syx preset dump (0x77/0x78/0x79 chain addressed to the
@@ -670,8 +685,8 @@ class FM9:
         self._drain()
         for m in msgs:
             self._send(m)
-            time.sleep(0.06)
-        time.sleep(1.0)
+            _settle(self, 0.06)
+        _settle(self, 1.0)
         return True
 
     def store_preset(self, slot: int):
@@ -692,7 +707,7 @@ class FM9:
                 f"slots are {p.slot_set_label(allowed)}")
         self._drain()
         self._send(p.build_store_preset(slot))
-        time.sleep(1.5)
+        _settle(self, 1.5)
         return self.current_preset()
 
     def load_preset_buffer(self, raw: bytes, name: str | None = None):
@@ -718,7 +733,7 @@ class FM9:
         for frame in frames:
             self.install_guard.check(frame[5])
             self._send_await_dump_ack(frame)
-        time.sleep(0.3)
+        _settle(self, 0.3)
         # Rename via the device's OWN name command on the buffer (not by
         # patching the file body: rewriting the name in the dump and
         # recomputing the footer produced a body the device rejected, so
@@ -726,7 +741,7 @@ class FM9:
         # then the caller stores.
         if name and name.strip():
             self._send(p.build_rename_preset(name.strip()[:32]))
-            time.sleep(0.3)
+            _settle(self, 0.3)
             pf.name = name.strip()[:32]     # so verification expects this
         return pf
 
@@ -755,7 +770,7 @@ class FM9:
                 f"store slots are {p.slot_set_label(allowed)}")
         pf = self.load_preset_buffer(raw, name)
         self._send(p.build_store_preset(slot))   # fn 0x01 sub 0x26, allowed
-        time.sleep(1.5)                     # let flash settle before reads
+        _settle(self, 1.5)                     # let flash settle before reads
         return pf
 
     def _send_await_dump_ack(self, frame, timeout: float = 2.0):
@@ -775,7 +790,7 @@ class FM9:
                 d = list(msg.data)
                 if len(d) > 5 and d[4] == 0x64 and d[5] == want:
                     return d
-            time.sleep(0.002)
+            _settle(self, 0.002)
         return None                         # proceed; the read-back is the judge
 
     def install_user_cab(self, raw: bytes, slot: int, filename: str = ""):
@@ -832,7 +847,7 @@ class FM9:
                 elif data[4] == 0x7C:
                     done = True
                     break
-            time.sleep(0.005)
+            _settle(self, 0.005)
         if head is None and not chunks:
             return None
         return (head or [], chunks)
@@ -874,7 +889,7 @@ class FM9:
                 got = p.parse_multipurpose(list(msg.data))
                 if got is not None and got[0] == fn:
                     return got[1] == 0
-            time.sleep(0.002)
+            _settle(self, 0.002)
         return False
 
     def _send_cab_frames(self, frames: list[list[int]]) -> int:
@@ -933,7 +948,7 @@ class FM9:
         before = self.read_user_cab_name(slot)
         frames = cabfile.retarget(cf, slot)
         acks = self._send_cab_frames(frames)
-        time.sleep(0.2)          # the unit took ~120 ms to ack the tail
+        _settle(self, 0.2)          # the unit took ~120 ms to ack the tail
         after = self.read_user_cab_name(slot)
         landed = bool(after) and not p.is_empty_slot_name(after)
         verified = landed and (expect_name is None or after == expect_name)
@@ -984,12 +999,12 @@ class FM9:
     def rename_preset(self, name: str):
         self._drain()
         self._send(p.build_rename_preset(name))
-        time.sleep(0.2)
+        _settle(self, 0.2)
 
     def rename_scene(self, scene_1based: int, name: str):
         self._drain()
         self._send(p.build_set_scene_name(scene_1based - 1, name))
-        time.sleep(0.2)
+        _settle(self, 0.2)
 
     def read_display_name(self, effect_id: int, param_id: int) -> str | None:
         """Read a param's display string via the type-name query (sub 0x1F)."""
@@ -1073,13 +1088,13 @@ class FM9:
                 continue
             self._drain()
             self._send(p.build_set_param_continuous(eid, pid, fields[pid]))
-            time.sleep(0.08)
+            _settle(self, 0.08)
         for pid, val in ((p.MOD_PID_TARGET_EFFECT, target_effect_id),
                          (p.MOD_PID_TARGET_PARAM, target_param_id),
                          (p.MOD_PID_SOURCE, source_ordinal)):
             self._drain()
             self._send(p.build_set_param_discrete(eid, pid, val))
-            time.sleep(0.15)
+            _settle(self, 0.15)
         return bool(donor)
 
     def clear_modifier(self, slot_1based: int) -> None:
@@ -1094,7 +1109,7 @@ class FM9:
                     p.MOD_PID_SOURCE):
             self._drain()
             self._send(p.build_set_param_discrete(eid, pid, 0))
-            time.sleep(0.15)
+            _settle(self, 0.15)
 
     def plan_splice(self, row_1based: int, at_col: int) -> dict:
         """What a splice at this cell WOULD do, without doing any of it.
@@ -1180,13 +1195,13 @@ class FM9:
         for move in intent["moves"]:
             col = move["from_col"]
             self.place_block((row, col), 0)    # clear frees the cell AND cables
-            time.sleep(settle)
+            _settle(self, settle)
             self.place_block((row, col + 1), move["effect_id"])
-            time.sleep(settle)
+            _settle(self, settle)
             moved.append((move["effect_id"], col, col + 1))
 
         self.place_block((row, at_col), effect_id)
-        time.sleep(settle)
+        _settle(self, settle)
 
         # Clearing destroys cables, so redraw the whole disturbed span.
         after = {(c.row + 1, c.col + 1): c for c in (self.read_grid() or [])}
@@ -1194,7 +1209,7 @@ class FM9:
         for a, b in zip(span, span[1:]):
             if b == a + 1:
                 self.connect_cells(row, a, row)
-                time.sleep(settle)
+                _settle(self, settle)
 
         cells_after = self.read_grid() or []
         final = {(c.row + 1, c.col + 1): c for c in cells_after}
@@ -1212,7 +1227,7 @@ class FM9:
         if placed is None or placed.effect_id != effect_id:
             deadline = time.time() + 2.0
             while time.time() < deadline:
-                time.sleep(max(settle, 0.15) * 2)
+                _settle(self, max(settle, 0.15) * 2)
                 cells_after = self.read_grid() or []
                 final = {(c.row + 1, c.col + 1): c for c in cells_after}
                 placed = final.get((row, at_col))
@@ -1247,7 +1262,7 @@ class FM9:
         op = p.ROUTING_DISCONNECT if disconnect else p.ROUTING_CONNECT
         self._drain()
         self._send(p.build_set_grid_routing(src_row, src_col, dest_row, op))
-        time.sleep(0.25)
+        _settle(self, 0.25)
 
     def plan_reorder(self, moving_eid: int, ref_eid: int,
                      position: str = "before") -> dict:
@@ -1343,10 +1358,10 @@ class FM9:
         # lay the new order back into the same columns.
         for col in cols:
             self.place_block((row + 1, col + 1), 0)
-            time.sleep(settle)
+            _settle(self, settle)
         for col, eid in zip(cols, new_order):
             self.place_block((row + 1, col + 1), eid)
-            time.sleep(settle)
+            _settle(self, settle)
 
         # Clearing destroyed cables; redraw the whole disturbed span same-row,
         # including the boundary into the run's first column.
@@ -1356,7 +1371,7 @@ class FM9:
         for a, b in zip(span, span[1:]):
             if b == a + 1:
                 self.connect_cells(row + 1, a + 1, row + 1)
-                time.sleep(settle)
+                _settle(self, settle)
 
         # Verify: the run holds exactly the new order, and the path still
         # walks. Poll briefly past the settle window before judging.
@@ -1443,7 +1458,7 @@ class FM9:
         after = None
         ok = False
         for _ in range(4):
-            time.sleep(0.15)
+            _settle(self, 0.15)
             after = self.get_param_display(spec)
             if isinstance(after, (int, float)) and abs(after - target) <= tol:
                 ok = True
@@ -1564,7 +1579,7 @@ class FM9:
         for how, build in attempts:
             self._param_echo(build(), spec.effect_id, spec.param_id, timeout=0.3)
             for _ in range(3):
-                time.sleep(0.15)
+                _settle(self, 0.15)
                 after = self.get_param_wire(spec)
                 if after == wire:
                     return SetResult(True, f"read back on the unit ({how})",

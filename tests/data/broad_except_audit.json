@@ -97,6 +97,11 @@
    "disposition": "unreachable: wraps planner.plan with the device's own prompt and validator; no device handle in the try body (named_params is read before it)"
   },
   {
+   "function": "_rehearse_fit",
+   "ordinal": 1,
+   "disposition": "re-raises CapabilityDeclined first; otherwise a placement the twin cannot make becomes a fit failure in words"
+  },
+  {
    "function": "_stream_response.events.runner",
    "ordinal": 1,
    "disposition": "converted: a preceding except CapabilityDeclined emits a distinct 'refused' event carrying the refusal payload rather than an error string; streaming twins that can reach a gate (api_apply_stream) check before the stream opens so a decline is a real 409"
