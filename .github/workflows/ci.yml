@@ -80,17 +80,37 @@ jobs:
         shell: bash
         run: python tests/shard.py --account ids.txt reports/*/shard.xml
 
+  cli:
+    # #211: the CLI backends are subprocesses, and how a prompt reaches one
+    # (stdin, encodings, the command-line limit) differs by OS. The macOS app
+    # is the main install, so its subprocess paths run on macOS too; the
+    # whole suite stays on Linux and Windows.
+    name: cli (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: The CLI subprocess paths on macOS
+        run: pytest tests/test_cli_stdin.py tests/test_planner_grok.py tests/test_describe.py tests/test_rig_image.py -q
+        env:
+          TONECOMMAND_SIM: "1"
+
   tests:
     # The one required check on main, kept under that exact name: a matrix
     # job reports as "suite (...)", which branch protection would wait for
     # forever. This gate fails unless every shard on every OS and both
     # accounts passed. A cancelled or skipped job is not coverage.
-    needs: [suite, account]
+    needs: [suite, account, cli]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Every shard and both accounts passed
+      - name: Every shard, both accounts and the macOS CLI paths passed
         run: |
-          echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}"
+          echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}; cli: ${{ needs.cli.result }}"
           test "${{ needs.suite.result }}" = "success"
           test "${{ needs.account.result }}" = "success"
+          test "${{ needs.cli.result }}" = "success"
