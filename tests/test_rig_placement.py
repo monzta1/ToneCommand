@@ -62,6 +62,29 @@ def template_sim():
     return sim_from_reading(server.reg, _TEMPLATE["cells"], _TEMPLATE["status"])
 
 
+def clean_template_sim():
+    """The template's canvas with the status limited to blocks a cell holds
+    (no ghost blocks, #253): what a clean single-row preset looks like."""
+    dev = template_sim()
+    cells = dev.read_grid()
+    on = {c.effect_id for c in cells if c.effect_id}
+    return sim_from_reading(server.reg, cells, [b for b in dev.status_dump() if b.effect_id in on])
+
+
+def drops_outgoing_cable(dev):
+    """Make the simulator lose the outgoing cable when a shunt is replaced,
+    as the unit did on 2026-08-21 (the downstream cell left with no input)."""
+    real = dev.place_block
+
+    def place(pos, eid):
+        real(pos, eid)
+        row1, col1 = pos
+        nxt = dev.sim_core.st.buffer["grid"].get((row1, col1 + 1))
+        if nxt is not None:
+            nxt.cable_in_mask = 0
+    dev.place_block = place
+
+
 def live_row(dev):
     g = server._grid_reading(dev)
     return [c["label"] for c in sorted([c for c in g["cells"] if c.get("live") and c["label"]],
@@ -90,6 +113,16 @@ def test_anchor_onto_a_free_pass_through_places_without_a_splice():
     assert live_row(dev)[0][:2] == ["Input 1", "Wah 1"]
 
 
+@pytest.mark.parametrize("position,ref", [("after", "input 1"), ("before", "amp 1")])
+def test_anchored_shunt_placement_repairs_a_lost_outgoing_cable(position, ref):
+    dev = SimFM9(server.reg)                 # Input 1, a free shunt, Amp 1 on row 2
+    drops_outgoing_cable(dev)
+    res = server.run_action(dev, add("wah", 1, position, ref))
+    assert res["ok"] and "cables verified in and out" in res["detail"]
+    row, alive = live_row(dev)
+    assert alive and row[:3] == ["Input 1", "Wah 1", "Amp 1"]
+
+
 def test_anchor_not_on_the_grid_writes_nothing():
     dev = template_sim()
     before = [(c.row, c.col, c.effect_id) for c in dev.read_grid()]
@@ -110,18 +143,22 @@ def test_anchor_validation_and_old_positions_unchanged():
 # -- REQ-002: a rig build anchors its additions -----------------------------------------
 
 def test_rig_build_lands_in_the_rigs_order_and_compares_clean(monkeypatch):
-    dev = template_sim()
+    dev = clean_template_sim()
     monkeypatch.setattr(server, "_fm9", dev)
     monkeypatch.setattr(server, "_gig_mode", {"on": False})
     monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": [
         {"kind": "add_block", "block": "drive", "instance": 2, "position": "pre"},
         {"kind": "set_param", "block": "drive", "instance": 2, "param": "FUZZ_DRIVE", "value": 5},
         {"kind": "add_block", "block": "wah", "instance": 1, "position": "pre"},
-        {"kind": "add_block", "block": "chorus", "instance": 1, "position": "pre"}]})
+        {"kind": "add_block", "block": "comp", "instance": 1, "position": "pre"},
+        {"kind": "add_block", "block": "chorus", "instance": 1, "position": "pre"},
+        # the template's own delay sits after its cab; the rig has it before the amp
+        {"kind": "reorder", "block": "delay", "instance": 1, "ref": "amp", "position": "before"}]})
     c = TestClient(server.app)
     d = c.post("/api/describe/build", json={"spec": SPEC}).json()
     kinds = [(a["kind"], a.get("block"), a.get("instance"), a.get("position"), a.get("ref")) for a in d["actions"]]
-    assert kinds[:3] == [("add_block", "wah", 1, "before", "drive 1"),
+    assert kinds[:4] == [("add_block", "wah", 1, "before", "drive 1"),
+                         ("add_block", "comp", 1, "after", "wah 1"),
                          ("add_block", "drive", 2, "after", "drive 1"),
                          ("add_block", "chorus", 1, "after", "drive 2")]
     assert ("set_param", "drive", 2, None, None) in kinds[3:]          # configured after it exists
@@ -129,13 +166,13 @@ def test_rig_build_lands_in_the_rigs_order_and_compares_clean(monkeypatch):
             for a in d["actions"]]
     digest = c.post("/api/plan/revise", json={"actions": acts}).json()["plan_digest"]
     out = c.post("/api/apply", json={"actions": acts, "plan_digest": digest}).json()
-    assert all(r["ok"] for r in out["results"] if (r.get("action") or {}).get("kind") == "add_block")
+    assert all(r["ok"] for r in out["results"]
+               if (r.get("action") or {}).get("kind") in ("add_block", "reorder"))
     row, alive = live_row(dev)
-    assert alive and row[:6] == ["Input 1", "Wah 1", "Drive 1", "Drive 2", "Chorus 1", "Amp 1"]
+    assert alive and row[:9] == ["Input 1", "Wah 1", "Compressor 1", "Drive 1", "Drive 2", "Chorus 1",
+                                 "Delay 1", "Amp 1", "Cab 1"]
     cmp_ = c.post("/api/rig/compare", json={"graph": SFOGLI}).json()
-    # none of the ADDED blocks is out of order (the template's own delay sits
-    # after its cab, which only a reorder moves; not this issue's promise)
-    assert not [x for x in cmp_["out_of_order"] if x["what"] in ("wah", "drive", "chorus")]
+    assert cmp_["out_of_order"] == [] and cmp_["missing"] == []
 
 
 def test_interleaved_plan_puts_every_addition_first():

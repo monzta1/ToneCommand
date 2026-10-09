@@ -3889,12 +3889,7 @@ def _add_block_anchored(fm9: DeviceAdapter, a: Action, eid: int, cells) -> dict:
     col = anchor.col + 1 if a.position == "after" else anchor.col - 1
     cell = next((c for c in cells if (c.row, c.col) == (anchor.row, col)), None)
     if cell is not None and cell.is_shunt:
-        fm9.place_block((anchor.row + 1, col + 1), eid)
-        after = fm9.read_grid() or []
-        placed = next((c for c in after if c.effect_id == eid and (c.row, c.col) == (anchor.row, col)), None)
-        ok = placed is not None and placed.cable_in_mask != 0
-        return {"ok": ok, "detail": (f"placed {a.position} {a.ref} at row {anchor.row + 1} col {col + 1}"
-                                     if ok else f"placement {a.position} {a.ref} failed grid verification")}
+        return _place_on_shunt(fm9, a, eid, anchor.row, col, where=f"{a.position} {a.ref} ")
     at_col = anchor.col + 2 if a.position == "after" else anchor.col + 1      # 1-based
     plan = fm9.plan_splice(anchor.row + 1, at_col)
     if not plan.get("ok"):
@@ -3954,6 +3949,15 @@ def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
                          f"{intent['at_col']}; " + res.get("detail", ""))
         return res
     row, col = sorted(shunts, key=lambda rc: rc[1])[0]
+    return _place_on_shunt(fm9, a, eid, row, col)
+
+
+def _place_on_shunt(fm9: DeviceAdapter, a: Action, eid: int, row: int, col: int,
+                    where: str = "") -> dict:
+    """Put a block onto the free pass-through at 0-based (row, col), then prove
+    it landed with its cables in AND out, redrawing a lost outgoing cable.
+    One path for a coarse placement and an anchored one (#248 review): the
+    unit can drop the outgoing cable when a shunt is replaced."""
     fm9.place_block((row + 1, col + 1), eid)
     after = fm9.read_grid() or []
     placed = [c for c in after
@@ -3985,8 +3989,8 @@ def _add_block(fm9: DeviceAdapter, a: Action) -> dict:
                                   f"outgoing cable was lost and could not be "
                                   f"redrawn; downstream is disconnected"}
     return {"ok": ok,
-            "detail": f"placed at row {row + 1} col {col + 1}, cables verified "
-                      f"in and out" if ok else "placement failed grid verification"}
+            "detail": f"placed {where}at row {row + 1} col {col + 1}, cables verified "
+                      f"in and out" if ok else f"placement {where}failed grid verification"}
 
 
 def _resolve_param(fam: str, name: str, instance: int):
