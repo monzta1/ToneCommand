@@ -165,7 +165,7 @@ def test_page_offers_modes_and_shows_the_report_and_read_back():
     assert "const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted, currentPlan.actions) : '';" in PAGE
     # said in the transcript too: the plan pane is hidden at the send stage
     assert "if (fidLine) chatNote(fidLine);" in PAGE
-    assert "const word = ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');" in PAGE
+    assert "const word = want && ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');" in PAGE
     # matched on block names and instance: send results carry no effect id
     assert "const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())" in PAGE
     # the target is what the sent plan asked of the block; a missing result is not a pass
@@ -225,9 +225,16 @@ def test_faithful_refuses_a_stereo_rig_before_any_planner_call(client, monkeypat
 @pytest.mark.parametrize("stated,hit", [
     (["amp gain 7"], True), (["Gain: 7 on the amp"], True),
     (["amp gain 7.5"], False), (["gain 17"], False), (["gain 70"], False),
-    (["play it again at 7"], False), (["gainstage 7"], False)])
+    (["play it again at 7"], False), (["gainstage 7"], False),
+    (["gain -7"], False), (["gain +7"], False), (["gain \u22127"], False)])
 def test_stated_match_needs_whole_words_and_whole_numbers(stated, hit):
     assert rc._stated_match(act("set_param", "amp", 1, param="GAIN", value=7), stated) is hit
+
+
+def test_stated_match_keeps_the_sign():
+    level = lambda v: act("set_param", "amp", 1, param="LEVEL", value=v)
+    assert rc._stated_match(level(-7), ["Level -7 dB"]) is True
+    assert rc._stated_match(level(7), ["Level -7 dB"]) is False
 
 
 def _readback(tmp_path, kept, acted, planned):
@@ -264,3 +271,8 @@ def test_readback_counts_against_what_the_plan_asked(tmp_path):
     acted[2] = {"ok": True, "action": {**planned[2], "block": "Amplifier"}}
     r = _readback(tmp_path, kept, acted, planned)
     assert r["tags"] == [" (verified)"] * 3 and r["line"].endswith(": 3 verified.")
+    # a kept piece the plan sent nothing for is marked, not skipped
+    planned = planned[:3]
+    r = _readback(tmp_path, kept, [{"ok": True, "action": a} for a in planned], planned)
+    assert r["tags"] == [" (verified)", " (verified)", " (not verified)"]
+    assert r["line"].startswith("Read back from the unit, gear kept from the rig: 2 verified, 1 not verified")

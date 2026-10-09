@@ -212,9 +212,10 @@ def _stated_match(action: dict, stated: list[str]) -> bool:
     number = _num(action["value"])
     for item in stated or []:
         text = str(item).lower()
-        # whole words and whole numbers: GAIN is not "again", 7 is not 7.5
+        # whole words and whole signed numbers: GAIN is not "again", 7 is
+        # not 7.5, and 7 is not -7
         if all(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text) for w in words) \
-                and re.search(rf"(?<![\d.]){re.escape(number)}(?!\d|\.\d)", text):
+                and re.search(rf"(?<![\d.+\-\u2212]){re.escape(number)}(?!\d|\.\d)", text):
             return True
     return False
 

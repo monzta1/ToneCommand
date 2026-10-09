@@ -7863,11 +7863,12 @@ function fidelityReadBack(f, acted, planned) {
     const inst = Number(li.dataset.inst || 1);
     const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())
       && Number((a || {}).instance || 1) === inst;
+    // Every kept piece gets a mark: one the plan sent nothing for was not
+    // verified, it was not touched.
     const want = (planned || []).filter(on).length;
-    if (!want) continue;
-    const ok = Math.min(want, acted.filter(r => on(r.action) && r.ok).length);
-    const word = ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');
-    if (ok === want) all++; else if (ok) some++; else none++;
+    const ok = want ? Math.min(want, acted.filter(r => on(r.action) && r.ok).length) : 0;
+    const word = want && ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');
+    if (want && ok === want) all++; else if (ok) some++; else none++;
     if (ok !== want) short.push(`${li.dataset.what} ${word}`);
     const tag = li.querySelector('.fidv');
     if (tag) tag.textContent = ` (${word})`;
