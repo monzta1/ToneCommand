@@ -761,7 +761,7 @@ class _SimOut:
                 # pre-write state so reads inside the settle window see it
                 if now >= self.core._snapshot_expire:
                     self.core._snapshot = _copy_buffer(self.core.st.buffer)
-                self.core._snapshot_expire = now + SETTLE
+                self.core._snapshot_expire = now + getattr(self.core, 'settle_window', SETTLE)
                 for resp in self.core.handle(frame):
                     self.inp.queue.append(SimpleNamespace(type="sysex", data=resp[1:-1]))
                 return
@@ -798,6 +798,47 @@ def SimFM9(registry: Registry | None = None) -> FM9:
     from fm9.captures import CaptureStore
     dev.capture_store = CaptureStore(slots=8, formats=(".nam",))
     core.st.capture_store = dev.capture_store
+    return dev
+
+
+def sim_from_reading(registry: Registry | None, cells, status) -> FM9:
+    """#247: a simulator whose loaded preset copies a unit's reading: its raw
+    grid cells (row, col, effect id as the grid reports it, pass-through,
+    cable mask) and its status dump (each block's bypass and channel), so a
+    plan's structural changes can be rehearsed through the same device code
+    before anyone confirms them. Parameters are zero: the rehearsal is about
+    where blocks go, not how they sound."""
+    dev = SimFM9(registry)
+    # A rehearsal, not an emulation of timing: the twin applies writes at
+    # once (no emulated settle window) and the device layer does not wait.
+    # Both or neither: a twin that still emulated the window would answer a
+    # read inside it with the old state and fail plans that land.
+    dev.sim_core.settle_window = 0.0
+    dev.settle_scale = 0
+    st = dev.sim_core.st
+    reg = st.reg
+    grid = {}
+    for c in cells or []:
+        cell = _Cell(c.effect_id, is_shunt=bool(c.is_shunt))
+        cell.cable_in_mask = int(c.cable_in_mask or 0)
+        grid[(c.row + 1, c.col + 1)] = cell
+    blocks = {b.effect_id: b for b in status or []}
+    params = {}
+    for eid in blocks:
+        fam = next((f for f, (base, count) in EFFECT_ID_BASE.items() if base <= eid < base + count), None)
+        n_params = 1 + max((pid for (f, pid) in reg.params if f == fam), default=0)
+        params[eid] = [[0] * n_params for _ in range(4 if eid not in (37, 42) else 1)]
+    state = {eid: {"bypassed": bool(b.bypassed), "channel": int(b.channel)} for eid, b in blocks.items()}
+    st.buffer = {
+        "number": st.buffer.get("number", 0), "name": "rehearsal",
+        "scene_names": {s: f"Scene {s}" for s in range(1, 9)},
+        "grid": grid,
+        "scenes": {s: {eid: dict(v) for eid, v in state.items()} for s in range(1, 9)},
+        "params": params,
+        "modifiers": {s: [0] * 25 for s in range(1, 33)},
+        "tempo": 120,
+    }
+    st.scene = 1
     return dev
 
 

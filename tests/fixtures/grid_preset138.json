@@ -1,0 +1,272 @@
+{
+ "_note": "Block layout of preset 138 (BT Steve Lukather 01) as read from the FM9 through /api/grid on 2026-10-09: three rows in parallel. Input 1 is engaged, as the stored preset is (#241). Used to rehearse a rig build's placements (#247).",
+ "cells": [
+  {
+   "row": 1,
+   "col": 0,
+   "effect_id": 37,
+   "shunt": false,
+   "feeds": [],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Input 1"
+  },
+  {
+   "row": 1,
+   "col": 1,
+   "effect_id": 118,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": true,
+   "channel": "A",
+   "label": "Drive 1"
+  },
+  {
+   "row": 1,
+   "col": 2,
+   "effect_id": 58,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Amp 1"
+  },
+  {
+   "row": 1,
+   "col": 3,
+   "effect_id": 62,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Cab 1"
+  },
+  {
+   "row": 1,
+   "col": 4,
+   "effect_id": 46,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Compressor 1"
+  },
+  {
+   "row": 0,
+   "col": 5,
+   "effect_id": 110,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Pitch 1"
+  },
+  {
+   "row": 1,
+   "col": 5,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 2,
+   "col": 5,
+   "effect_id": 71,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Delay 2"
+  },
+  {
+   "row": 0,
+   "col": 6,
+   "effect_id": 74,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": true,
+   "channel": "A",
+   "label": "Multitap 1"
+  },
+  {
+   "row": 1,
+   "col": 6,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    0,
+    1,
+    2
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 2,
+   "col": 6,
+   "effect_id": 70,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Delay 1"
+  },
+  {
+   "row": 0,
+   "col": 7,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    0
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 1,
+   "col": 7,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 2,
+   "col": 7,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    2
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 0,
+   "col": 8,
+   "effect_id": 66,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Reverb 1"
+  },
+  {
+   "row": 1,
+   "col": 8,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    0,
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 2,
+   "col": 8,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    2
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 1,
+   "col": 9,
+   "effect_id": 126,
+   "shunt": false,
+   "feeds": [
+    0,
+    1,
+    2
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "MIXER 1"
+  },
+  {
+   "row": 1,
+   "col": 10,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 1,
+   "col": 11,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 1,
+   "col": 12,
+   "effect_id": null,
+   "shunt": true,
+   "feeds": [
+    1
+   ],
+   "bypassed": null,
+   "channel": null,
+   "label": null
+  },
+  {
+   "row": 1,
+   "col": 13,
+   "effect_id": 42,
+   "shunt": false,
+   "feeds": [
+    1
+   ],
+   "bypassed": false,
+   "channel": "A",
+   "label": "Output 1"
+  }
+ ]
+}
