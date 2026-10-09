@@ -4,6 +4,24 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- **Build it on my FM9, from the rig (#228; Rig Reconstruction, #224).**
+  After a rig is read, the build follows it: each piece of gear becomes its
+  block, in order (two drives become drive 1 and drive 2), a switcher's
+  routes become scenes, and a power amp joins the amp before it. Choose how
+  faithful: **Closest tone** (the default), **Faithful routing**, or
+  **Simplified live rig** (one scene, one block of each kind).
+  - Nothing is dropped quietly. The plan shows what was **kept** (with the
+    model each piece became), what was **changed** and why, what was **not
+    reproduced** and why, and how many values were **chosen by us** because
+    the source did not state them. After sending, each kept piece is marked
+    verified, partly verified or not verified from reading the unit back.
+  - Two amps at once, or a stereo rig, are built as one mono path and say
+    so; FM9 stereo and parallel builds are #16. In Faithful routing such a
+    rig is refused before anything is planned, with the reason.
+  - There is no similarity score: a build is the closest safe version of a
+    rig, not a claim to be the sound.
+
 ## 1.5.11 (2026-10-08)
 
 **Show it a picture of a rig.** Paste a screenshot, drop a photo or attach

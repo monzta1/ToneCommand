@@ -737,3 +737,37 @@ def extract_image(data: bytes, note: str = "", cancel=None) -> dict:
     finally:
         shutil.rmtree(folder, ignore_errors=True)
     return _parse_spec(body)
+
+
+def brief_from_rig(spec: dict, compiled: dict, name: str | None = None) -> str:
+    """#228: the brief for a build from a rig view, as ONE instruction in
+    prose, like brief_from (labelled lists make the planner refuse it).
+
+    The chain is fixed by fm9/rigcompile.py before any model runs; this names
+    each piece of gear with the block and instance it becomes, so the plan
+    can be read back against the rig piece by piece."""
+    scenes = compiled.get("scenes") or []
+    parts = []
+    if len(scenes) == 1:
+        parts.append(f"Build this rig as a SINGLE scene, scene 1, and do not set up any other scene: "
+                     f"{spec.get('summary') or 'a rig a player described'}")
+    else:
+        parts.append(f"Build this rig across {len(scenes)} scenes: "
+                     f"{spec.get('summary') or 'a rig a player described'}")
+    for sc in scenes:
+        chain = ", then ".join(f"the {s['label']} as {s['block']} {s['instance']}" for s in sc["chain"])
+        label = f", {sc['name']}" if sc.get("route") else ""
+        parts.append(f"Scene {sc['n']}{label}: {chain or 'the chain the source describes'}, "
+                     f"in that order. Use the closest model to each piece of gear by name.")
+    if name:
+        parts.append(f"Name the preset {name!r}, and name each scene you set up after what it is for.")
+    stated = [x for x in spec.get("stated") or [] if str(x).strip()]
+    if stated:
+        parts.append("Use these settings exactly where they are given: "
+                     + "; ".join(str(x).rstrip(".") for x in stated) + ".")
+    vague = [x for x in spec.get("vague") or [] if str(x).strip()]
+    if vague:
+        parts.append("Choose sensible values for these, which the source described only loosely: "
+                     + "; ".join(str(x).rstrip(".") for x in vague) + ".")
+    parts.append("Do not store to any preset slot.")
+    return " ".join(parts)
