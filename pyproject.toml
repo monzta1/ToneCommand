@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tonecommand"
-version = "1.5.10"
+version = "1.5.11"
 description = "Natural-language tone control over USB MIDI: Fractal FM9 and BOSS IR-2, more devices joining"
 readme = "README.md"
 license = {file = "LICENSE"}
