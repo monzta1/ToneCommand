@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.12 (2026-10-09)
+
+**Build it on my FM9, from the rig.** A rig read from a description or a
+picture now builds as that rig: each piece of gear becomes its own block in
+order, and the plan says what was kept, changed or left out and why. Choose
+Closest tone, Faithful routing or Simplified live rig.
+
 ### Added
 - **Build it on my FM9, from the rig (#228; Rig Reconstruction, #224).**
   After a rig is read, the build follows it: each piece of gear becomes its
