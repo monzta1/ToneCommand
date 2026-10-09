@@ -2588,7 +2588,6 @@ def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None,
         return {"error": f"planner failed: {exc}"}
     result["actions"] = [a for a in result.get("actions", [])
                          if a.get("kind") not in describe.FORBIDDEN_KINDS]
-    result["device"] = {"preset": None, "scene": None, "target": label}
     result["from_source"] = {"summary": spec.get("summary"), "stated": spec.get("stated") or [],
                              "vague": spec.get("vague") or [], "quotes": spec.get("quotes") or [],
                              "source": spec.get("source") or {}}

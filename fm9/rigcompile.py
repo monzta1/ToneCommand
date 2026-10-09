@@ -339,17 +339,24 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
             missing.append({"what": step["label"], "block": step["block"],
                             "why": f"the rig has the {step['label']} ({step['block']}); "
                                    f"the loaded scene has no {step['block']} block on its signal path for it"})
-    extra = [{"what": c["label"], "why": f"{c['label']} is on the loaded scene's path; the rig has nothing there"}
+    # An extra block bypassed in this scene passes the signal untouched: it
+    # is listed, so every block is accounted for, but it is not a difference.
+    extra = [{"what": c["label"], "bypassed": True,
+              "why": f"{c['label']} is on the loaded scene's path but bypassed, so it does not change the sound"}
+             if c.get("bypassed") else
+             {"what": c["label"], "bypassed": False,
+              "why": f"{c['label']} is on the loaded scene's path; the rig has nothing there"}
              for i, c in enumerate(live) if i not in used]
     keep = _in_order([i for _, _, i in matches])
     out_of_order = []
-    for k, (step, c, _) in enumerate(matches):
+    for k, (step, c, i) in enumerate(matches):
         if k not in keep:
             before = matches[k - 1][0]["label"] if k else None
+            after_live = next((live[j]["label"] for j in range(i - 1, -1, -1) if j in used), None)
+            where = f"comes after {after_live} on the preset" if after_live else "comes first on the preset"
             out_of_order.append({"what": step["label"], "live": c["label"],
-                                 "why": f"the {step['label']} is {c['label']}, which sits in a different "
-                                        f"place on the preset" + (f"; the rig has it after the {before}" if before
-                                                                    else "; the rig has it first")})
+                                 "why": f"the {step['label']} is {c['label']}, which {where}; "
+                                        + (f"the rig has it after the {before}" if before else "the rig has it first")})
     routing = []
     # Forks and merges come from the cables (feeds), shunts included. A
     # serial path that steps from one row to another is still one path, so
@@ -375,7 +382,7 @@ def compare(compiled: dict, grid: dict, scene: int = 1) -> dict:
         for nid, (st, why) in (compiled.get("status", {}).get("nodes") or {}).items():
             if st == state and "#16" in why:
                 routing.append({"what": nid, "why": f"from the rig: {why}"})
-    n = len(missing) + len(extra) + len(out_of_order) + len(routing)
+    n = len(missing) + sum(1 for x in extra if not x["bypassed"]) + len(out_of_order) + len(routing)
     summary = ("The loaded scene already matches this rig." if n == 0 else
                f"{n} difference{'s' if n != 1 else ''} between this rig and the loaded scene.")
     return {"scene": sc["n"] if sc else None,

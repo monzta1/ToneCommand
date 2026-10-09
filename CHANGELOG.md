@@ -30,6 +30,12 @@ an honest list of what that pedal can and cannot do.
 
 ### Fixed
 - A rig build with the IR-2 selected no longer tries to read an FM9.
+- Sending a plan that has no preset under it (built offline, or on the
+  IR-2) no longer fails with "Cannot read properties of null" before
+  anything is sent.
+- After a build from a source, the button no longer stays on BUILDING...
+- COMPARE treats a block bypassed in this scene as passing the sound
+  through: it is listed, but it is not counted as a difference.
 - The rig card no longer says the build follows the description: since
   1.5.12 BUILD IT builds the rig.
 

@@ -223,3 +223,16 @@ def test_readback_on_the_ir2_matches_results_by_parameter(tmp_path):
     assert r["tags"] == [" (partly verified)", " (verified)"]
     assert r["line"] == ("Read back from the unit, gear kept from the rig: 1 verified, 1 partly "
                          "(JCM800 partly verified).")
+
+
+def test_page_sends_a_plan_with_no_preset_under_it():
+    """An IR-2 build (and an offline FM9 build) has no preset: the send read
+    device.preset.number off null and threw before anything was sent."""
+    assert "expected_preset: (currentPlan.device && currentPlan.device.preset)" in PAGE
+    assert "expected_preset: currentPlan.device ? currentPlan.device.preset.number : null" not in PAGE
+
+
+def test_page_run_build_declares_what_it_restores():
+    start = PAGE.index("async function runBuild(spec, note) {")
+    body = PAGE[start:PAGE.index("\n}\n", start)]
+    assert "const was = btn.textContent;" in body and "btn.textContent = was;" in body

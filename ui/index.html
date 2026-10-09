@@ -7987,7 +7987,8 @@ function rigCardHtml(spec) {
 function rigCompareHtml(d) {
   const list = (title, xs) => (xs || []).length
     ? `<h5>${title}</h5><ul>${xs.map(x => `<li>${esc(x.why)}</li>`).join('')}</ul>` : '';
-  const n = ['missing', 'extra', 'out_of_order', 'routing'].reduce((k, f) => k + (d[f] || []).length, 0);
+  const n = ['missing', 'out_of_order', 'routing'].reduce((k, f) => k + (d[f] || []).length, 0)
+    + (d.extra || []).filter(x => !x.bypassed).length;
   return `<p class="rignote">${esc(d.note || '')} ${esc(d.summary || '')}</p>`
     + list('Missing', d.missing) + list('Extra', d.extra)
     + list('Out of order', d.out_of_order) + list('Routing', d.routing)
@@ -8079,6 +8080,9 @@ function suggestName(spec) {
 
 async function runBuild(spec, note) {
   const btn = $('analyze');
+  // restored in the finally below; it was never declared, so every build
+  // ended in a ReferenceError and left the button reading BUILDING...
+  const was = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'BUILDING...';
   // This call measured 226 seconds for a four scene build and used to show
@@ -10768,7 +10772,10 @@ async function apply() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         actions: currentPlan.actions,
-        expected_preset: currentPlan.device ? currentPlan.device.preset.number : null,
+        // A build with no preset under it (offline, or a device with no
+        // presets such as the IR-2) has device.preset null: nothing to expect.
+        expected_preset: (currentPlan.device && currentPlan.device.preset)
+          ? currentPlan.device.preset.number : null,
         // Same intent the plan was reviewed under, or the send would splice
         // block by block after a plan that promised a template.
         whole_rig: !!currentPlan.whole_rig,

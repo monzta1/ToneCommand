@@ -96,6 +96,8 @@ def test_compare_out_of_order_names_the_fewest_moves():
     d = diff(g)
     closed_set(d, g)
     assert [x["what"] for x in d["out_of_order"]] == ["Carbon Copy"]
+    assert d["out_of_order"][0]["why"] == ("the Carbon Copy is Delay 1, which comes first on the preset; "
+                                           "the rig has it after the V30")
     assert d["missing"] == [] and d["extra"] == []
 
 
@@ -131,6 +133,18 @@ def test_compare_bypassed_and_dead_path():
     whys = [x["why"] for x in diff(g)["routing"]]
     assert "Drive 1 (the TS808) is bypassed in this scene" in whys
     assert "no signal reaches the output: the Output block has no input cable" in whys
+
+
+def test_compare_a_bypassed_extra_is_listed_but_not_a_difference():
+    g = serial("FUZZ", "FUZZ", "DISTORT", "CABINET", "DELAY", "COMP")
+    g["cells"][-2]["bypassed"] = True                     # the compressor, before Output
+    d = diff(g)
+    closed_set(d, g)
+    assert d["extra"] == [{"what": "Compressor 1", "bypassed": True,
+                           "why": "Compressor 1 is on the loaded scene's path but bypassed, so it does not change the sound"}]
+    assert d["summary"] == "The loaded scene already matches this rig."
+    g["cells"][-2]["bypassed"] = False
+    assert diff(g)["summary"] == "1 difference between this rig and the loaded scene."
 
 
 def test_compare_ignores_blocks_off_the_live_path():
@@ -206,6 +220,7 @@ def test_page_offers_compare_and_build_to_match():
     assert "${devNamed() ? '' : `<div class=\"rigcmp\"><button id=\"rigcmpgo\">COMPARE WITH THE LOADED PRESET</button></div>" in PAGE
     assert "const r = await fetch('/api/rig/compare', {method: 'POST'," in PAGE
     assert "+ list('Missing', d.missing) + list('Extra', d.extra)" in PAGE
+    assert "+ (d.extra || []).filter(x => !x.bypassed).length;" in PAGE
     assert "+ list('Out of order', d.out_of_order) + list('Routing', d.routing)" in PAGE
     assert "(n ? `<button class=\"go\" id=\"rigmatch\">BUILD A PLAN TO MATCH</button>" in PAGE
     # build-to-match is the ordinary build: plan, review, confirm, send
