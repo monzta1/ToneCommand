@@ -236,3 +236,36 @@ def test_page_run_build_declares_what_it_restores():
     start = PAGE.index("async function runBuild(spec, note) {")
     body = PAGE[start:PAGE.index("\n}\n", start)]
     assert "const was = btn.textContent;" in body and "btn.textContent = was;" in body
+
+
+SHARED = {"nodes": [n("gtr", "instrument"), n("sw", "switcher"), n("ts", "drive", "TS808"), n("plexi", "amp", "Plexi"),
+                    n("rev", "reverb", "Spring")],
+          "edges": [e("gtr", "sw"), e("sw", "plexi", route="A"), e("sw", "ts", route="B"), e("ts", "plexi", route="B"),
+                    e("plexi", "rev", route="A"), e("plexi", "rev", route="B")]}
+
+
+def test_target_gear_shared_with_the_built_route_is_kept_once():
+    c = rc.compile_for_params(SHARED, params(), DEVICE)
+    assert c["status"]["nodes"]["plexi"] == ["kept", "AMP on the BOSS IR-2"]
+    assert c["status"]["nodes"]["rev"] == ["kept", "AMBIENCE on the BOSS IR-2"]
+    assert c["status"]["nodes"]["ts"] == ["not_reproduced", "the BOSS IR-2 has no scenes; one route is built"]
+    b = describe.brief_for_device({**SPEC, "rig": SHARED}, c, DEVICE)
+    assert "has no place for TS808;" in b and "Plexi;" not in b and "Spring;" not in b
+
+
+def test_faithful_refuses_gear_lost_on_another_route_before_any_planner_call(ir2, monkeypatch):
+    assert rc.compile_for_params(TWO_AMPS, params(), DEVICE, "faithful")["blockers"] == [
+        "The BOSS IR-2 has no place for Recto."]
+    def boom(*a, **k):
+        raise AssertionError("the planner was asked")
+    monkeypatch.setattr(planner, "plan", boom)
+    r = TestClient(server.app).post("/api/describe/build", json={"spec": {**SPEC, "rig": TWO_AMPS}, "mode": "faithful"})
+    assert r.status_code == 409 and "Recto" in r.json()["error"]
+
+
+def test_faithful_ignores_a_spare_pedal_wired_to_nothing():
+    amp_only = {"nodes": [n("gtr", "instrument"), n("amp", "amp", "JCM800"), n("spare", "drive", "Spare")],
+                "edges": [e("gtr", "amp")]}
+    c = rc.compile_for_params(amp_only, params(), DEVICE, "faithful")
+    assert c["status"]["nodes"]["spare"] == ["not_reproduced", "not connected to the signal path"]
+    assert c["blockers"] == []

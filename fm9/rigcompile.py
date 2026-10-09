@@ -413,7 +413,7 @@ def compile_for_params(graph: dict, params: list[dict], device: str,
     nodes = {n["id"]: n for n in g["nodes"]}
     names = {p["name"] for p in params}
     amp_row = next((p for p in params if p["name"] == "AMP"), {})
-    own_cab = bool(amp_row.get("option_cabs"))
+    own_cab = "AMP" in names and bool(amp_row.get("option_cabs"))
     node_status: dict[str, list] = {}
     edge_status: dict[str, list] = {}
     blockers: list[str] = []
@@ -428,13 +428,19 @@ def compile_for_params(graph: dict, params: list[dict], device: str,
     if order:
         for p in groups[order[0]][1:]:
             parallel += [x for x in p if x not in chosen]
+    # gear shared with the built path is accounted for by the built path; a
+    # cab anywhere is the voicing's own cab when the device has one
+    own_cab_why = f"the {device}'s amp voicing brings its own cab"
     for route in order[1:]:
         for p in groups[route]:
             for x in p:
-                node_status.setdefault(x, ["not_reproduced", f"the {device} has no scenes; one route is built"])
+                if x not in chosen:
+                    node_status.setdefault(x, ["changed", own_cab_why] if own_cab and nodes[x]["role"] == "cab"
+                                           else ["not_reproduced", f"the {device} has no scenes; one route is built"])
     for x in dict.fromkeys(parallel):
-        node_status.setdefault(x, ["not_reproduced",
-                                   f"runs in parallel with the kept path; the {device} is one signal path"])
+        node_status.setdefault(x, ["changed", own_cab_why] if own_cab and nodes[x]["role"] == "cab"
+                               else ["not_reproduced",
+                                     f"runs in parallel with the kept path; the {device} is one signal path"])
 
     chain: list[dict] = []
     taken: dict[str, dict] = {}            # parameter -> the step that took it
@@ -453,7 +459,7 @@ def compile_for_params(graph: dict, params: list[dict], device: str,
             role = "amp"
         if role == "cab":
             if "AMP" in names and own_cab:
-                node_status.setdefault(nid, ["changed", f"the {device}'s amp voicing brings its own cab"])
+                node_status.setdefault(nid, ["changed", own_cab_why])
             else:
                 node_status.setdefault(nid, ["not_reproduced", f"the {device} has no cab block"])
                 lost.append(n["label"])
@@ -504,6 +510,12 @@ def compile_for_params(graph: dict, params: list[dict], device: str,
                                 else ["not_reproduced", "not connected to the signal path"])
 
     if mode == "faithful":
+        # every piece of audio gear left out, on any route or path, not only
+        # what the built path could not hold; a spare pedal wired to nothing
+        # is not part of the rig's sound
+        lost = [nodes[nid]["label"] for nid, (st, why) in node_status.items()
+                if st == "not_reproduced" and nodes[nid]["role"] not in NO_BLOCK
+                and why != "not connected to the signal path"]
         if lost:
             blockers.append(f"The {device} has no place for {', '.join(lost)}.")
         if parallel or stereo:
