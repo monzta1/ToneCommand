@@ -4,6 +4,12 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.5.14 (2026-10-09)
+
+**Fixes that need no device.** Update & restart is no longer blocked by
+stray untracked files, the Claude CLI works on Windows, and a build from a
+source works on the BOSS IR-2.
+
 ### Fixed
 - **Update & restart is no longer greyed out by untracked files (#214).**
   Only changes to tracked files block the one-click update now; files the
