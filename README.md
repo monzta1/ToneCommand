@@ -431,13 +431,12 @@ py -3.12 -m venv .venv
 .venv\Scripts\tonecommand
 ```
 
-Python 3.11 or 3.12 on every platform: the MIDI library (python-rtmidi)
-ships prebuilt wheels for CPython 3.8 to 3.12 only, and on 3.13 or newer
-pip builds it from source, which needs a C++ toolchain. The package says
-so in one line rather than a compiler trace. The way out is in place
-(`fm9/midi_transport.py` picks the binding; `TONECOMMAND_MIDI_BACKEND=supriya`
-selects supriya-midi, which has wheels to 3.14) and the ceiling lifts after
-its hardware pass on the unit, issue #172.
+Python 3.11 or newer on every platform, no compiler needed: on 3.11 and
+3.12 the MIDI binding is python-rtmidi, and from 3.13 it is supriya-midi,
+which ships prebuilt wheels to 3.14 (`fm9/midi_transport.py` picks the
+binding; `TONECOMMAND_MIDI_BACKEND` forces one). Both passed the same
+hardware pass on an FM9 connected to a Mac, issue #172. On Windows, 3.12 is
+still the choice proven on a connected unit.
 
 > **On Windows, or never used a terminal before?** Follow the
 > [step-by-step Windows guide](https://tonecommand.com/windows/)

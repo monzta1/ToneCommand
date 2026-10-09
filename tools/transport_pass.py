@@ -14,8 +14,12 @@ What it touches, inside the hardware rules (kb/HARDWARE_RULES.md):
 - the EDIT BUFFER: the given preset file is loaded into it and never
   stored, and the preset that was loaded at the start is re-selected at the
   end, which discards the load;
-- one user-cab slot, which must be inside TONECOMMAND_CAB_SLOTS: the given
-  cab file is installed there and the slot's name is read back.
+- one user-cab slot, which must be inside TONECOMMAND_CAB_SLOTS and must
+  already hold the same cab (or be empty): the given cab file is installed
+  there again and the slot's name is read back. A slot holding any other
+  cab is refused before anything is sent: a preset may use it, and an IR
+  cannot be read off the unit to put it back (the first run of this pass
+  overwrote one; 2026-10-09).
 Nothing is stored and fn 0x19 is never sent.
 """
 from __future__ import annotations
@@ -82,7 +86,7 @@ def problems(rec: dict) -> list[str]:
     return out
 
 
-def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int) -> dict:
+def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int, cab_name: str) -> dict:
     """One pass on an open device. Refuses a cab slot outside the whitelist,
     or a unit whose loaded preset cannot be read, before anything is sent.
     Whatever happens after the first write, the starting preset is
@@ -100,6 +104,14 @@ def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int) -> dict:
         backend = f"none ({exc})"
     rec: dict = {"backend": backend, "python": platform.python_version(),
                  "started_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    from fm9 import protocol as p
+    held = fm9.read_user_cab_name(cab_slot)
+    if held is None:
+        raise PassError(f"user cab slot {cab_slot} did not answer its name read; nothing was sent")
+    if not p.is_empty_slot_name(held) and held != cab_name:
+        raise PassError(f"user cab slot {cab_slot} holds {held!r}, not {cab_name!r}; the pass only "
+                        "re-installs the cab a slot already holds (or fills an empty one), because "
+                        "an IR cannot be read off the unit to put it back. Nothing was sent")
     start = fm9.current_preset()
     if not start:
         raise PassError("the loaded preset could not be read, so it could not be put back; "
@@ -117,7 +129,8 @@ def run(fm9, reg, preset_file: Path, cab_file: Path, cab_slot: int) -> dict:
         fm9.load_preset_buffer(raw)
         time.sleep(0.5)
         rec["capture_after_load"] = editbuffer.capture(fm9, reg)
-        cab = fm9.install_user_cab_slot(cab_file.read_bytes(), cab_slot, cab_file.name)
+        cab = fm9.install_user_cab_slot(cab_file.read_bytes(), cab_slot, cab_file.name,
+                                        expect_name=cab_name)
         rec["cab"] = {"slot": cab.slot, "verified": cab.verified, "name_before": cab.name_before,
                       "name_after": cab.name_after}
         rec["cab_name_read_again"] = fm9.read_user_cab_name(cab_slot)
@@ -157,13 +170,28 @@ def diff(a, b, path: str = "") -> list[str]:
     return out
 
 
-def compare(a: dict, b: dict) -> tuple[list[str], list[str], list[str]]:
+def compare(a: dict, b: dict, baseline=None) -> tuple[list[str], list[str], list[str]]:
     """(unexpected differences, expected differences, problems). Both
-    records must be complete; an expected difference is listed, not hidden."""
+    records must be complete; an expected difference is listed, not hidden.
+
+    `baseline` is one or more further runs on a's backend. A field that
+    differs between a and any of them is the unit's own run-to-run variation, not the
+    transport's (seen 2026-10-09: Input 1's bypass bit flips between two
+    python-rtmidi runs of the same stored preset), so it is listed as
+    expected with that reason. Every field stable across a and its baseline
+    must match b exactly."""
+    bases = [] if baseline is None else (baseline if isinstance(baseline, list) else [baseline])
     found = diff(a, b)
+    unstable = {d.split(":")[0] for base in bases for d in diff(a, base)} - EXPECTED
     expected = [d for d in found if d.split(":")[0] in EXPECTED]
-    unexpected = [d for d in found if d.split(":")[0] not in EXPECTED]
+    expected += [f"{d} (also differs between two runs on {a.get('backend')}: the unit, not the transport)"
+                 for d in found if d.split(":")[0] in unstable]
+    unexpected = [d for d in found if d.split(":")[0] not in EXPECTED | unstable]
     bad = [f"a: {x}" for x in problems(a)] + [f"b: {x}" for x in problems(b)]
+    for base in bases:
+        bad += [f"baseline: {x}" for x in problems(base)]
+        if base.get("backend") != a.get("backend"):
+            bad.append("the baseline must be a second run on a's backend")
     return unexpected, expected, bad
 
 
@@ -174,14 +202,19 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--preset", type=Path, required=True)
     r.add_argument("--cab", type=Path, required=True)
     r.add_argument("--cab-slot", type=int, required=True)
+    r.add_argument("--cab-name", required=True,
+                   help="the name of the cab the file holds; the slot must already hold it, or be empty")
     r.add_argument("--out", type=Path, required=True)
     c = sub.add_parser("compare")
     c.add_argument("a", type=Path)
     c.add_argument("b", type=Path)
+    c.add_argument("--baseline", type=Path, action="append",
+                   help="a second run on a's backend; fields that differ from it are the unit's own")
     args = ap.parse_args(argv)
     if args.cmd == "compare":
         a, b = (json.loads(p.read_text(encoding="utf-8")) for p in (args.a, args.b))
-        unexpected, expected, bad = compare(a, b)
+        base = [json.loads(x.read_text(encoding="utf-8")) for x in args.baseline or []]
+        unexpected, expected, bad = compare(a, b, base)
         ok = not unexpected and not bad
         print(f"{a.get('backend')} on {a.get('python')} vs {b.get('backend')} on {b.get('python')}: "
               + ("PASS" if ok else "FAIL"))
@@ -194,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
     reg = Registry()
     fm9 = FM9(reg)
     try:
-        rec = run(fm9, reg, args.preset, args.cab, args.cab_slot)
+        rec = run(fm9, reg, args.preset, args.cab, args.cab_slot, args.cab_name)
     finally:
         fm9.close()
     args.out.write_text(json.dumps(rec, indent=1), encoding="utf-8")

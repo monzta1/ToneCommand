@@ -26,12 +26,12 @@ it.
 > thing to get wrong, and skipping it is why "python is not recognised"
 > appears later. If you miss it, run the installer again and choose Modify.
 
-3.11 works too. 3.13 and newer do not yet, and the install will say so in
-one line ("requires a different Python"). The reason is the MIDI library
-(python-rtmidi, no prebuilt parts past 3.12); a second library that has
-them (supriya-midi) is wired in behind `TONECOMMAND_MIDI_BACKEND=supriya`
-and the ceiling lifts once it has had its hardware pass on the unit
-(issue #172). Until then, 3.12.
+3.11 works too. Newer Pythons (3.13, 3.14) now install with no compiler:
+from 3.13 the app uses a second MIDI library (supriya-midi) that has
+prebuilt parts. It passed the same hardware pass as the first one on an FM9
+connected to a Mac (issue #172); on Windows it is proven to install and pass
+the tests, not yet on a connected unit. So 3.12 is still the safest choice
+for Windows today.
 
 ## Step 2: connect your unit (FM9: USB driver; FM3: a MIDI interface)
 
@@ -174,9 +174,9 @@ port.
 **"Preparing metadata (pyproject.toml) did not run successfully"**, with
 **python-rtmidi** and **"Unknown compiler(s)"** in the red text, or
 **"requires a different Python"**
-Your Python is newer than 3.12. The MIDI library has prebuilt parts for
-Python 3.12 and older only; on a newer one Windows tries to compile it and
-cannot. Install Python 3.12 from the releases list (Step 1), delete the
+You are on a ToneCommand older than this guide, on a Python newer than 3.12:
+its MIDI library had prebuilt parts for Python 3.12 and older only. Update
+ToneCommand, or install Python 3.12 from the releases list (Step 1), delete the
 `.venv` folder, open a new terminal and run Step 5 again with
 `py -3.12 -m venv .venv` as the first line. Nothing else changes.
 

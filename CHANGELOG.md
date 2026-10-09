@@ -4,6 +4,27 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- **Any Python 3.11 or newer installs, with no compiler (#172).** From
+  Python 3.13 the MIDI binding is supriya-midi, which has prebuilt wheels to
+  3.14. It passed the same hardware pass as python-rtmidi on an FM9
+  (`tools/transport_pass.py`): the status dump, a block's full parameter
+  read, the routing globals, a preset loaded into the edit buffer and read
+  back, and a user cab installed and read back by name all matched. CI now
+  installs on Python 3.14 on Linux, Windows and macOS with prebuilt wheels
+  only. On Windows, 3.12 stays the choice proven on a connected unit.
+
+### Fixed
+- **Compare with the loaded preset on a scene with no signal (#240).** It
+  used to call every piece of gear missing. It now matches the gear against
+  the blocks cabled from Input and says first that no signal reaches the
+  output.
+
+### Found
+- The FM9's status reply can report Input 1 as bypassed on one read and
+  engaged on the next, for the same stored preset (#241). Until that is
+  understood, a scene the app calls silent for that reason may not be.
+
 ## 1.5.14 (2026-10-09)
 
 **Fixes that need no device.** Update & restart is no longer blocked by
