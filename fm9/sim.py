@@ -479,7 +479,10 @@ class SimFM9Core:
                                       0x1A, 0x79, 0x65, 0x76, 0x03,
                                       0, 0, 0, 0])]
         if sub == (0x28, 0x00):
-            self.st.buffer["name"] = self._unpack_name(b)
+            # The unit keeps 31 usable characters of a PRESET name and reads it
+            # back with trailing spaces stripped (#246, 2026-10-09). Scene names
+            # are not measured, so they stay as sent.
+            self.st.buffer["name"] = self._unpack_name(b)[:31].rstrip()
             return []
         if sub == (0x2B, 0x00):
             self.st.buffer["scene_names"][b[4] + 1] = self._unpack_name(b)

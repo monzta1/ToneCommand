@@ -2555,6 +2555,36 @@ def api_rig_compare(body: RigCompareBody):
     return out
 
 
+#: #246: the FM9 stores 31 characters of a preset name; "FM9AI-" takes six
+PRESET_NAME_STORED = 31
+PRESET_TAG = "FM9AI-"
+BUILD_NAME_ROOM = PRESET_NAME_STORED - len(PRESET_TAG)
+
+
+def stored_preset_name(name: str) -> str:
+    """The name the unit will hold for a rename to `name`: tagged, cut to
+    what it stores, trailing spaces gone (it reads names back stripped)."""
+    name = (name or "").strip()
+    if not name.upper().startswith("FM9AI"):
+        name = PRESET_TAG + name
+    return name[:PRESET_NAME_STORED].rstrip()
+
+
+def _fit_build_name(name) -> str:
+    """A build name cut so the tag and the name fit what the unit stores."""
+    return (name or "").strip()[:BUILD_NAME_ROOM].rstrip()
+
+
+def _fit_planned_renames(actions: list) -> None:
+    """A rename the planner wrote itself is cut the same way, so the plan the
+    player reviews carries the name the unit will actually hold."""
+    for a in actions:
+        if a.get("kind") == "rename_preset" and a.get("type_name"):
+            raw = str(a["type_name"]).strip()
+            a["type_name"] = raw[:PRESET_NAME_STORED].rstrip() if raw.upper().startswith("FM9AI") \
+                else _fit_build_name(raw)
+
+
 def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None, cancel=None):
     """#230: a source built on a device that declares named parameters. A rig
     is compiled against what the device publishes (rigcompile.compile_for_params)
@@ -2757,7 +2787,8 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
     # Prepended, so the buffer carries the right name from the first action on,
     # and validated below with everything else rather than around it.
     if (body.name or "").strip():
-        want = (body.name or "").strip()[:26]   # run_action prefixes "FM9AI-"
+        want = _fit_build_name(body.name)       # run_action prefixes "FM9AI-"
+        _fit_planned_renames(result.get("actions", []))
         if not any(a.get("kind") == "rename_preset"
                    for a in result.get("actions", [])):
             result["actions"].insert(0, {"kind": "rename_preset",
@@ -2815,7 +2846,8 @@ def _name_the_build(result: dict, name: str | None,
     """
     actions = result.get("actions") or []
     add = []
-    want = (name or "").strip()[:26]        # run_action prefixes "FM9AI-"
+    want = _fit_build_name(name)            # run_action prefixes "FM9AI-"
+    _fit_planned_renames(actions)
     if want and not any(a.get("kind") == "rename_preset" for a in actions):
         add.append({"kind": "rename_preset", "block": "PRESET", "instance": 1,
                     "type_name": want,
@@ -3956,20 +3988,17 @@ def _select_cab(fm9: DeviceAdapter, bank: int, ordinal: int, instance: int = 1):
 
 def run_action(fm9: DeviceAdapter, a: Action) -> dict:
     if a.kind == "rename_preset":
-        name = a.type_name.strip()
-        if not name.upper().startswith("FM9AI"):
-            name = ("FM9AI-" + name)[:32]
+        # #246: send exactly what the unit will store, and check that. The
+        # FM9's preset-name field holds 31 usable characters ("Triptyc" read
+        # back "Tripty" at the limit) and a name reads back with trailing
+        # spaces stripped, so a 32-character build name came back 30 long and
+        # a landed rename was reported failed (2026-10-09).
+        name = stored_preset_name(a.type_name)
         fm9.rename_preset(name)
         got = fm9.current_preset()
         stored = got[1] if got else ""
-        # The FM9 preset-name field holds one fewer usable char than the 32 we
-        # budget for, so a title at the limit reads back one short ("Triptyc"
-        # -> "Tripty"). That is the device storing what it can, not a failed
-        # rename, and it must not sink a whole build. Accept an exact match or
-        # the device's own truncation of the name we asked for.
-        ok = bool(stored) and (
-            stored == name or (name.startswith(stored) and len(stored) >= 31))
-        return {"ok": ok, "detail": f"preset renamed to {stored!r}"}
+        return {"ok": bool(stored) and stored == name,
+                "detail": f"preset renamed to {stored!r}"}
     if a.kind == "rename_scene":
         fm9.rename_scene(int(a.value), a.type_name.strip()[:32])
         got = fm9.scene_name(int(a.value))
@@ -3999,7 +4028,10 @@ def run_action(fm9: DeviceAdapter, a: Action) -> dict:
                 "detail": f"scene {got}" + (f" \"{name[1]}\"" if name else "")}
     if a.kind == "set_tempo":
         fm9.set_tempo(int(a.value))
-        return {"ok": False, "detail": f"tempo {int(a.value)} bpm sent (unverified; no read-back)"}
+        # #249: never ok without a read-back, but sent: the page counts it
+        # as sent unverified, not as a failure.
+        return {"ok": False, "sent": True, "verified": False,
+                "detail": f"tempo {int(a.value)} bpm sent (unverified; no read-back)"}
     if a.kind == "set_device_param":
         # #198: a named parameter and a WIRE value, for a device whose
         # parameters are not addressed by block and which publishes no taper.

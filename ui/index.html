@@ -490,6 +490,7 @@
   .plan-card .delta { color: var(--amber); white-space: nowrap; }
   .plan-card.done { border-left-color: var(--green); }
   .plan-card.fail { border-left-color: var(--red); }
+  .plan-card.unverified { border-left-color: var(--amber, #e0a030); }
   .plan-card.vfail { border-left-color: var(--red); background: rgba(255,84,112,0.06); }
   .plan-card.vwarn { border-left-color: var(--amber); }
   .vmsg { font-size: var(--fs-hint); margin-top: 5px; }
@@ -7787,7 +7788,7 @@ function askAboutBuild(spec, note) {
     </div>` : ''}
     <div class="q">
       <label>Name it</label>
-      <input type="text" id="qname" maxlength="32" value="${esc(srcAnswers.name)}">
+      <input type="text" id="qname" maxlength="25" value="${esc(srcAnswers.name)}">
     </div>
     <p>Building on top of <b>${esc(loaded || 'the loaded preset')}</b>. Anything
        the build does not change stays exactly as it is there, and a save would
@@ -7850,6 +7851,17 @@ function fidelityHtml(f) {
     + `${chosen.stated_used ? `; ${esc(chosen.stated_used)} taken straight from the source` : ''}.</p>
     <p id="fidreadback" hidden></p>
   </div>`;
+}
+
+// #249: a send's results in three sets. ok is verified by the unit; a result
+// that says sent but not ok went out and cannot be read back (a tempo); the
+// rest failed. Only the failed set may be named as a failure.
+function sendTally(acted) {
+  const verifiedResults = acted.filter(r => r.ok);
+  const unverifiedResults = acted.filter(r => !r.ok && r.sent);
+  const failedResults = acted.filter(r => !r.ok && !r.sent);
+  return {verified: verifiedResults.length, unverified: unverifiedResults.length,
+          failed: failedResults.length, unverifiedResults, failedResults};
 }
 
 // After sending: each kept piece of gear is verified when every action on its
@@ -8075,7 +8087,8 @@ function suggestName(spec) {
     out.push(w);
   }
   while (out.length && stop.test(out[out.length - 1])) out.pop();  // no trailing "into"
-  return out.join(' ').slice(0, 32);
+  // 25 fits after the FM9AI- tag in the 31 characters the unit stores (#246)
+  return out.join(' ').slice(0, 25).trim();
 }
 
 async function runBuild(spec, note) {
@@ -10810,7 +10823,7 @@ async function apply() {
     out.results.forEach(res => {
       const isAction = res.action && res.action.kind
         && res.action.kind !== 'snapshot' && res.action.kind !== 'build_chain';
-      if (isAction && cards[card]) cards[card].classList.add(res.ok ? 'done' : 'fail');
+      if (isAction && cards[card]) cards[card].classList.add(res.ok ? 'done' : (res.sent ? 'unverified' : 'fail'));
       if (isAction) card++;
       const extra = res.before !== undefined && res.before !== null
         ? ` (${res.before} → ${res.after})` : '';
@@ -10824,13 +10837,19 @@ async function apply() {
       r => r.action && r.action.kind && r.action.kind !== 'snapshot'
         && r.action.kind !== 'build_chain');
     const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted, currentPlan.actions) : '';   // #228
-    const good = acted.filter(r => r.ok).length;
-    const bad = acted.length - good;
+    // #249: three outcomes, not two. A change the unit cannot read back (a
+    // tempo) was sent and is unverified; it is neither verified nor failed.
+    const tally = sendTally(acted);
+    const good = tally.verified, bad = tally.failed, unverified = tally.unverified;
     // NAME the failures. The old banner pointed at one card folded inside
     // a hundred, twice in one evening, and the player had to go hunting
     // for a sentence the app was already holding.
-    const failures = acted.filter(r => !r.ok).slice(0, 3).map(r =>
+    const failures = tally.failedResults.slice(0, 3).map(r =>
       `${describe(r.action)} could not be applied`);
+    const unverifiedLine = unverified
+      ? ` ${unverified} more ${unverified === 1 ? 'was' : 'were'} sent but cannot be read back to verify: `
+        + tally.unverifiedResults.map(r => describe(r.action)).join('; ') + '.'
+      : '';
     const failLine = bad
       ? ` Did not apply: ${failures.join('; ')}`
         + (bad > failures.length ? `; and ${bad - failures.length} more.` : '.')
@@ -10868,9 +10887,9 @@ async function apply() {
                          + `STORE PRESET, and UNDO puts the previous sound back.`);
     chatNote(bad
       ? `Sent ${good} of ${acted.length} change${acted.length === 1 ? '' : 's'} `
-        + `to the ${devName()}.${failLine}`
+        + `to the ${devName()}.${failLine}${unverifiedLine}`
         + (devNamed() ? tail : bufferNote)
-      : `Sent ${good} change${good === 1 ? '' : 's'} to the ${devName()}. Play it.`
+      : `Sent ${good} change${good === 1 ? '' : 's'} to the ${devName()}.${unverifiedLine} Play it.`
         + tail);
     if (fidLine) chatNote(fidLine);
     // Auto health after a build (issue #51): clone/dead/silent scenes the
@@ -10914,8 +10933,9 @@ async function apply() {
             ? `DONE: ${good} change${good === 1 ? '' : 's'} on the ${devName()}. Play it. No undo here.`
             : `DONE: ${good} change${good === 1 ? '' : 's'} on the FM9. Play it; UNDO puts it back.`),
       bad ? 'part' : 'ok');
-    sendPhase(bad ? `PARTIAL · ${good} OF ${acted.length} VERIFIED`
-                  : `COMPLETE · ${good} OF ${acted.length} VERIFIED`);
+    sendPhase((bad ? `PARTIAL · ${good} OF ${acted.length} VERIFIED`
+                   : `COMPLETE · ${good} OF ${acted.length} VERIFIED`)
+              + (unverified ? ` · ${unverified} SENT UNVERIFIED` : ''));
     $('sendnav').innerHTML = (stored.length
         ? 'CHANGES SENT · STORED TO SLOT ' + esc(storedWhere)
         : 'CHANGES SENT · PRESET NOT STORED')

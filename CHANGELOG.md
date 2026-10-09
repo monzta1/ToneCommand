@@ -4,6 +4,21 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **A rack effects unit is no longer built as a delay (#243).** An FX1,
+  "Eventide effects" or "a chain of rack effects" says nothing about which
+  effects they are, so a rig build now lists them as not reproduced, with
+  that reason, instead of guessing a delay. When the source names the effect
+  ("TC Electronic delay", "Lexicon reverb", "H3000 harmonizer"), it becomes
+  that block.
+- **A long build name no longer reads as a failed change (#246).** The FM9
+  keeps 31 characters of a preset name, so a build name is cut to 25 to fit
+  after the FM9AI- tag, the plan shows the name the unit will hold, and the
+  rename is checked against exactly that.
+- **A tempo change shows as sent, not failed (#249).** The FM9 cannot read a
+  tempo back, so the change is sent and marked unverified; the send no
+  longer names it as the failure.
+
 ### Changed
 - **Any Python 3.11 or newer installs, with no compiler (#172).** From
   Python 3.13 the MIDI binding is supriya-midi, which has prebuilt wheels to

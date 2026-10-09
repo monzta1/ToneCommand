@@ -101,7 +101,8 @@ def test_set_tempo_reports_unverified_send_once():
 
     assert sent == [135]
     assert got == {
-        "ok": False,
+        "ok": False,                 # still never ok without a read-back
+        "sent": True, "verified": False,      # #249: sent, so not a failure
         "detail": "tempo 135 bpm sent (unverified; no read-back)",
     }
 
