@@ -255,3 +255,12 @@ def test_a_real_device_handle_keeps_its_settle_waits():
         time.sleep = real
     assert waited == [0.3]
     assert SimFM9(server.reg).settle_scale == 1.0 and SimFM9(server.reg).sim_core.__dict__.get("settle_window") is None
+
+
+def test_a_reorder_relative_to_itself_is_invalid_not_a_fit_failure():
+    a = server.Action(kind="reorder", block="drive", instance=1, ref="drive", position="before")
+    assert server.validate_action(a)[0] == ["reorder moves drive 1 relative to itself (ref 'drive' is the same block)"]
+    # the rehearsal leaves invalid actions to validation: they are shown in review, never sent
+    assert server._rehearse_fit([{"kind": "reorder", "block": "drive", "instance": 1, "ref": "drive",
+                                  "position": "before", "validation_errors": ["self"]}],
+                                template_sim().read_grid(), template_sim().status_dump()) == []

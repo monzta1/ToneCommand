@@ -3567,7 +3567,12 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
             errors.append("reorder requires a ref block to move relative to")
         else:
             try:
-                reg.resolve_block(a.ref, 1)
+                _ref_fam, ref_eid = reg.resolve_block(a.ref, 1)
+                if ref_eid == _eid:
+                    # "move drive 1 before drive" names the same block twice:
+                    # invalid, so it is shown in review and never sent (#247)
+                    errors.append(f"reorder moves {a.block} {a.instance} relative to itself "
+                                  f"(ref {a.ref!r} is the same block)")
             except (KeyError, ValueError) as e:
                 errors.append(f"reorder ref block: {e}")
     elif a.kind in ("bind_pedal", "unbind_pedal"):
