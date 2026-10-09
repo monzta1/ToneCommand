@@ -114,7 +114,8 @@ class Proc:
         self.args = argv
         self.returncode = 0
 
-    def communicate(self, timeout=None):
+    def communicate(self, input=None, timeout=None):
+        Proc.seen["stdin"] = input
         return json.dumps({"result": json.dumps(SPEC)}), ""
 
 
@@ -135,7 +136,9 @@ def test_confine_flags_never_touch_the_text_command_line(monkeypatch):
     describe.extract("a long enough description of a wah into a TS808 into a JCM800")
     argv = Proc.seen["argv"]
     assert argv[0] == "/bin/claude" and argv[1] == "-p"
-    assert argv[3:] == ["--output-format", "json", "--model", planner.cli_model()]
+    # #211: the prompt is on stdin, so nothing sits between -p and the flags
+    assert argv[2:] == ["--output-format", "json", "--model", planner.cli_model()]
+    assert "a wah into a TS808" in Proc.seen["stdin"]
     assert "--restricted" not in argv and "--allowedTools" not in argv
     assert Proc.seen["cwd"] == __import__("tempfile").gettempdir()
 

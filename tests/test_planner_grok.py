@@ -33,13 +33,15 @@ REAL_ENVELOPE = {
 
 
 
-# #211: on Windows the product cannot start a CLI backend at all: the prompt
-# rides on the command line (about 50,000 characters) and Windows caps a
-# command line at 32,767. Strict, so the day #211 is fixed these turn red and
-# the mark comes off. The fake itself does run there; see the test below.
-_WINDOWS_CMDLINE_LIMIT = pytest.mark.xfail(
-    sys.platform == "win32", raises=FileNotFoundError, strict=True,
-    reason="#211: the prompt is passed on a command line longer than Windows allows")
+# #211: the grok CLI takes its prompt on the command line (about 50,000
+# characters here) and Windows caps one at 32,767. Its stdin behaviour is not
+# verified, so on Windows the call is refused in words before anything
+# starts, rather than crashing with WinError 206. These tests exercise what
+# happens AFTER grok starts, which on Windows it never does; the refusal
+# itself is tested below and in tests/test_cli_stdin.py.
+_WINDOWS_CMDLINE_LIMIT = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="#211: grok is refused before it starts on Windows (prompt longer than a command line allows)")
 
 
 def fake_grok(tmp_path, monkeypatch, stdout="", stderr="", code=0):
@@ -205,3 +207,13 @@ def test_the_fake_binary_runs_on_this_os(tmp_path, monkeypatch):
     assert out.returncode == 0 and out.stdout == "hello", out.stderr
     assert json.loads(log.read_text(encoding="utf-8"))["argv"] == \
         ["-p", "short prompt", "--json-schema", '{"a": "b c"}']
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows command-line limit")
+def test_on_windows_grok_is_refused_before_it_starts(tmp_path, monkeypatch):
+    """#211: the real path, not a mocked platform: refused in words, never run."""
+    log = fake_grok(tmp_path, monkeypatch, stdout=json.dumps(REAL_ENVELOPE))
+    with pytest.raises(planner.BackendFailure) as exc:
+        call()
+    assert "[unavailable]" in str(exc.value) and "more than Windows allows (32,767)" in str(exc.value)
+    assert not log.exists()

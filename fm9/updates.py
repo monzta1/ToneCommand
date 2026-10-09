@@ -140,7 +140,10 @@ def repo_state(root: Path) -> dict:
         return subprocess.run(["git", "-C", str(root), *args],
                               capture_output=True, text=True, timeout=8)
     branch = g("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    dirty = g("status", "--porcelain").stdout.strip()
+    # Tracked changes only (#214). An untracked file (the test console's
+    # .testruns/, a Handsoff run file) cannot be lost by a fast-forward pull,
+    # and a pull that would overwrite one refuses on its own and names it.
+    dirty = g("status", "--porcelain", "--untracked-files=no").stdout.strip()
     return {"git": True, "branch": branch, "clean": not dirty}
 
 

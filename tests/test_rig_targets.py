@@ -176,14 +176,38 @@ def test_build_faithful_on_the_ir2_is_refused_naming_it_before_any_planner_call(
                                         "The BOSS IR-2 has no place for TS808, Carbon Copy.")
 
 
-def test_build_without_a_rig_on_the_ir2_takes_the_old_path(ir2, monkeypatch):
-    called = []
-    monkeypatch.setattr(server, "_describe_build_for_device", lambda *a, **k: called.append(1))
-    monkeypatch.setattr(planner, "plan", lambda *a, **k: {"summary": "s", "actions": []})
-    # the old path, unchanged, whatever it answers on this device
-    TestClient(server.app, raise_server_exceptions=False).post(
-        "/api/describe/build", json={"spec": {k: v for k, v in SPEC.items() if k != "rig"}})
-    assert called == []
+def test_build_without_a_rig_on_the_ir2_uses_its_own_planner_and_never_reads_an_fm9(ir2, monkeypatch):
+    """#235: this answered 500, the FM9 snapshot refusing on the IR-2."""
+    def no_fm9(*a, **k):
+        raise AssertionError("the FM9 was read")
+    monkeypatch.setattr(server, "snapshot", no_fm9)
+    seen = _fake_plan(monkeypatch, [
+        {"kind": "set_device_param", "param": "AMP", "type_name": "BROWN"},
+        {"kind": "set_device_param", "param": "GAIN", "value": 96},
+        {"kind": "store", "block": "PRESET", "instance": 1, "value": 1}])
+    flat = {k: v for k, v in SPEC.items() if k != "rig"}
+    r = TestClient(server.app).post("/api/describe/build", json={"spec": flat})
+    assert r.status_code == 200, r.text
+    assert seen["system"] == devplan.SYSTEM and seen["schema"] == devplan.SCHEMA
+    assert seen["prompt"] == describe.brief_for_device(flat, {}, DEVICE)
+    assert seen["prompt"] == ("On the BOSS IR-2, build the closest sound to this rig: TS808 into a JCM800, "
+                              "Carbon Copy and a hall. Use these settings exactly where they are given: "
+                              "gain 96. Choose sensible values for these, which the source described only "
+                              "loosely: tight low end.")
+    d = r.json()
+    assert [a["kind"] for a in d["actions"]] == ["set_device_param", "set_device_param"]   # store dropped
+    assert all(a["validation_errors"] == [] for a in d["actions"])
+    assert "fidelity" not in d
+
+
+def test_build_without_a_rig_on_the_fm9_is_unchanged(monkeypatch):
+    """The FM9 path is still brief_from, byte for byte."""
+    seen = []
+    monkeypatch.setattr(server, "_fm9", __import__("fm9.sim", fromlist=["SimFM9"]).SimFM9(server.reg))
+    monkeypatch.setattr(planner, "plan", lambda prompt, *a, **k: seen.append(prompt) or {"summary": "s", "actions": []})
+    flat = {k: v for k, v in SPEC.items() if k != "rig"}
+    TestClient(server.app).post("/api/describe/build", json={"spec": flat, "scenes": 1, "name": "N"})
+    assert seen == [describe.brief_from(flat, scenes=1, name="N")]
 
 
 # -- REQ-006: the page ------------------------------------------------------------------

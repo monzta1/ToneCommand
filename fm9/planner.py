@@ -799,10 +799,16 @@ def _plan_via_cli(prompt: str, device_state: str,
     if not cli:
         raise BackendFailure("cli", "unavailable", "claude binary not found")
     try:
+        # #211: the prompt goes on stdin. On the command line it ran to about
+        # 50,000 characters and Windows refuses past 32,767 (WinError 206).
+        # `claude -p` with no prompt argument reads stdin, verified on 2.1.288
+        # in json and stream-json modes. UTF-8 both ways, never the console
+        # code page.
         proc = subprocess.run(
-            [cli, "-p", full_prompt, "--output-format", "json",
+            [cli, "-p", "--output-format", "json",
              "--model", cli_model()],
-            capture_output=True, text=True, timeout=timeout_s(),
+            input=full_prompt, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout_s(),
             cwd=tempfile.gettempdir(),
             env={**cli_env(CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"},
@@ -862,12 +868,14 @@ def _cli_stream_text(full_prompt: str, on_text=None, cancel=None) -> tuple[str, 
     cli = find_claude_cli()
     if not cli:
         raise BackendFailure("cli", "unavailable", "claude binary not found")
-    args = [cli, "-p", full_prompt,
+    # #211: the prompt on stdin, not the command line (see _plan_via_cli)
+    args = [cli, "-p",
             "--output-format", "stream-json", "--verbose",
             "--include-partial-messages", "--model", cli_model()]
     try:
         proc = subprocess.Popen(
-            args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
             cwd=tempfile.gettempdir(),
             env={**cli_env(CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
@@ -885,7 +893,17 @@ def _cli_stream_text(full_prompt: str, on_text=None, cancel=None) -> tuple[str, 
         finally:
             lines.put(None)
 
+    # The prompt is written on its own thread: a prompt bigger than the pipe
+    # buffer would otherwise block here while the CLI waits on a full stdout.
+    def _write():
+        try:
+            proc.stdin.write(full_prompt)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+
     _th.Thread(target=_read, daemon=True).start()
+    _th.Thread(target=_write, daemon=True).start()
     deadline = time.monotonic() + timeout_s()
     result_text, model, is_error, err_detail = "", "", False, ""
     pieces: list[str] = []
@@ -982,6 +1000,26 @@ def parse_grok_envelope(stdout: str) -> dict:
         return json.loads(trimmed[start:end + 1])
 
 
+#: CreateProcessW caps a Windows command line at this many UTF-16 code
+#: units, the terminating NUL included (#211)
+WINDOWS_CMDLINE_MAX = 32767
+
+
+def _cmdline_too_long(args: list[str], platform: str | None = None) -> int:
+    """The command line's size in UTF-16 code units, NUL included, when it
+    would not start on Windows; else 0. A character outside the Basic
+    Multilingual Plane (an emoji) is two units.
+
+    The grok CLI documents only `-p <PROMPT>`; whether it reads a prompt from
+    stdin is not verified, so it keeps the argument and this says, before
+    anything starts, when that cannot work (#211)."""
+    import sys as _sys
+    if (platform or _sys.platform) != "win32":
+        return 0
+    n = len(subprocess.list2cmdline(args).encode("utf-16-le")) // 2 + 1
+    return n if n > WINDOWS_CMDLINE_MAX else 0
+
+
 def _plan_via_grok_cli(prompt: str, device_state: str,
                        param_reference: str, system: str = "",
                   shape: str = "", schema: dict | None = None) -> tuple[dict, str]:
@@ -1010,6 +1048,13 @@ def _plan_via_grok_cli(prompt: str, device_state: str,
             "--disable-web-search", "--max-turns", "8"]
     if model:
         args += ["-m", model]
+    too_long = _cmdline_too_long(args)
+    if too_long:
+        raise BackendFailure(
+            "grok", "unavailable",
+            f"the grok CLI takes its prompt on the command line, and this one is "
+            f"{too_long:,} long, more than Windows allows ({WINDOWS_CMDLINE_MAX:,}); "
+            f"choose another backend in AI settings", grok, model)
     try:
         proc = subprocess.run(
             args, capture_output=True, text=True, timeout=timeout_s(),

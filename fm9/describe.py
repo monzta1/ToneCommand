@@ -550,7 +550,9 @@ def _ask(prompt: str, cancel=None, cwd=None, image=None) -> str:
         raise SourceError(
             "reading a source needs a planner backend. Install the claude CLI "
             "or configure one in AI settings.")
-    argv = [cli, "-p", prompt, "--output-format", "json",
+    # #211: the prompt goes on stdin, never the command line, which Windows
+    # caps at 32,767 characters (see planner._plan_via_cli)
+    argv = [cli, "-p", "--output-format", "json",
             "--model", planner.cli_model()]
     if image:
         argv += ["--restricted", "--tools", "Read", "--strict-mcp-config",
@@ -558,22 +560,25 @@ def _ask(prompt: str, cancel=None, cwd=None, image=None) -> str:
     import time as _time
     try:
         proc = subprocess.Popen(
-            argv,
+            argv, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace",
             cwd=cwd or tempfile.gettempdir(),
             env={**planner.cli_env(planner.CLAUDE_ENV_KEYS),
                  "CLAUDE_CODE_ENTRYPOINT": "fm9-tone"})
     except OSError as exc:
         raise SourceError(f"the reader could not start: {exc}")
     deadline = _time.monotonic() + timeout_s()
+    sent = prompt          # handed to the first communicate only; later calls resume it
     while True:
         try:
             # communicate with a short timeout is the poll: it returns the
             # full output when the process ends and raises in between, which
             # is where the cancel and the deadline get their look-in.
-            stdout, stderr = proc.communicate(timeout=0.5)
+            stdout, stderr = proc.communicate(input=sent, timeout=0.5)
             break
         except subprocess.TimeoutExpired:
+            sent = None
             if cancel is not None and cancel.is_set():
                 proc.kill()
                 proc.wait()

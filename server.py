@@ -2556,19 +2556,22 @@ def api_rig_compare(body: RigCompareBody):
 
 
 def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None, cancel=None):
-    """#230: a rig built on a device that declares named parameters. The rig
-    is compiled against what the device publishes (rigcompile.compile_for_params),
-    the brief names each kept piece as its parameter and the gear the device
-    lacks, and the plan comes from the device's own prompt, schema and
-    validator, then the same validation every plan gets. No FM9 is read."""
+    """#230: a source built on a device that declares named parameters. A rig
+    is compiled against what the device publishes (rigcompile.compile_for_params)
+    and the brief names each kept piece as its parameter and the gear the
+    device lacks; a source with no rig (#235) gets the same brief without
+    those. The plan comes from the device's own prompt, schema and validator,
+    then the same validation every plan gets. No FM9 is read."""
     from fm9 import riggraph, rigcompile
     from devices.ir2 import planning as devplan
     label = device_context().label or "this device"
-    try:
-        compiled = rigcompile.compile_for_params(spec["rig"], dev.named_params(), label, body.mode)
-    except riggraph.RigGraphError as exc:
-        return {"error": f"that rig cannot be built: {exc}"}
-    if compiled["blockers"]:
+    compiled = {}
+    if spec.get("rig"):
+        try:
+            compiled = rigcompile.compile_for_params(spec["rig"], dev.named_params(), label, body.mode)
+        except riggraph.RigGraphError as exc:
+            return {"error": f"that rig cannot be built: {exc}"}
+    if compiled.get("blockers"):
         return {"error": f"That rig cannot be built faithfully on the {label}: "
                          + " ".join(compiled["blockers"])
                          + " Choose closest tone to build the nearest sound it has.",
@@ -2595,8 +2598,9 @@ def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None,
         errs, warns = validate_action(Action(**{k: v for k, v in a.items() if k in Action.model_fields}))
         a["validation_errors"] = errs
         a["validation_warnings"] = warns
-    result["fidelity"] = rigcompile.fidelity(compiled, spec["rig"], result.get("actions", []),
-                                             spec.get("stated") or [])
+    if compiled:
+        result["fidelity"] = rigcompile.fidelity(compiled, spec["rig"], result.get("actions", []),
+                                                 spec.get("stated") or [])
     return result
 
 
@@ -2642,11 +2646,11 @@ def _describe_build_for(body: BuildBody, on_count=None, cancel=None,
     streaming twin cannot drift from the blocking one.
     """
     spec = body.spec or {}
-    # #230: a rig on a device that names its parameters (the IR-2) is built
-    # from what that device publishes, with its own planner, and never reads
-    # an FM9.
+    # #230, #235: on a device that names its parameters (the IR-2) a source
+    # is built from what that device publishes, with its own planner, rig or
+    # no rig, and never reads an FM9.
     _dev = device_context().adapter
-    if spec.get("rig") and _dev is not None and getattr(_dev, "capabilities", None) \
+    if _dev is not None and getattr(_dev, "capabilities", None) \
             and _dev.capabilities().has_named_params:
         return _describe_build_for_device(body, spec, _dev, on_status, cancel)
     # #228: with a rig view, the chain is compiled before any model runs, and

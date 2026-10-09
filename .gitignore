@@ -66,3 +66,6 @@ handsoff-verifications.jsonl
 .handsoff-preflight.json
 .handsoff-analysis/
 .handsoff-digests/
+
+# the test console's run history (#214)
+.testruns/

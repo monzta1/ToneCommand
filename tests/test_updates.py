@@ -126,3 +126,45 @@ def test_update_refuses_a_dirty_or_wrong_branch_checkout(monkeypatch):
                         lambda *a, **k: called.__setitem__("pull", True))
     res = updates.run_update(Path("."))
     assert res["ok"] is False and called["pull"] is False
+
+
+# --- #214: untracked files never grey out Update & restart ---------------------
+
+def _repo(tmp_path):
+    import subprocess
+    def git(*a):
+        subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True, text=True)
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    git("add", "app.py")
+    git("commit", "-q", "-m", "first")
+    return git
+
+
+def test_an_untracked_file_leaves_the_update_allowed(tmp_path):
+    _repo(tmp_path)
+    (tmp_path / ".testruns").mkdir()
+    (tmp_path / ".testruns" / "run.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "handsoff-status.json").write_text("{}", encoding="utf-8")
+    assert updates.repo_state(tmp_path) == {"git": True, "branch": "main", "clean": True}
+    assert updates.can_auto_update(tmp_path) == (True, "")
+
+
+def test_a_modified_tracked_file_still_blocks_the_update(tmp_path):
+    _repo(tmp_path)
+    (tmp_path / "app.py").write_text("x = 2\n", encoding="utf-8")
+    assert updates.can_auto_update(tmp_path) == (False, "you have local changes; commit or stash them first")
+
+
+def test_a_staged_change_still_blocks_the_update(tmp_path):
+    git = _repo(tmp_path)
+    (tmp_path / "new.py").write_text("y = 1\n", encoding="utf-8")
+    git("add", "new.py")
+    assert updates.can_auto_update(tmp_path)[0] is False
+
+
+def test_the_test_console_history_is_ignored():
+    ignore = (Path(__file__).resolve().parent.parent / ".gitignore").read_text(encoding="utf-8")
+    assert ".testruns/" in ignore.splitlines()

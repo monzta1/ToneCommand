@@ -4,6 +4,24 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- **Update & restart is no longer greyed out by untracked files (#214).**
+  Only changes to tracked files block the one-click update now; files the
+  app or its tools leave lying around (the test console's run history,
+  Handsoff run files) do not, since a fast-forward update cannot lose them.
+  The test console's `.testruns/` is ignored by git.
+- **The Claude CLI works on Windows (#211).** The prompt is sent on standard
+  input instead of the command line, which Windows caps at 32,767
+  characters and which a real request runs well past. Planning, streaming
+  plans and reading a source or a picture all use it, in UTF-8. The grok CLI,
+  whose standard input is not documented, still takes the prompt as an
+  argument; on Windows a prompt too long for that is now refused in words
+  (choose another backend) instead of failing with "The filename or
+  extension is too long".
+- **A build from a source works on the BOSS IR-2 (#235).** With the IR-2
+  selected, a source with no rig now builds through the pedal's own planner
+  instead of failing while trying to read an FM9.
+
 ## 1.5.13 (2026-10-09)
 
 **Is my preset the same as this rig? And the same rig on the IR-2.** Compare
