@@ -151,6 +151,12 @@ def compile(graph: dict, mode: str = "closest", scenes: int | None = None) -> di
             edge_status[e["id"]] = ["not_reproduced", "not on the built path"]
         else:
             edge_status[e["id"]] = ["not_reproduced", f"a {e['kind']} connection has no FM9 equivalent here"]
+    # Faithful routing cannot build stereo either: a stereo pair on the built
+    # chain is refused before planning, the same as two paths at once.
+    if mode == "faithful" and stereo_on_chain:
+        what = ", ".join(nodes[x]["label"] for x in sorted(stereo_on_chain))
+        blockers.append(f"This rig runs in stereo from {what}; an FM9 build is one mono path "
+                        f"until stereo and parallel builds land (#16).")
     # nodes never reached by any audio path (a lone controller, say)
     for nid, n in nodes.items():
         if nid not in node_status:
@@ -206,7 +212,9 @@ def _stated_match(action: dict, stated: list[str]) -> bool:
     number = _num(action["value"])
     for item in stated or []:
         text = str(item).lower()
-        if all(w in text for w in words) and re.search(rf"(?<![\d.]){re.escape(number)}(?![\d])", text):
+        # whole words and whole numbers: GAIN is not "again", 7 is not 7.5
+        if all(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text) for w in words) \
+                and re.search(rf"(?<![\d.]){re.escape(number)}(?!\d|\.\d)", text):
             return True
     return False
 

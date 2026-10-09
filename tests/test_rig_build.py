@@ -2,6 +2,7 @@
 faithful build that cannot be faithful is refused before any model runs, and
 the result carries a fidelity report grounded in the plan's own actions."""
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -161,12 +162,14 @@ def test_page_offers_modes_and_shows_the_report_and_read_back():
     assert "['simplified', 'Simplified live rig'," in PAGE
     assert "name: srcAnswers.name, mode: srcAnswers.mode || 'closest'})});" in PAGE
     assert "+ fidelityHtml(plan.fidelity);" in PAGE
-    assert "const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted) : '';" in PAGE
+    assert "const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted, currentPlan.actions) : '';" in PAGE
     # said in the transcript too: the plan pane is hidden at the send stage
     assert "if (fidLine) chatNote(fidLine);" in PAGE
-    assert "const word = ok === mine.length ? 'verified' : (ok ? 'partly verified' : 'not verified');" in PAGE
+    assert "const word = ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');" in PAGE
     # matched on block names and instance: send results carry no effect id
-    assert "return names.includes(String(a.block || '').trim().toLowerCase())" in PAGE
+    assert "const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())" in PAGE
+    # the target is what the sent plan asked of the block; a missing result is not a pass
+    assert "const want = (planned || []).filter(on).length;" in PAGE
 
 
 def test_fidelity_names_the_cab_from_the_plans_set_cab(client, monkeypatch):
@@ -193,3 +196,71 @@ def test_fidelity_kept_items_carry_every_name_their_block_answers_to():
     assert {"amp", "amplifier", "distort"} <= set(amp["names"])
     drive = next(k for k in f["kept"] if k["block"] == "drive")
     assert "drive" in drive["names"] and drive["instance"] == 1
+
+
+# -- review round 1 ------------------------------------------------------------------------
+
+STEREO = {"schema_version": 1,
+          "nodes": [n("gtr", "instrument"), n("amp", "amp", "JCM800"), n("cabL", "cab", "V30 L"),
+                    n("cabR", "cab", "V30 R")],
+          "edges": [e("gtr", "amp"), e("amp", "cabL", "audio_stereo", channel="L"),
+                    e("amp", "cabR", "audio_stereo", channel="R")], "unknowns": []}
+STEREO_ONE_CAB = {"schema_version": 1,
+                  "nodes": [n("gtr", "instrument"), n("amp", "amp", "JCM800"), n("cab", "cab", "2x12")],
+                  "edges": [e("gtr", "amp"), e("amp", "cab", "audio_stereo", channel="L"),
+                            e("amp", "cab", "audio_stereo", channel="R")], "unknowns": []}
+
+
+@pytest.mark.parametrize("rig", [STEREO, STEREO_ONE_CAB], ids=["two-cabs", "lr-same-ends"])
+def test_faithful_refuses_a_stereo_rig_before_any_planner_call(client, monkeypatch, rig):
+    assert any("stereo" in b and "#16" in b for b in rc.compile(rig, "faithful")["blockers"])
+    assert rc.compile(rig, "closest")["blockers"] == []              # closest builds it mono, disclosed
+    def boom(*a, **k):
+        raise AssertionError("the planner was asked")
+    monkeypatch.setattr(planner, "plan", boom)
+    r = client.post("/api/describe/build", json={"spec": {**SPEC, "rig": rig}, "mode": "faithful"})
+    assert r.status_code == 409 and "stereo" in r.json()["error"]
+
+
+@pytest.mark.parametrize("stated,hit", [
+    (["amp gain 7"], True), (["Gain: 7 on the amp"], True),
+    (["amp gain 7.5"], False), (["gain 17"], False), (["gain 70"], False),
+    (["play it again at 7"], False), (["gainstage 7"], False)])
+def test_stated_match_needs_whole_words_and_whole_numbers(stated, hit):
+    assert rc._stated_match(act("set_param", "amp", 1, param="GAIN", value=7), stated) is hit
+
+
+def _readback(tmp_path, kept, acted, planned):
+    start = PAGE.index("function fidelityReadBack(f, acted, planned) {")
+    end = PAGE.index("\n}\n", start) + 3
+    script = tmp_path / "rb.mjs"
+    script.write_text(
+        "const els = {}; const $ = id => els[id];\n"
+        "els.fidreadback = {hidden: true, textContent: ''};\n"
+        f"const kept = {json.dumps(kept)};\n"
+        "const lis = kept.map(k => ({dataset: {names: k.names.join(' '), inst: String(k.instance), what: k.what},"
+        " tag: {textContent: ''}, querySelector() { return this.tag; }}));\n"
+        "const document = {querySelectorAll: () => lis};\n" + PAGE[start:end]
+        + f"\nconst line = fidelityReadBack({{}}, {json.dumps(acted)}, {json.dumps(planned)});\n"
+        "console.log(JSON.stringify({line, tags: lis.map(l => l.tag.textContent)}));\n", encoding="utf-8")
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)
+
+
+def test_readback_counts_against_what_the_plan_asked(tmp_path):
+    kept = [{"what": "TS808", "names": ["drive", "drv"], "instance": 1},
+            {"what": "JCM800", "names": ["amp", "amplifier"], "instance": 1},
+            {"what": "V30", "names": ["cab"], "instance": 1}]
+    planned = [act("set_type", "drive", 1), act("set_param", "drive", 1),
+               act("set_type", "amp", 1), act("set_cab", "cab", 1)]
+    # the send stopped after the first drive action: one of two, and nothing for amp or cab
+    acted = [{"ok": True, "action": planned[0]}]
+    r = _readback(tmp_path, kept, acted, planned)
+    assert r["tags"] == [" (partly verified)", " (not verified)", " (not verified)"]
+    assert r["line"].startswith("Read back from the unit, gear kept from the rig: 0 verified, 1 partly, 2 not verified")
+    # all landed; the amp's result names it by an alias
+    acted = [{"ok": True, "action": a} for a in planned]
+    acted[2] = {"ok": True, "action": {**planned[2], "block": "Amplifier"}}
+    r = _readback(tmp_path, kept, acted, planned)
+    assert r["tags"] == [" (verified)"] * 3 and r["line"].endswith(": 3 verified.")

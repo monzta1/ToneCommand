@@ -7850,25 +7850,25 @@ function fidelityHtml(f) {
 // After sending: each kept piece of gear is verified when every action on its
 // block came back ok from the unit, partly when some did, not when none did.
 // Results echo the action as planned, so they are matched on the block's
-// names and its instance, the same identity the report was built with.
+// names and its instance, the same identity the report was built with. The
+// count to reach is what the sent plan asked of that block, so a send that
+// stopped early cannot read as verified: a missing result is not a pass.
 // Returns the line for the transcript: the plan pane is hidden once the send
 // stage takes over, so a line written only there was never seen.
-function fidelityReadBack(f, acted) {
+function fidelityReadBack(f, acted, planned) {
   let all = 0, some = 0, none = 0;
   const short = [];
   for (const li of document.querySelectorAll('#fidkept li[data-names]')) {
     const names = li.dataset.names.split(' ');
     const inst = Number(li.dataset.inst || 1);
-    const mine = acted.filter(r => {
-      const a = r.action || {};
-      return names.includes(String(a.block || '').trim().toLowerCase())
-        && Number(a.instance || 1) === inst;
-    });
-    if (!mine.length) continue;
-    const ok = mine.filter(r => r.ok).length;
-    const word = ok === mine.length ? 'verified' : (ok ? 'partly verified' : 'not verified');
-    if (ok === mine.length) all++; else if (ok) some++; else none++;
-    if (ok !== mine.length) short.push(`${li.dataset.what} ${word}`);
+    const on = a => names.includes(String((a || {}).block || '').trim().toLowerCase())
+      && Number((a || {}).instance || 1) === inst;
+    const want = (planned || []).filter(on).length;
+    if (!want) continue;
+    const ok = Math.min(want, acted.filter(r => on(r.action) && r.ok).length);
+    const word = ok === want ? 'verified' : (ok ? 'partly verified' : 'not verified');
+    if (ok === want) all++; else if (ok) some++; else none++;
+    if (ok !== want) short.push(`${li.dataset.what} ${word}`);
     const tag = li.querySelector('.fidv');
     if (tag) tag.textContent = ` (${word})`;
   }
@@ -10765,7 +10765,7 @@ async function apply() {
     const acted = out.results.filter(
       r => r.action && r.action.kind && r.action.kind !== 'snapshot'
         && r.action.kind !== 'build_chain');
-    const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted) : '';   // #228
+    const fidLine = currentPlan.fidelity ? fidelityReadBack(currentPlan.fidelity, acted, currentPlan.actions) : '';   // #228
     const good = acted.filter(r => r.ok).length;
     const bad = acted.length - good;
     // NAME the failures. The old banner pointed at one card folded inside
