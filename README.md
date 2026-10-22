@@ -348,6 +348,27 @@ The IK Multimedia ToneX pedal is on the same capture contract, read-only for
 now: its 128 programs are listed by name and category from the pedal's own
 dumps, and nothing is written to it until the upload path is decoded (#27).
 
+## Experimental Axe-Fx III adapter
+
+This branch isolates Axe-Fx III behavior in `devices/axefx3` while retaining
+upstream's shared planner, selected AI provider and main FM9 stylesheet. The
+FW32.06 profile and exact measured FW33 NAM beta profile are separate; this is
+not blanket FM9 feature parity or support for arbitrary FW33 versions.
+The bounded Windows/MK2 NAM path includes account search, separately confirmed
+native installation, reviewed edit-buffer builds and separately confirmed
+same-slot Store. No Axe-Edit automation is required by that path.
+
+The exact FW33/MK2 AMP/CAB path also supports reviewed scene designs and
+Cry Babe/Wah1 controller binding. Its additive parameter catalog retains all75
+approved FW32.06 definitions plus eight additions. Parameter coverage is not
+blanket model, channel, routing or Undo support: see the
+[firmware inheritance contract and remaining workflows](docs/AFX3-FIRMWARE-MIGRATION.md).
+
+The integrated source must pass its own hardware regression before deployment;
+historical good-sounding presets do not certify a refactored adapter. See
+[compatibility and remaining limits](docs/FW33-COMPATIBILITY.md) and
+[upstream maintenance, local KB bootstrap and release gates](docs/AFX3-UPSTREAM-MAINTENANCE.md).
+
 ## Next: NAM captures
 
 Fractal showed a NAM (Neural Amp Modeler) block running on the Axe-Fx III on

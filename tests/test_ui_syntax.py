@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -25,18 +26,48 @@ import pytest
 UI = Path(__file__).resolve().parent.parent / "ui" / "index.html"
 
 
+class Scripts(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.inline = []
+        self.external = []
+        self.current = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "script":
+            source = dict(attrs).get("src")
+            if source:
+                self.external.append(source)
+            else:
+                self.current = []
+
+    def handle_data(self, data):
+        if self.current is not None:
+            self.current.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self.current is not None:
+            self.inline.append("".join(self.current))
+            self.current = None
+
+
+def page_scripts():
+    parser = Scripts()
+    parser.feed(UI.read_text(encoding="utf-8"))
+    return parser
+
+
 def page_script() -> str:
-    """The contents of the page's one <script> block."""
-    s = UI.read_text(encoding="utf-8")
-    start = s.index(">", s.index("<script")) + 1
-    return s[start:s.rindex("</script>")]
+    """Extract the application script without including local language assets."""
+    scripts = page_scripts()
+    assert len(scripts.inline) == 1
+    return scripts.inline[0]
 
 
-def test_the_page_has_exactly_one_script_block():
-    """The extraction above assumes it. If a second one is ever added, this
-    test fails rather than silently checking only part of the page."""
-    s = UI.read_text(encoding="utf-8")
-    assert s.count("<script") == 1 and s.count("</script>") == 1
+def test_the_page_has_one_application_script_and_local_language_assets():
+    scripts = page_scripts()
+    assert len(scripts.inline) == 1
+    assert scripts.external == ["/language/i18next.min.js", "/language/tc-language.js"]
 
 
 def test_the_page_script_parses(tmp_path):

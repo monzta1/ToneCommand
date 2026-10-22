@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ToneCommand | Controllers</title><link rel="icon" href="/logo.png">
+<style>
+:root { color-scheme: dark; --cyan:#40dfff; --muted:#a1b4c5; --line:#294355; --amber:#ffbf69; }
+* { box-sizing:border-box; } [hidden] { display:none!important; }
+body { margin:0;background:#081119;color:#e5eef6;font:16px/1.55 system-ui,sans-serif; }
+header,main { max-width:1100px;margin:auto;padding:24px; }
+header { display:flex;gap:18px;align-items:center;border-bottom:1px solid var(--line); }
+header img { width:38px; } header strong { color:var(--cyan);letter-spacing:.15em; }
+header span { margin-left:auto;color:var(--muted);font-size:14px; }
+h1 { font-size:30px;margin:12px 0; } h2 { font-size:20px;margin:0 0 12px; }
+p { margin:8px 0 18px; } .muted,small { color:var(--muted); } small { display:block; }
+section,details { border:1px solid var(--line);border-radius:12px;padding:22px;margin:18px 0;background:#101d28; }
+button,a.button { padding:11px 17px;border:1px solid var(--cyan);border-radius:6px;background:#102b36;color:var(--cyan);font:inherit;cursor:pointer; }
+button:hover:not(:disabled),a.button:hover { background:#174452; } button:disabled { opacity:.45;cursor:not-allowed; }
+button.secondary { border-color:var(--line);background:transparent;color:#e5eef6; }
+button:focus-visible,select:focus-visible,a:focus-visible { outline:3px solid var(--amber);outline-offset:3px; }
+label { display:block; } select { width:100%;padding:10px;background:#081119;color:#eef7ff;border:1px solid #587086;border-radius:6px;font:inherit; }
+.actions { display:flex;flex-wrap:wrap;gap:12px;margin-top:18px;align-items:center; }
+.row { display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:18px;align-items:end;border-top:1px solid var(--line);padding:22px 0; }
+.row h3 { font-size:18px;margin:0; }.row p { margin:5px 0;font-size:14px; }
+.row .reason { grid-column:1/-1;color:var(--amber); }
+#review { border-color:var(--cyan); } #result { border-color:var(--amber); }
+#status { white-space:pre-wrap;padding:12px 0;color:var(--amber);min-height:32px; }
+.checks label { display:flex;gap:12px;margin:16px 0;align-items:start; }
+input[type=checkbox] { margin-top:6px;accent-color:var(--cyan);width:18px;height:18px;flex-shrink:0; }
+dl { display:grid;grid-template-columns:150px 1fr;gap:8px; } dt { color:var(--muted); } dd { margin:0;overflow-wrap:anywhere; }
+summary { cursor:pointer;color:var(--cyan); } a { color:var(--cyan); }
+@media(max-width:760px) { header,main { padding:16px; } .row { grid-template-columns:1fr; } header span { display:none; } dl { grid-template-columns:1fr; } }
+</style>
+<script src="/language/i18next.min.js" defer></script>
+<script src="/language/tc-language.js" defer></script>
+<script src="/controllers.js" defer></script>
+</head>
+<body>
+<nav style="max-width:1100px;margin:auto;padding:12px 24px"><a href="/axefx3" style="color:#40dfff">Design a preset with text</a></nav>
+<header><img src="/logo.png" alt=""><strong>TONE // COMMAND</strong><span>Axe-Fx III | Controller workspace</span></header>
+<main>
+<h1>Your pedal, your binding</h1>
+<p class="muted">Choose which controller operates Wah or Volume. Your choice is applied only after review and sending.</p>
+<section aria-labelledby="connectionTitle">
+<h2 id="connectionTitle">1. Connect your Axe-Fx III</h2>
+<p id="connection">Not connected yet. Close Axe-Edit and other TC sessions before connecting.</p>
+<small>This workspace exposes verified controller controls only. Use the separate FX3 preset-design workspace for tone planning. FM9 controls remain separate.</small>
+<div class="actions"><button id="connect">Connect Axe-Fx III</button><button id="refresh" class="secondary" disabled>Read state again</button><button id="disconnect" class="secondary" disabled>Disconnect</button><a id="back" href="/">Back to TC</a></div>
+</section>
+<div id="status" role="status" aria-live="polite"></div>
+<section id="targets" hidden aria-labelledby="targetsTitle">
+<h2 id="targetsTitle">2. Choose a controller</h2>
+<p class="muted">Existing bindings are preserved until you send a change. Range and curve stay unchanged; a new binding gets the verified device curve.</p>
+<div id="rows"></div>
+<p id="empty" hidden>No supported Wah or Volume blocks found. Add them on the Fractal or in Axe-Edit first; this panel does not change the signal route.</p>
+</section>
+<section id="review" hidden aria-labelledby="reviewTitle" tabindex="-1">
+<h2 id="reviewTitle">3. Review the change</h2>
+<dl id="reviewDetails"></dl>
+<p>This changes only the controller binding in the edit buffer, not global MIDI-CC assignment. It can affect multiple scenes or channels using this modifier.</p>
+<div class="checks">
+<label><input id="targetConfirmed" type="checkbox">I have reviewed the preset, block and controller.</label>
+<label><input id="muted" type="checkbox">My speakers/headphones are externally muted and will remain muted while sending. TC cannot measure this and has no physical volume limiter.</label>
+</div>
+<small>A review expires after five minutes or when the read device state changes. Nothing is permanently stored. A failed transmission may leave partial changes; there is no automatic Undo.</small>
+<div class="actions"><button id="send" disabled>Send binding</button><button id="cancel" class="secondary">Cancel</button></div>
+</section>
+<section id="result" hidden tabindex="-1"><h2 id="resultTitle"></h2><p id="resultText"></p></section>
+<details><summary>What does External 1 or 2 mean?</summary>
+<p>On your Fractal you choose which physical pedal or MIDI-CC feeds an External controller. TC binds that source to the parameter but does not change the global setting. No fixed CC number is assumed.</p>
+<p>Wah: Off disables Auto Engage; Fast Pos is the verified Auto Engage option. Volume uses Auto Engage Off. Check operation with your own pedal.</p>
+<p>Delay, amp gain, other sources, custom modifier curves and removing existing bindings require separate verification. No binding wanted? Leave an unbound block unchanged. For now remove an existing binding on the device or in Axe-Edit after closing this connection.</p>
+</details>
+</main>
+</body></html>

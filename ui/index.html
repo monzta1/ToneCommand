@@ -915,20 +915,19 @@
   svg.grid .cell.byp > rect { stroke-dasharray: 4 3; fill: #0b0e12; }
   svg.grid .cell:hover > rect { stroke: var(--cyan); fill: #101c22; }
   svg.grid .cell.busy > rect { stroke: var(--amber); }
-  svg.grid .nm { fill: var(--text); font-size: 12.5px; letter-spacing: 0.01em;
+  svg.grid .nm { fill: #fff; font-size: 12.5px; letter-spacing: 0.01em;
                  pointer-events: none; }
-  svg.grid .cell.byp .nm { fill: var(--dim); }
   /* The loaded model, under the block name. Dim on purpose: the block name and
      the live path are what you scan for, this is what you check. */
   svg.grid .cell .sub { font-size: 6.5px; fill: var(--muted); }
   svg.grid .cell.live .sub { fill: var(--cyan-dim); }
-  svg.grid .cell.byp .sub { fill: var(--dim); opacity: 0.6; }
+  svg.grid .cell.byp .sub { fill: #fff; }
   svg.grid .ch { fill: var(--cyan-dim); font-size: 10.5px; letter-spacing: .06em; }
   svg.grid .chbox { fill: rgba(47,230,255,0.10); stroke: rgba(47,230,255,0.30);
                     stroke-width: 1; rx: 2; }
-  svg.grid .cell.byp .ch { fill: var(--muted); }
-  svg.grid .cell.byp .chbox { fill: rgba(255,255,255,0.04);
-                              stroke: rgba(255,255,255,0.16); }
+  svg.grid .cell.byp .ch { fill: #fff; }
+  svg.grid .cell.byp > .chbox { fill: rgba(255,84,112,0.10);
+                               stroke: var(--red); stroke-dasharray: none; }
   .gridnote { display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
               margin-top: 10px; }
   .gridnote .k { display: inline-flex; align-items: center; gap: 5px;
@@ -3647,6 +3646,10 @@
 
       <!-- STAGE: REQUEST -->
       <section class="stagepane" id="pane-request">
+        <div class="stagefoot">
+          <span class="spacer"></span>
+          <button type="button" id="newdesign" title="Start a clean conversation and discard an unsent plan. Nothing changes on the device.">NEW DESIGN</button>
+        </div>
         <!-- Who will answer, said where the question is typed. The backend
              and model used to introduce themselves only on the finished
              plan, minutes after the sentence went in. -->
@@ -3881,6 +3884,8 @@
         <div class="hint">Compare either version without losing the other.</div>
       </div>
     </span>
+    <a href="/controllers" class="shbtn" title="Axe-Fx III controller assignments">CONTROLLERS</a>
+    <a href="/axefx3" class="shbtn" title="Axe-Fx III text preset builder">AXE-FX III DESIGN</a>
     <span class="spacer"></span>
     <button class="shbtn ico" id="shdevices" title="Devices" aria-label="Devices"><span class="shemblem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M13 10h5M13 14h5"/></svg></span><span class="shlabel">DEVICES</span></button>
     <button class="shbtn ico" id="shmanual" title="Manual controls (full screen)" aria-label="Manual controls"><span class="shemblem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="8" cy="17" r="2.4" fill="currentColor" stroke="none"/></svg></span><span class="shlabel">CONTROLS</span></button>
@@ -4185,6 +4190,8 @@
 </div>
 
 
+<script src="/language/i18next.min.js"></script>
+<script src="/language/tc-language.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -8962,6 +8969,9 @@ function workAnnounce(text, cls) {
 }
 
 function renderWorking() {
+  for (const id of ['newdesign', 'newrequest', 'cclear']) {
+    if ($(id)) $(id).disabled = newDesignBusy();
+  }
   const el = $('working');
   if (!el) return;
   const busy = chatBusy || planSending || !!srcWork;
@@ -9252,23 +9262,39 @@ function renderChat() {
     b.textContent = ok ? 'COPIED' : 'COPY FAILED';
     setTimeout(() => { if ($('ccopy')) $('ccopy').textContent = was; }, 1400);
   };
-  $('cclear').onclick = () => {
-    // Four turns is real work, so this asks once rather than making CLEAR a
-    // thing you learn to fear next to BUILD THIS.
-    if (chatLog.length > 1 && !window.confirm(
-          'Clear this conversation? It cannot be brought back.')) return;
-    chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
-    chatNeedsAnswer = false; scenePreview = null; renderScenes({});
-    try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* nothing to undo */ }
-    renderChat();
-    $('prompt').focus();
-  };
+  $('cclear').onclick = startNewDesign;
   saveChat();
   renderWorking();
 }
 
 // The box grows with the sentence rather than scrolling it sideways. Reset
 // first, or it can only ever get taller.
+function newDesignBusy() {
+  return !!(chatBusy || srcWork || planSending);
+}
+
+function startNewDesign() {
+  // Do not let a late AI/source response repopulate a freshly cleared design.
+  if (newDesignBusy()) return false;
+  if ((chatLog.length || currentPlan || $('prompt').value.trim()) && !window.confirm(
+      'Start a new design? This clears the conversation, draft and current plan. '
+      + 'Your device preset is unchanged.')) return false;
+  chatLog = []; chatReady = false; chatRequest = ''; chatName = ''; chatScenes = [];
+  chatNeedsAnswer = false; chatStream = ''; chatAgreedSeen = '';
+  scenePreview = null;
+  srcAnswers = {scenes: null, name: ''};
+  planRecipe = null; workDone = null;
+  $('prompt').value = '';
+  $('srcask').hidden = true; $('srcprogress').hidden = true;
+  $('ack').checked = false;
+  discardPlan();
+  try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* private window */ }
+  renderScenes(lastState || {});
+  renderChat(); growPrompt();
+  $('prompt').focus();
+  return true;
+}
+
 // Bring your own captures (#149): .nam files dropped on the composer go
 // through the intake and come back as one line. Nothing reaches the unit
 // here; installing them is I4's (#147).
@@ -12608,7 +12634,8 @@ $('auditionbtn').onclick = () => {
   $('context').scrollIntoView({block: 'nearest'});
 };
 $('storeafter').onclick = () => openDrawer('storage');
-$('newrequest').onclick = () => setStage('request', true);
+$('newrequest').onclick = startNewDesign;
+$('newdesign').onclick = startNewDesign;
 
 // --- keyboard -------------------------------------------------------------
 

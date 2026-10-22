@@ -1,4 +1,9 @@
 {
+ "fx3_blocks": [
+  {"file":"devices/axefx3/nam_install.py","function":"Installer.commit","ordinal":1,"disposition":"Native persistent installation errors fail closed, consume the preview and expose only the recovery path; never retry a write or return ok."},
+  {"file":"devices/axefx3/nam_install.py","function":"Installer.commit","ordinal":2,"disposition":"Only private account metadata persistence follows verified memory readback; failure adds a warning, never invents device success."},
+  {"file":"devices/axefx3/tone3000_routes.py","function":"callback","ordinal":1,"disposition":"OAuth exchange errors become a fixed 502 page with no token, authorization code or exception details; no MIDI in callback."}
+ ],
  "_comment": "Every 'except Exception' block in server.py by AST identity (enclosing function qualified name plus the ordinal of the block within that function). tests/test_capability_gates.py enforces exact correspondence and that each block either re-raises CapabilityDeclined first or states why a decline cannot reach it (#111).",
  "blocks": [
   {

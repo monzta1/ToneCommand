@@ -206,6 +206,7 @@ SETUP_GUIDE = {
 
 
 BACKEND_LABELS = {
+    "codex": "ChatGPT via Codex CLI",
     "": "auto (let the planner choose)",
     "cli": "Claude Code CLI",
     "api": "Claude API",
@@ -220,6 +221,7 @@ BACKEND_LABELS = {
 #: which is worse than either. Kept here rather than in the browser so a
 #: backend is still named in exactly one place.
 BACKEND_SHORT = {
+    "codex": "Codex CLI",
     "": "auto",
     "cli": "Claude CLI",
     "api": "Claude API",
@@ -229,6 +231,7 @@ BACKEND_SHORT = {
 
 #: Which controls each backend genuinely honours, and the variable behind each.
 BACKEND_FIELDS = {
+    "codex": {"baseUrl": None, "model": "CODEX_CLI_MODEL", "key": None},
     # Auto reads the same three as openai: a configured router is the first
     # candidate the planner tries (#21), so a base URL still matters here.
     "": {"baseUrl": "PLANNER_BASE_URL", "model": "PLANNER_MODEL",
@@ -249,6 +252,7 @@ MODEL_ALWAYS_OPTIONAL = True
 
 #: Said out loud in the UI, because "no model box" invites the question.
 BACKEND_NOTES = {
+    "codex": "Uses the existing signed-in Codex CLI. Model optional; blank keeps its configured default. Explicit selection only, no provider fallback.",
     "": "A configured endpoint is tried first, then the Claude CLI, then the "
         "Claude API. Leave the endpoint blank to use the CLI.",
     "cli": "Runs on your Claude subscription. Model optional; blank uses "
@@ -264,7 +268,7 @@ BACKEND_NOTES = {
 
 _MANAGED = ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
             "PLANNER_API_KEY", "GROK_CLI_MODEL", "ANTHROPIC_API_KEY",
-            "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL")
+            "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL", "CODEX_CLI_MODEL")
 
 
 def settings_path() -> Path:
@@ -335,6 +339,7 @@ def _from_env() -> AiSettings:
                 (("openai", planner._env("PLANNER_MODEL")),
                  ("grok", planner._env("GROK_CLI_MODEL")),
                  ("cli", planner._env("CLAUDE_CLI_MODEL")),
+                 ("codex", planner._env("CODEX_CLI_MODEL")),
                  ("api", planner._env("CLAUDE_API_MODEL"))) if v},
         keys={k: v for k, v in
               (("openai", planner._env("PLANNER_API_KEY")),
@@ -618,6 +623,8 @@ def list_models(backend: str, base_url: str = "") -> dict:
         found, why = _endpoint_models(base_url)
     elif backend == "cli":
         found, why = list(CLAUDE_CLI_ALIASES), "aliases the claude CLI documents"
+    elif backend == "codex":
+        found, why = [], "Uses the model configured in the signed-in Codex CLI"
     elif backend == "api":
         found, why = _anthropic_models()
     else:
@@ -842,12 +849,14 @@ def available_backends() -> list[dict]:
     # picked to enter the key (@Triumph1701 on #25). Those are selectable and
     # say what they still need; save() refuses if it is still missing.
     usable = {
+        "codex": planner.find_codex_cli() is not None,
         "openai": True,
         "cli": planner.find_claude_cli() is not None,
         "grok": planner.find_grok_cli() is not None,
         "api": True,
     }
     reasons = {
+        "codex": "the codex binary is not on this machine",
         "cli": "the claude binary is not on this machine",
         "grok": "the grok binary is not on this machine",
     }
@@ -918,6 +927,9 @@ def planning_line() -> dict:
         service = "Grok CLI"
         model = (s.model_for("grok") or planner._env("GROK_CLI_MODEL")
                  or "its own default")
+    elif first == "codex":
+        service = "ChatGPT via Codex CLI"
+        model = s.model_for("codex") or planner._env("CODEX_CLI_MODEL") or "its configured default"
     else:
         service = "Claude API"
         model = (s.model_for("api") or planner._env("CLAUDE_API_MODEL")

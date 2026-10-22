@@ -93,6 +93,15 @@ def test_the_api_key_is_optional_by_design(monkeypatch):
     with Stub(body=reply(json.dumps(PLAN))) as stub:
         ask(monkeypatch, stub.url)
         assert "authorization" not in {k.lower() for k in stub.requests[0]["headers"]}
+
+
+def test_device_specific_system_replaces_fm9_at_top_level(monkeypatch):
+    with Stub(body=reply(json.dumps(PLAN))) as stub:
+        monkeypatch.setenv('PLANNER_BASE_URL',stub.url)
+        planner._plan_via_openai('request','state','ref',system='AXEFX3 ONLY',shape='JSON')
+        messages=stub.requests[0]['body']['messages']
+        assert messages[0]['content'].startswith('AXEFX3 ONLY')
+        assert 'Fractal FM9' not in str(messages)
     with Stub(body=reply(json.dumps(PLAN))) as stub:
         ask(monkeypatch, stub.url, PLANNER_API_KEY="sk-local")
         headers = {k.lower(): v for k, v in stub.requests[0]["headers"].items()}

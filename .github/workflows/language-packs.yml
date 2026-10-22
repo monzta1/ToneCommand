@@ -1,0 +1,40 @@
+name: Language release assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag with tested language support
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  language-assets:
+    if: github.repository == 'Axelman8/ToneCommand'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      TONECOMMAND_SIM: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: pip install -e '.[dev]'
+      - name: Check the tagged catalog and local-only asset boundary
+        run: |
+          python -m tools.language_packs
+          pytest tests/test_language_packs.py tests/test_ui_syntax.py tests/test_text_encoding.py -q
+      - name: Build committed translation data only
+        run: python -m tools.language_packs --build
+      - name: Attach assets without replacing previous downloads
+        run: gh release upload "$RELEASE_TAG" dist/ToneCommand-Language-Packs-*.zip dist/ToneCommand-Language-Packs-*.sha256 ui/languages/en.json ui/languages/template.json ui/languages/manifest.json --repo "$GITHUB_REPOSITORY"

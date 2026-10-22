@@ -1,0 +1,3 @@
+# Keep the vendored engine byte-identical to its recorded upstream checksum.
+ui/languages/i18next.min.js -text
+ui/languages/i18next.LICENSE -text

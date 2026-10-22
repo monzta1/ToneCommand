@@ -30,6 +30,93 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+Experimental AFX3 work is isolated in `devices/axefx3`; the `/controllers`
+workspace explicitly connects its own device context for reviewed Wah/Volume
+bindings. `/axefx3` adds bounded text designs compiled by `planning.py`, with
+state-bound review/send in `tone_ui.py` and `tone_review.py`. Generic API routes and the FM9 handle are refused while this
+context is selected. It implements the adapter contract without FM9
+transport inheritance or FM9 global routing restore. Its own firmware-pinned
+registry and captured SET domains prevent a product-byte-only substitution.
+The isolated executor validates the whole plan before routing construction,
+preserves separate scene/channel intent, and stops at the first failed
+readback. Cab imports/selections and narrow grid/modifier operations remain
+behind this boundary; broad topology/modifier capabilities stay disabled.
+See `docs/AFX3-INTEGRATION.md` for the remaining
+server/UI and hardware gates. `server.py` has 8,481 lines in this stage.
+
+FX3 reference measurements and descriptive comparison live in the side-effect
+free `audio_measurements.py`; their endpoint does not obtain a device or call
+an AI. Sanitized numeric evidence can accompany private design-history v2,
+never executable actions or old approval. `effect_controls_fw33.py` holds
+captured Compressor/GEQ facts separately from typed voicing schemas and the
+bounded reviewed-effect grammar. Disabled release flags remain authoritative
+until normal SEND and independent editor acceptance, not simulator success.
+FX3 `navigation` is an explicit human-only selection service, separate from
+planner actions and automatic reload. State-bound single-use confirmations
+protect scene/preset transitions; native readback verifies selection, not sound.
+`block_probe.py` is a developer-only322 boundary for captured isolated blocks
+and a fixed complete serial chain. Ordered one-use permits check fresh whole
+grid states, including a separately bounded connection-only continuation.
+It is not reachable from planner/API/SEND and does not authorize arbitrary
+graph or model writes. Physical mute and measured output staging remain separate.
+`serial_build.py` separately exposes only the independently measured14-cell
+row1 template through normal reviewed execution. It never exposes a raw graph
+encoder or developer probe. `serial_planning.py` compiles one-scene/A numeric
+Amp/Delay/Chorus designs, retaining models/cabs and bypassing all reserves.
+NAM-independent snapshots bind review to complete preset state. Single-use
+sequence/bypass permits still require ordinary confirmed edit-session checks.
+Source ingestion in `rig_source.py` reuses upstream `describe` and `riggraph`
+with the explicitly selected text AI, not the FM9 executor or implicit Claude.
+Sound references stay separate from rig explanations. The bounded FX3
+translation exposes source provenance, topology/gear omissions and planned
+effect activation; it does not promote firmware capabilities or prove sound.
+The shared extractor's optional reader seam leaves the restricted image path
+and default FM9 source behavior unchanged.
+`tools/axe_edit_dialogs.py` is an optional Windows developer comparison helper,
+not a server service or NAM installation dependency. It attaches only to an
+already running measured editor executable and acknowledges only the complete
+known Manage NAM information dialog. Unknown or changed dialogs stop before
+comparison; screenshots/status stay in ignored backups. No MIDI owner, hotkey,
+Save, overwrite or selector write is introduced by this helper.
+FW33 numeric/NAM behavior is pinned in `fw33_profile.py`, guarded by `fw33.py`
+and compiled through `nam_planning.py`. Native memory conversion/readback and
+the two-phase installer stay inside the FX3 package. `nam_ui.py` registers
+namespaced account/installation APIs and a separately confirmed same-slot
+Store. The existing OAuth callback dispatches using the browser-bound FX3
+cookie/pending state without replacing FM9's own OAuth path. No generic FM9
+capture/reamp contract or never-brick guard is widened. See
+`docs/FW33-COMPATIBILITY.md` for exact bounds and pending hardware acceptance.
+`nam_selector.py` reads four-channel capture ordinals and performs the separate
+scoped edit-buffer selection, not memory installation. Reviews fingerprint the
+chosen full capture and all referenced channel captures. The AI cannot install
+or override the user's slot choice: `nam_slot` is an explicit request field and
+`select_nam` is compiled deterministically. Selection001-256 uses captured
+ordinal units, separately measured zero, and independent bulk/memory readback.
+Unreadable memory or stale review stops before transmission; no implicit
+rollback, global mapping or preset reload is added.
+`route_options.py` provides a read-only typed comparison of AMP/CAB with pedals
+and NAM with effects, using the selected provider and optional local audio
+measurements. Catalog research is metadata only; it selects/installs nothing.
+The feature-negotiated GUI requires an explicit executable route choice and
+shows unsupported approaches as musical alternatives, not available writes.
+This does not enable FW33 amp model/CAB/routing/controller parity. Audio
+measurements are reused for the same source within the request session, never
+for a different URL/file. The installer adapts only a capture's display label
+to the measured27-character ASCII header and shows the original catalog name;
+capture weights, architecture and strict compiler validation are unchanged.
+Controller routes live in `controller_ui.py`; `controller_review.py` binds
+single-use, five-minute send tickets to a complete live state fingerprint.
+Read/choose/review do not write. The shared writer lock, GIG LOCK, explicit
+mute acknowledgement and device-side independent readback guard execution.
+
+Interface languages are local data, not AI or device actions. `fm9/language.py`
+serves a fixed asset allowlist. The bundled i18next engine translates registered
+initial markup and explicitly marked messages; user input, live device readings
+and existing plans are not scanned. English is the source and fallback. Imported
+JSON is matched to its catalog hash, rendered as text, stored only in the browser
+and cannot alter option values or critical English confirmations. Catalog and
+release ZIP checks live in `tools/language_packs.py`.
+
 | Layer | Files | Knows about |
 |---|---|---|
 | Protocol | `protocol.py` | SysEx bytes, effect ids, nothing above |
@@ -67,7 +154,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 8,564 lines and 114 routes
+### 2. `server.py` is 8,587 lines; routes include the bounded FX3 workspace, upstream discovery and local language assets
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

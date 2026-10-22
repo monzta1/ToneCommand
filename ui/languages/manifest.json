@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "catalog_version": "1.5.16-lang.1",
+  "catalog_sha256": "6f8ee786653fa227b1d9bd803c2eb3332ee6cbb6aea9e707936f22b82e74dd68",
+  "app_version": "1.5.16",
+  "base_language": "en",
+  "available": [
+    "en"
+  ],
+  "engine": "i18next",
+  "engine_version": "26.5.5",
+  "engine_sha256": "da9b1d487188c3ef5b252ddefb0d8e2162c171d19cc82e59a8ff6b9cfd95f57d",
+  "key_count": 680,
+  "packs_url": "https://github.com/Axelman8/ToneCommand/releases",
+  "coverage": "Initial shipped markup and marked FX3/controller messages; live plans and device/user text excluded."
+}

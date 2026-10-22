@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP_PARTS = {".venv", "node_modules", "build", "dist", ".git", "__pycache__"}
+SKIP_PARTS = {".venv", "node_modules", "build", "dist", ".git", "__pycache__", "backups", "kb"}
 #: `<owner>.open(...)` that is not a text file open and takes no encoding:
 #: raw file descriptors, archive and audio containers, images, sockets, a
 #: browser window, a websocket tab, a MIDI port. Everything else that ends

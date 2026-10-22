@@ -35,6 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+audio = ["yt-dlp>=2026.1"]
 # Building tonecommand.com (site/build.py). Not needed to run the app.
 site = [
     "markdown>=3.7",
@@ -91,11 +92,10 @@ py-modules = ["server"]
 # `tools` too: server.py (path_audit) and fm9/health.py (conventions) import
 # from it, so a non-editable install without it cannot import the server
 # (found 2026-09-20 with the numpy defect; editable installs hid both).
-# #209: devices.ir2 and devices.tonex were missing, so a non-editable install
-# could not build either device; the test now checks dotted subpackages.
-packages = ["fm9", "devices", "devices.headrush", "devices.ir2", "devices.tonex", "tools"]
+packages = ["fm9", "devices", "devices.headrush", "devices.axefx3", "devices.ir2", "devices.tonex", "tools"]
 
 [tool.setuptools.package-data]
+"devices.axefx3" = ["data/*.json"]
 # #209: the DPDP device catalog is data the devices package reads at runtime.
 # #261: so are the reviewed DDLP profiles.
 devices = ["catalog.json", "profiles/*.json"]

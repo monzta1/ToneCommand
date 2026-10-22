@@ -24,6 +24,11 @@ The primary foundation of this project's protocol layer.
   display-to-wire scaling, the 8-to-7 packing algorithms, and the sub 0x2E
   grid-layout bitstream decode. Portions modified; see README "Protocol
   Contributions" for changes and corrections made in this project.
+- `devices/axefx3/amp_cache.py` adapts the strict Gen-3 metadata record grammar
+  from `parse-effectdefinitions-cache.ts` at commit
+  `59047175cfc4f23e092931b54a7c54f2bffde3ea`, via this fork's prior local
+  inventory tool. Modified for bounded read-only parsing and amplifier-only
+  output; no private IR table, editor cache or new write authority is included.
 
 Reproduction of that project's NOTICE (as required by Apache-2.0):
 
@@ -302,3 +307,11 @@ order; this notice stands on its own either way.
 
 "HeadRush" is a trademark of inMusic Brands, Inc. This project is not
 affiliated with or endorsed by inMusic Brands.
+
+## i18next
+
+The local interface translation engine is i18next 26.5.5, distributed under
+the MIT license. Source: https://github.com/i18next/i18next and npm package
+https://www.npmjs.com/package/i18next/v/26.5.5. The unmodified browser build
+is in `ui/languages/i18next.min.js`; its license is included beside it as
+`i18next.LICENSE`. There is no runtime CDN or translation-service dependency.

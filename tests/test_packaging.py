@@ -10,6 +10,16 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_every_device_package_is_in_the_distribution():
+    """Source imports must not hide omitted adapters in a non-editable install."""
+    import tomllib
+    cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    packaged = set(cfg["tool"]["setuptools"]["packages"])
+    expected = {f"devices.{directory.name}" for directory in (ROOT / "devices").iterdir()
+                if directory.is_dir() and (directory / "__init__.py").exists()}
+    assert expected <= packaged, f"Device packages missing from wheel: {expected - packaged}"
+
+
 def test_root_helper_uses_source_root():
     from fm9.paths import project_root, resource_path
 

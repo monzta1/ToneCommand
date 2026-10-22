@@ -151,6 +151,7 @@ DEVICE_KINDS = {
     "fm9": "Fractal FM9",
     "headrush": "HeadRush",
     "tonex": "IK Multimedia ToneX",
+    "axefx3": "Axe-Fx III (controllers)",
     "ir2": "BOSS IR-2",
     # #212: read-only through the FM9 module, addressed as an FM3.
     "fm3": "Fractal FM3",
@@ -181,6 +182,8 @@ _CONFIGURED = {"headrush": _headrush_configured, "tonex": _tonex_configured}
 def available_devices() -> list[dict]:
     import os
     out = [{"kind": "fm9", "label": DEVICE_KINDS["fm9"]}]
+    if device_context().kind == "axefx3":
+        out.append({"kind": "axefx3", "label": DEVICE_KINDS["axefx3"]})
     if _headrush_configured():
         out.append({"kind": "headrush", "label": DEVICE_KINDS["headrush"]})
     # #163: the ToneX is read-only here (captures listed, nothing written)
@@ -683,6 +686,8 @@ def get_fm9() -> DeviceAdapter:
     context's adapter, gated exactly the same way."""
     global _fm9
     ctx = device_context()
+    if ctx.kind == "axefx3":
+        raise CapabilityDeclined("controller_workspace_only", "get_fm9")
     if ctx.kind != "fm9" or ctx.adapter is not None:
         if ctx.adapter is None:
             if ctx.kind == "fm3":
@@ -2276,6 +2281,10 @@ def index():
 def logo():
     """The mark, for the page header and the browser tab."""
     return FileResponse(resource_path("ui", "logo.png"), media_type="image/png")
+
+
+from fm9.language import register as _register_language_assets
+_register_language_assets(app)
 
 
 def _fm9_port_present() -> bool:
@@ -6994,11 +7003,16 @@ def api_tone3000_login(prompt: str | None = None, tone_id: int | None = None):
 
 
 @app.get("/api/tone3000/callback")
-def api_tone3000_callback(code: str | None = None, state: str | None = None,
+def api_tone3000_callback(request: Request, code: str | None = None, state: str | None = None,
                           tone_id: int | None = None, error: str | None = None):
     """TONE3000 sends the browser back here. The state must be the one we
     sent; an error parameter stores nothing; the code is exchanged and
     the tokens kept at 0600. Then back to the app with a one-line note."""
+    from devices.axefx3 import tone3000_routes as afx3_tone3000
+    with afx3_tone3000.t3.client.lock:
+        afx3_login = state in afx3_tone3000.t3.client.pending if state else False
+    if request.cookies.get(afx3_tone3000.COOKIE) or afx3_login:
+        return afx3_tone3000.callback(request)
     pending = _t3k_consume_pending()
     if error:
         return RedirectResponse(f"/?tone3000=refused:{error}", status_code=302)
@@ -8500,6 +8514,15 @@ def _apply_for(body: ApplyBody, on_step=None):
                        "actions": len(body.actions),
                        "slowest": [{"kind": (r.get("action") or {}).get("kind"),
                                     "seconds": r["seconds"]} for r in slow]}}
+
+
+import sys as _sys
+from devices.axefx3.controller_ui import register as _register_controller_ui
+from devices.axefx3.tone_ui import register as _register_afx3_tone_ui
+_controller_reviews = _register_controller_ui(app, _sys.modules[__name__])
+_afx3_tone_reviews = _register_afx3_tone_ui(app, _sys.modules[__name__])
+from devices.axefx3.nam_ui import register as _register_afx3_nam_ui
+_afx3_nam_installer = _register_afx3_nam_ui(app, _sys.modules[__name__])
 
 
 def main():

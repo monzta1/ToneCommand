@@ -32,6 +32,10 @@ EM_DASH = chr(0x2014)          # spelled, so this file is not a hit itself
 
 #: Path -> why this project may not rewrite it. Not "why the em dash is fine".
 WHOLE_FILE_EXEMPT = {
+    "ui/languages/i18next.min.js":
+        "Unmodified third-party i18next 26.5.5 browser distribution. "
+        "Keep its original upstream bytes; test_language_packs verifies the "
+        "recorded vendor checksum. Project-owned code is not exempt.",
     "config/fm9_catalog.json":
         "copied verbatim from mcp-midi-control's "
         "packages/fractal-midi/catalog/fm9.json. config/README.md says to "

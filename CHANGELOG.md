@@ -4,6 +4,618 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+- Standardize fixed FX3 interface labels and request guidance on English, and
+  register optional language packs without changing hardware permissions.
+- Reconcile upstream 1.5.16 device discovery, rig reading, package data and
+  shared GUI updates with the existing bounded Axe-Fx III adapter. Preserve
+  both device-selection paths and private NAM/DDLP exclusions. This source
+  integration does not expand hardware write profiles or certify sound quality.
+- Add a request-first musical scene brief for new multi-scene FW33 AMP/CAB
+  GUI designs. Freeze the brief before generating concrete settings; compare
+  compiled amp/cab/effect choices against it, not the design's own claims.
+  Reject unrequested exact copies and require a quoted user choice for shared
+  sounds. Separate stereo pan from base-tone contrast, ignore names/levels and
+  dry effects as proof of contrast, and label small knob changes as unproven.
+  Check cabinet-format claims against active IR labels, including each scene.
+  Show actual differences, shared sounds and active IR names in PLAN/REVIEW,
+  plus previously hidden amp knobs and explicit shared effect channels.
+  Preserve scene briefs in private successful-design history and revalidate
+  on resume/refinement. Legacy API clients remain compatible; their plans
+  receive parameter comparisons without pretending a prior brief exists.
+  No firmware capability, device write, automatic SEND or Store is added.
+
+- Give the FX3 AI explicit server-owned wah binding capabilities and current
+  modifier evidence. Distinguish a supported External1/2 binding from fields
+  intentionally absent from the musical schema. Resolve an unambiguous textual
+  Auto Engage request when no form choice was made, without overriding an
+  explicit preserve choice. Explain native Off when preserving a new binding.
+  Self-check a wah clarification once with the same selected backend before
+  presenting it. Correct a compiler-rejected wah design once before requesting
+  user help, retaining resolved scope, genuine ambiguities and recorded answers
+  in the last-resort clarification too. Correct
+  the stale GUI hint that denied all new AMP/CAB controllers. No new hardware
+  writes, models, global mapping, automatic SEND or Store are authorized.
+
+- Make firmware catalogs additive: FW33 retains all75 approved FW32.06
+  parameter definitions plus eight additions. Migrate the13 missing controls
+  using captured encoders, normal setters, independent display/full-state
+  readback and Axe-Edit comparison. Retain nine explicit encoder corrections
+  and all approved scalar-zero variants. Integrate Cry Babe/shared-A voicing,
+  scene bypass and External1/2 Off/Fast Pos into normal FW33 AMP/CAB planning,
+  review/SEND, refinement and design resume. A201-action hardware build and
+  actual selected-AI277-action normal SEND passed with four-scene proofs and
+  independent editor checks. Fix empty-grid preflight for future Cab mixer
+  writes without releasing their live SET guard. Fix native free-slot
+  comparison when an unused modifier retains
+  a parameter ordinal. Reuse the old pedal engine for separately reviewed
+  Wah1/2 and Volume/Pan1, requiring the full-range Volume curve, Type Volume,
+  all-channel0dB Level and Auto Engage Off. Preserve source/curve/global CCs
+  unless explicitly reviewed. Add a read-only migration report separating
+  parameter completeness from remaining models, instances, channels, flexible
+  routing and raw restore. Unknown firmware remains read-only; no generic
+  graph, pitch-transposition, global, NAM-memory or Store permission is added.
+
+- Let the selected AI ask general musical clarification questions during FX3
+  route exploration and design, not only predefined intake questions. Keep
+  server-owned, device/request-bound answer history, free-text answers and
+  one question at a time. Clear requests still build without routine questions.
+  A refused design gets at most one same-backend question-recovery call, never
+  a write retry or capability override. Preserve all review and storage gates.
+  Keep the shared planner's clarification field textual; carry structured FX3
+  questions separately and test the actual planner quality contract.
+
+- Add read-only FX3 request clarification before AI planning: recognize explicit
+  Dutch/English scene counts, distinguish bright wah filtering from pitch
+  transposition and require explicit deferral of unsupported requirements.
+  Keep the original request, show omissions in review and report failed musical
+  validation as a design problem, not a Codex connection error. No new hardware
+  capabilities, automatic SEND, NAM installation or Store authorization.
+
+- Show FX3 workflow failures in a readable alert instead of only the clipped
+  footer. Network and invalid JSON responses disarm the old plan and mark the
+  link unconfirmed until a fresh status check; never retry a write. Enable
+  the existing FM9 handoff button when the device selection changes, with
+  draft-loss confirmation. Extend mocked Chrome preflight to short desktop
+  windows, long eight-scene plans, keyboard controls and delayed AI replies.
+  Keep the request pane scrollable when expanded controls exceed its height.
+  No protocol or storage-permission changes; physical user acceptance remains
+  separate. Add the user-facing log and preflight report for the planned PR.
+
+- Align the FX3 request entry with the upstream single primary action: GENERATE
+  PLAN starts route exploration when needed, then explicitly requests the user's
+  AMP/CAB or NAM choice without building or writing automatically. Collapse
+  optional design settings, explain disabled actions inline, retain the request
+  and Enter-as-newline behavior, and correct the obsolete NAM-slot001-only hint.
+  Keep all existing firmware, review, mute, SEND and Store gates unchanged.
+  Park external MK1 acceptance as a separate task before any MK1 NAM release.
+
+- Release exact zero for seven core Amp knobs and four measured Delay/Chorus
+  scalars, plus verified automatic Tempo NONE within reviewed AMP/CAB timing.
+  Closed72-literal native calibration, actual selected-AI333-action normal
+  SEND and independent four-channel editor comparison pass without Store.
+  Fix synchronized-display parsing order: verify NONE before reading the
+  numeric timing display. Preserve model/channel/full-state guards, separate
+  NAM/serial preflights and no retry/rollback. Startup identity checks now
+  include the immutable zero/tempo evidence. No global BPM write or limiter.
+
+- Release Modern VCA Compressor and10 Band Variable Q A-D on the measured
+  AMP/CAB route after actual selected-AI536-action normal SEND, complete
+  full-state readback and independent16-effect/eight-scene editor comparison.
+  Manual compressor modes, nonpositive levels/EQ gains and exact typed grammar
+  remain mandatory. Other effect models, PEQ, physical sound and loudness are
+  not promoted.
+
+- Release bounded1..8 scene counts on the measured fixed AMP/CAB route after
+  native reviewed prefix builds match the full independently checked baseline,
+  outside scenes remain unchanged and a separate post-batch eight-scene
+  Axe-Edit comparison passes. No fresh AI call per prefix, new topology or
+  native empty-grid-per-count/Store acceptance is implied.
+
+- Improve local reference analysis with independent channel power, original
+  sample metering, explicit anti-alias filtering and energy-weighted spectra.
+  Real Chrome opposite-phase and high-frequency-alias fixtures pass. Add an
+  optional local-recording comparison widget and pure numeric endpoint: no
+  playback, AI, MIDI, tone score or automatic gain correction. Save sanitized
+  numeric reference evidence with private version2 design history and preserve
+  it through verified cold resume/refinement without URLs, file names or old
+  SEND/Store consent. Legacy histories/backends remain supported.
+
+- Prepare measured Modern VCA Compressor and10 Band Variable Q A-D voices in
+  the bounded normal AMP/CAB grammar. Keep public release gates disabled until
+  actual normal SEND and independent editor acceptance pass. Automatic makeup
+  and attack/release remain OFF; EQ gains and effect levels cannot be positive.
+  Use exact captured model/bypass/zero opcodes and full-state verification.
+  Stage quiet Amp levels before auxiliary model changes. Bound explicit FW33
+  plans to640 actions while retaining exact grammar and legacy512-action limit;
+  no preset/NAM/IR allowlist or FM9 never-brick guard changes.
+
+- Release reviewed T808 Mod Drive1 A-D on the measured eight-scene AMP/CAB
+  route after actual selected-AI planning,384-action normal SEND, complete
+  scene proofs and independent eight-scene Axe-Edit comparison. Other Drive
+  numeric voicings, free insertion, physical volume and sound matching are not
+  promoted. Independent Compressor/GEQ A-D calibration also passes, but those
+  normal builder extensions remain pending.
+
+- Prepare exact one-to-eight scene layouts through AMP/CAB compilation,
+  deterministic review grammar, complete scene proofs, private history/resume
+  and separate Store consent. Negotiate released counts from the backend;
+  malformed counts or incomplete proofs never authorize SEND. Preserve the
+  selected route/count during a same-target status refresh without preserving
+  old recommendations, SEND or Store approval. Hardware acceptance of each
+  newly released count remains separate from synthetic coverage.
+
+- Complete remaining GEQ A-D numeric/zero captures and typed effect bypass
+  captures. Extend the closed developer calibration to379 exact recorded
+  steps. Correct GEQ Q normalization to its independently observed logarithmic
+  midpoint. The reviewed Drive prototype now uses its captured typed bypass
+  setter, not an assumed generic command. Drive remains release-gated until
+  normal SEND and independent editor acceptance are complete. No broad effect,
+  routing, permanent storage or physical-loudness claim follows.
+  Expanded native calibration passes379/379 with independent numeric/status
+  reads and unrelated-state preservation. It ends on muted test fixture322;
+  the separate post-native editor comparison and normal SEND are still pending.
+
+- Reconcile upstream1.5.15 shared rig placement/honesty, split FM3 port binding,
+  diagnostics, simulator and Python packaging changes. Preserve input cleanup
+  after output-open failure on both MIDI backends, FX3 integration seams and
+  required publication/browser checks alongside upstream Python3.14 CI.
+  The FM9 never-brick `_send` implementation is unchanged. Shared FM9 acceptance
+  never promotes FX3: native FW33 writes remain pinned to measured Windows,
+  Python3.12 and mido, with read-only connection/profile diagnostics elsewhere.
+  This is a local source integration, not remote CI, publication or acceptance
+  of a new effect, platform, controller, routing or firmware write.
+
+- Add a closed268-step Compressor/partial-GEQ developer calibration and a
+  default-disabled reviewed T808 Mod A-D prototype. No user/AI override releases
+  it: compile and executor preflight refuse Drive designs until exact
+  engage/bypass and normal SEND/editor acceptance are complete. Numeric Drive
+  metadata uses its measured0..10 knob, never a fictional dB level; prototype
+  designs bound final level to2.5. Strict grammar, full-state preservation,
+  channel mapping and scene-intent/refinement checks cover the prototype.
+  Independent editor Drive A-D comparison passes. Compressor native153 steps
+  pass; the next EQ operation stops before transmission on a channel mismatch.
+  Preflight now checks every recorded family's initial channel before ANY write.
+  Interrupted desktop access leaves GEQ/PEQ/other effects unpromoted. Route
+  explanations correctly describe the released2048 Factory/four-IR CAB scope.
+
+- Persist successful measured FW33/MK2 eight-scene AMP/CAB designs privately,
+  with checksummed metadata and complete scene fingerprints, never executable
+  actions or saved SEND/Store consent. Add explicit GUI resume with fresh target
+  and mute confirmation, all-eight-scene readback and a new refinement ticket.
+  Reject changed state/profile/catalog without automatic rollback or reload.
+  A history disk failure does not invalidate or retry a successful hardware SEND.
+  Persist imported CAB names separately per chassis; restoring names never
+  installs IR audio or proves the current contents of shared memory.
+  Normal339-action SEND/history, cold GUI all-scene resume and separate native
+  read-only full-state verification pass on322 without Store.
+- Add start/length reference-audio selection up to60 seconds with source bounds,
+  range-keyed analysis caching and proposal invalidation. Browser clip tests
+  cover selected samples, changed ranges and out-of-source refusal. This does
+  not add guitar isolation, device recording or measured sound matching.
+- Record all87 FW33 Drive model selections and171 exact ordered calibration
+  steps with native independent display/full-state verification. A narrowly
+  scoped developer replay does not enable generic Drive or compressor/EQ writes
+  in the planner. Runtime hashes include these factual inventories. Further
+  independent effect measurements remain separate from this checkpoint.
+  Full regression:5093 passes/16 skips; final mandatory/changed130 passes;
+  actual Chrome workflow and private cold-runtime/native acceptance pass.
+
+- Expand measured FW33/MK2 Cab1 A-D planning to all2048 Factory names and
+  imported nonempty User1/2 names, correcting each User bank to1024 slots.
+  Keep FullRes as its own64-position bank eligible only for IR3/4 and protect
+  the entire MK1 User2 bank reserved for NAM. Name imports install nothing.
+  Add explicit four-IR level/pan/mute/solo designs, conservative mix budgets,
+  staged activation, full-state verification and an exact reviewed-value
+  write gate. Retain legacy IR1 aliases and separate older FW32 behavior.
+  CAB LIBRARY now searches all names and shows actual current mixer status;
+  review distinguishes selected, muted, solo-excluded and in-mix IRs. Muted
+  IRs, pan alone and total mix gain cannot fabricate a base-tone contrast.
+  Native270-frame replay, configured AI/339-action normal SEND and independent
+  eight-scene Axe-Edit checks pass without Store or IR/NAM memory writes.
+  See `docs/AFX3-CAB-INVENTORY.md` for exact scope and exclusions.
+
+- Add REFRESH AMP MODELS to the FW33 AMP LIBRARY. Check live firmware and
+  reload the bundled roster, optionally comparing the newest local product10
+  Axe-Edit metadata cache. Show added/changed/missing names as unverified;
+  never alter selector permissions, AI enums, presets or pending reviews.
+  Missing/corrupt caches are explained without launching Axe-Edit, downloading
+  data, querying model selectors or silently accepting another firmware.
+  Mandatory/FX3/encoding regression:1856 passes. Native read-only registered
+  refresh confirms336 current models and complete328 state preservation;
+  Chrome mocked draft/review/error/unverified-name handling passes.
+- Expand the exact FW33/MK2 eight-scene AMP/CAB planner from two amplifier
+  models to the complete 336-name firmware inventory. Bundle factual editor
+  names/IDs, expose a collapsible AMP LIBRARY, and give the configured AI a
+  strict full-model enum. Generic setters, firmware pins, preset allowlists,
+  Cab choices and unrelated effect/controller gates remain unchanged.
+  Preserve quiet staging, independent active-channel model/full-state checks,
+  matching-model retention and separate Store consent. An isolated recorded
+  all-model developer probe is not a public AI action. See
+  `docs/AFX3-AMP-INVENTORY.md` for scope and verification boundaries.
+  All336 independent editor name/selector checks and all336 native TC model
+  selections/full-state checks pass on muted test322, without preset Store.
+  An actual configured-AI normal review/SEND completes263 actions with four
+  representative models on A-D; eight native surveys and independent editor
+  scene/model/voicing checks pass. Full original328 state is preserved;326
+  is untouched. Full regression:4957 passes/16 skips; Chrome library and
+  consent workflow and isolated built-wheel inventory/schema checks pass.
+- Add device-specific scene intent to AMP/CAB, NAM and serial planning, with
+  per-scene musical targets, roles and realization notes. Reject promised
+  base-tone contrasts implemented only by names, level or ambience; disclose
+  small-EQ-only differences without claiming an audible threshold. Explicitly
+  required but unrealized effects cannot silently disappear. Generalize the
+  bounded FW33 eight-scene template to explicit measured A-D Amp/Cab scene
+  assignments, not mandatory album pairs; no new opcode or model permission.
+  A successful SEND offers a listening-feedback workflow with selected scenes.
+  Its previous design is bound to complete current hardware state; compiled
+  untargeted sound changes, shared-channel spillover, renaming and prose-only
+  tweaks are refused before SEND. Normal review, external mute and separate
+  Store remain mandatory. This is not listening, a limiter or unrestricted
+  FW33 Drive/post-EQ/model support.
+  Actual configured-AI normal API SEND on322 completes275 actions/eight scenes;
+  a second real AI listening adjustment completes263 actions, changing gain
+  only for scenes1/5. Original328 full state is preserved and nothing is stored.
+  Full regression passes4918 tests/16 skips; final mandatory/changed384 and
+  actual Chrome goals/refinement/consent workflow pass separately.
+- Add one guarded Windows FX3 launcher on8909. It identifies the running
+  checkout/PID and pinned FX3/shared-core/UI source hashes, refusing old,
+  unrelated or stale runtimes and a second8910 instance. Existing settings
+  remain external references. Optional explicit connection/profile never
+  builds, selects, sends or stores a preset. The connected root URL now opens
+  the FX3 tone workspace; FM9 home is unchanged. Show source/revision in GUI.
+  Explicit User-cab requests on the bounded FW33 album profile fail before
+  AI instead of silently selecting Factory; name imports disclose this
+  separate write-evidence gate. Invalid User3 exports identify the offending
+  bank/slot and preserve the existing catalogue without renumbering.
+  Actual configured-AI GUI exploration/AMP choice/plan produces eight album
+  scenes and275 review actions on empty322. No SEND, Store or navigation in
+  this acceptance; the existing stored326 reference is not modified.
+  Mandatory and changed simulator suites pass399 tests; real Chrome mocked
+  workflow and actual configured-provider GUI plan checks pass separately.
+- Add a bounded FW33/MK2 eight-scene AMP/CAB album contract to the normal
+  selected-AI, review and SEND workflow. Four album voices share A-D; only
+  two measured Amp1 models and two Factory2 Legacy IR1 selections are allowed.
+  Shared Delay/Chorus A, Output-18dB and bypassed reserve blocks stay explicit.
+  Full-state preservation and consumed failures exclude arbitrary graphs,
+  models, IR/mixer installation and controllers. Separate Store requires an
+  unchanged complete successful album SEND, never a partial result.
+  Stage bypass after entering the new scene, preserving the previous scene's
+  final state. Regression fixtures now persist scene channel/bypass mappings.
+  Actual configured-AI/registered SEND on326 completes275 actions. Fresh
+  Axe-Edit independently confirms all eight scenes; separate Store and full
+  reload equality verify AI-Metallica albums. Live Chrome confirms the single
+  runtime on8909 without writes. No audible-match or physical-limiter claim.
+  Mandatory contract/capability/UI-warning and changed regression suites
+  pass570 simulator tests; actual Chrome workflow tests also pass.
+- Complete a second fixed AMP measurement on B/C/D:34 native model/channel
+  and numeric-restoration steps preserve complete baseline state. Fresh
+  Axe-Edit confirms all four models and eight controls per channel. Mandatory
+  and changed simulator suites pass321 tests; no eight-scene Store claim.
+- Add a fixed developer-only FW33 Cab1 Legacy IR1 probe on328. Captured
+  bank0/1, slot0/515/799 and B/C/D/A channel literals verify21 native steps
+  against full state. Independent Axe-Edit confirms Greenback/Recto names,
+  factory positions and preserved mute controls on all four channels. No
+  generic CAB selection, mixer/IR installation or eight-scene Store promotion.
+- Add a separate fixed FW33 Amp1 calibration on muted328. Two recorded model
+  literals and48 numeric writes change and restore B-D with full-state and
+  independent display checks. Axe-Edit subsequently confirms all four channel
+  models and eight controls per channel. Match the editor's float32-before-
+  division encoding for the seven FW33 Amp knobs; FW32/FM9 remain unchanged.
+  This is developer evidence, not enabled eight-scene model/CAB execution.
+- Add a fixed developer-only FW33 Amp1 channel probe on preset328. Four
+  independently recorded editor commands switch B/C/D/A with fresh full-state
+  checks and consumed failures. Native replay preserves all block words and
+  returns exactly to the baseline. No planner model/channel, CAB or Store
+  capability is enabled by this measurement. The separate post-replay editor
+  comparison confirms the preserved chain and final channelA.
+- Accept eight-scene requests and compile AMP/CAB album pairs without treating
+  scene5-8 as nonexistent channels E-H. Identical stored settings share A-D;
+  a fifth distinct configuration fails before review or writes. Models and
+  Cab IR pairs can be chosen per scene, with conservative separate output
+  levels and explicit channel/cab mappings shown in review. Reused voicing is
+  configured once. Local simulator and Chrome tests cover eight-scene review
+  and sending, not hardware acceptance. FW33 AMP/CAB remains blocked pending
+  independent selector/channel measurements; no forced NAM substitution.
+- Keep both ends of long FX3 chain bars reachable by horizontal scrolling,
+  starting at Input instead of clipping the leading blocks through centering.
+  Real Chrome checks the14-block chain at1180/1280/1440px with actual hardware
+  status as well as mocked workflow APIs. No preset write from this GUI check.
+- Connect the measured FW33 serial template to selected-AI design, explicit
+  route choice, fingerprinted review and normal SEND. The fixed14-block chain
+  supports one scene/A with existing/default Amp/Cab retained, numeric Amp EQ,
+  Delay and Chorus, and bypassed reserves. Quiet staging precedes cables;
+  construction verifies full state and consumes failed sessions without retry.
+  No NAM dependency, model/IR/controller/Store or arbitrary graph promotion.
+  Native configured-Codex/SEND on empty323 verifies46 actions and17 displays.
+  Live route labels now include actual channel and white bypass labels with
+  red channel borders. NAM and FM9 behavior remain separately gated.
+- Verify a complete14-block/13-cable FW33 developer chain on322 using the
+  previously captured row1 frames. Native checks preserve full block words,
+  status, modifiers, scene names and NAM hash. Output1 is independently
+  staged to-18dB before connecting. An exact uncabled-state continuation
+  avoids replaying verified placements after a test-script lookup error.
+  No Store, feedback, general AI/GUI graph capability or loudness guarantee.
+- Add an exact isolated FW33 developer block probe on322, using34 separately
+  captured first-instance placements and deletions. Fresh whole-grid checks,
+  fixed order and one-use permits exclude cables, Send/Return, extra outputs,
+  model/parameter/Store writes and arbitrary planner operations. No public
+  free-chain capability is enabled by this measurement tool. Native replay
+  completes136 frames with full created-block and empty-baseline checks;
+  post-replay editor comparison remains a separate acceptance step.
+- Verify a detached FW33 parallel developer fixture on320: Compressor1,
+  Drive1 and two shunts, four horizontal/cross cables, selective disconnects
+  and deletion. All24 native frames preserve complete block words/status,
+  modifiers, names and NAM hash; final state equals the empty baseline.
+  Exact captured order and fresh whole-grid checks are required. No public
+  arbitrary routing, Store, model/level write or physical headroom claim.
+- Verify an exact FW33 developer two-row round trip on owner-designated320:
+  fourteen effect blocks, fourteen shunts and twenty-six cables, followed by
+  disconnect and deletion. Native replay checks all164 ordered frames, whole
+  grid and preserved block words/status, modifiers, names and NAM hash. Six
+  row1/even-column cables retain captured literals rather than an undecoded
+  FM9 formula. Final complete state equals the empty baseline; no Store.
+  This does not enable public free-chain writes, alter FM9 or widen storage.
+- Verify an isolated FW33 Compressor1 movement round trip on preset324 using
+  independently captured right/down/up/left commands. Native readback checks
+  all four-channel Compressor words and status after each move, plus the
+  complete original rig, modifiers and scene names. Fresh selection, empty
+  destination and disconnected-source guards reject stale or unsafe moves.
+  This remains a developer fixture, not a public arbitrary-block move action.
+- Extend the isolated FW33 developer grid fixture with the independently
+  captured row5-to-row6 diagonal cable and native ten-frame replay on324.
+  Original routing, bulks,32 modifiers and scene names remain unchanged;
+  nothing is stored. This does not enable arbitrary grid writes in the UI.
+- Add a read-only free-chain contract with explicit cells/connections and a
+  full-snapshot fingerprint. It reports block/shunt additions/removals, moves,
+  cable rewiring and affected modifiers without flattening parallel branches
+  or treating moves as delete/recreate. No SEND token or execution endpoint.
+- Add read-only FX3 topology validation for complete serial/parallel graphs,
+  preserving branch edges and rejecting disconnected, dangling and feedback
+  paths. It is not a firmware-wide grid-writing capability. Independent
+  FW33 Axe-Edit capture and native replay verify an isolated Compressor1 /
+  Drive1 placement, connect, disconnect and deletion fixture on preset324,
+  with complete original-state preservation and no Store. The developer-only
+  exact-frame permit does not enable these actions in the planner or GUI.
+- FX3 GUI now selects presets from a searchable, freshly read512-name library
+  and scenes from eight named buttons, with a clear connected indicator.
+  Human selection has its own state-bound, single-use confirmation, requires
+  external mute and warns before discarding an unstored preset buffer.
+  AI actions and automatic reload remain blocked; configured storage guards
+  are unchanged. Actual FW33 native/browser tests verify all eight scenes,
+  preset324/325 switching and complete325-state preservation, without Store.
+- FX3 requests can explore AMP/CAB with pedals and NAM with suitable effects
+  before choosing an explicit build route. The selected AI provides a typed,
+  read-only comparison and connected TONE3000 metadata search; no capture is
+  selected, downloaded, installed or sent by this exploration. Unsupported
+  FW33 AMP/CAB functionality remains visibly blocked, not silently replaced
+  with NAM. Older backends retain their existing workflow.
+- Reuse genuine local audio measurements for an unchanged URL/file between
+  exploration and planning. Changing the source or starting a new request
+  invalidates them. Long/non-ASCII capture names are normalized only for the
+  Fractal's measured27-character label; installation preview retains the full
+  catalog name and strict model/compiler validation remains unchanged.
+- Actual selected-provider GUI regression downloads/measures a YouTube sound
+  reference, natively installs its compatible long-name NAM in authorized252,
+  builds41/60 verified actions and stores/reloads a two-scene preset on325.
+  Reference326 and existing NAM memories remain unchanged. Additional native
+  Amp/Compressor numeric checks preserve and restore saved323; unmeasured
+  FW33 model/CAB/routing/controller functionality is not promoted. Physical
+  listening and remote CI remain separate acceptance steps.
+- FX3 FW33 designs can explicitly choose an installed NAM slot instead of
+  silently using001. Complete four-channel bulk supplies the current selector;
+  review/Store fingerprints bind all referenced memories and the chosen slot.
+  The request widget lists occupied slots from a complete inventory, clears
+  stale choices on failed reads, and shows the real slot in review. Selection
+  stages quiet/bypassed, verifies bulk/full memory and preserves other channels.
+  Native memory install remains separate. Nonzero selector encoding is captured
+  and replayed at250/256. A later user-operated Axe-Edit capture and independent
+  native replay verify NAM001 zero selection, retaining the exact single-write
+  permit, quiet staging, full-memory readback and no implicit installation.
+  Real configured-provider
+  builds execute41/60 actions and preset329 survives separate Store/reload.
+- Added an opt-in Windows developer helper for the independently measured
+  Axe-Edit Manage NAM information popup. It matches title, complete message
+  and the unique enabled OK control, rechecks the foreground modal before clicking,
+  and verifies closure. Unknown, changed, Save and overwrite dialogs stop
+  comparison instead of receiving a generic Enter/OK. Local evidence remains
+  private. This does not add Axe-Edit automation to TC's native NAM installer.
+- FX3 source intent now distinguishes a sound reference from an explained rig.
+  YouTube metadata/transcripts and pasted equipment explanations reuse the
+  shared upstream reader/typed graph with the explicitly selected text AI,
+  not an implicit Claude fallback. FX3 closest/faithful/simplified translation
+  preserves source provenance and reports omitted gear/connections in review.
+  Unsupported rack effects are not assumed to be delay, and faithful routing
+  refuses unsupported topology/order. Existing muted confirmation, bounded
+  FX3 executor and readback remain authoritative. No source-driven installation,
+  Store, global mapping or new measured firmware capability is implied.
+- Native MK2/FW33 NAM destination choice now covers slots001-256. Read the full
+  named inventory, suggest the first explicitly empty slot, and require a
+  selected-slot preview and confirmation. Occupied targets show a shared-memory
+  overwrite warning; incomplete inventory never implies free memory. A fresh
+  complete slot export binds confirmation and a verified private recovery
+  backup precedes any write. Native TC API writes to authorized slots250/256
+  pass full65536-byte readback and preserve NAM001/reference326. NAM capture
+  selection in the preset builder remains bounded to001; no implicit selector,
+  preset Store, FM9 guard or configured allowlist change.
+- Verified the isolated FW33 NAM builder on muted MK2 hardware: a real selected
+  Codex plan builds an empty test preset, a second plan voices NAM A/B scenes,
+  separate Store survives a cross-preset reload, and independent Axe-Edit
+  readings match. Existing reference preset and full NAM memory remain intact.
+  Deletion, unmeasured models and unsafe values remain blocked. Native installer
+  write acceptance is recorded above; physical audition and remote CI remain
+  separate pending gates.
+- Integrated upstream 1.5.14 shared planner, rig graph/compile, CLI UTF-8,
+  device discovery and account file protection into the FX3 integration branch.
+  The working owner installation is not replaced by this source integration.
+- Isolated exact FW33 beta profile, native MK2 NAM slot001 reader/converter/
+  two-phase installer and TONE3000 account service in `devices/axefx3`.
+  NAM206 and Chorus78 retain full grid IDs. The reviewed NAM builder supports
+  an empty scene1/A foundation and existing exact-route scenes1/2 with NAM A/B.
+  Account suggestions use the configured AI provider; no implicit download,
+  installation, model/CAB/modifier write or preset Store. Native installation
+  needs three separate acknowledgments, a private verified recovery export,
+  a single-use preview and full-memory readback. Store is a separate same-slot
+  review. Native NAM installation still needs its own hardware write regression
+  before deployment; the build/Store path evidence is recorded below.
+- Added repeatable read-only upstream checks, publication tripwire, PR template
+  and FX3 browser/public-tree CI gate while retaining upstream shards and the
+  required `tests` check. The newly built evidence-derived KB remains local
+  and gitignored, with a public-facts bootstrap for fresh checkouts; no NAM
+  weights, tokens, presets or private captures ship. New readbacks invalidate
+  NAM/Store tickets; reconnection/profile changes invalidate server reviews.
+
+### Changed
+- Use the actual FM9 stylesheet and console layout for the bounded Axe-Fx III
+  workspace. Request, Plan, Review, Confirm and Send are separate screens with
+  back navigation and independent send consent. Preserve device/MK selection,
+  collapsible cab imports and NAM search; the native executor and firmware
+  gates remain separate. This does not enable full main-page functional parity.
+- Keep bypassed signal-chain block and model names readable in white, with
+  a white channel letter inside a solid red badge. Active channel styling
+  and dashed bypassed block outlines remain unchanged, including expanded views.
+- New empty AFX3 text builds reserve and voice Delay 1 even when every scene
+  requests dry sound. It remains bypassed until requested, so later delay
+  adjustments reuse the existing block without manual insertion. Existing
+  presets are never cleared or rebuilt implicitly; no insertion gate widened.
+- Reject an active ambience delay before Cab in the bounded AFX3 text
+  builder rather than silently accepting a route that changes the intended
+  sound. Existing inactive delays can retain their location without moves.
+- Merge upstream TC 1.5.4 (3c97d6c), including the main-page JavaScript fix,
+  syntax regression guard and IR-2 capabilities. Preserve the separate AFX3
+  controller workspace, firmware gates and blocked general tone executor.
+
+### Added
+- User-declared Axe-Fx III MK1/MK2 selection and conservative cab/NAM memory
+  policy. MK1 on unverified NAM-era firmware cannot import or select User2 as
+  cabs; MK2 keeps separate storage metadata. Generic NAM installation remains
+  blocked; the exact measured FW33 beta profile is described above.
+- Audio links inside AFX3 requests and local audio-file measurements in Chrome.
+  Public HTTPS YouTube/SoundCloud and bounded direct audio downloads feed local
+  RMS, peak, crest and sampled spectrum measurements, not waveform hearing or
+  guitar isolation. Optional `audio` dependency installs yt-dlp.
+- Authenticated TONE3000 A2 NAM / IR search in an expandable right-side widget,
+  with optional candidate metadata supplied to the selected planner. Search
+  does not download/install captures or place NAM on the unit. Firmware 33
+  planning/writes remain blocked until independently verified.
+- Always-visible NEW DESIGN button on the request screen. It clears the
+  conversation, draft, agreed scene preview and current plan with confirmation,
+  disarms sending and returns focus to an empty input without device writes.
+  CLEAR and post-send NEW REQUEST use the same reset; in-flight work blocks reset.
+- Reviewed FW32.06 Drive 1 and Compressor 1 insertion before Amp 1 in
+  compatible serial row-3 routes, including multiple additions and exact
+  preservation of downstream shunts. New text designs select captured models,
+  voice explicit channels/final levels and bypass unrequested configured scenes.
+  Muted TestPreset323 tests verified both individual insertions and 20/20
+  combined insertion/configuration actions, preserving amp, cab, EQ, routing
+  and controllers. No AI deletion, destructive rebuild, Store or topology Undo.
+- FW32.06 Drive 1 model selection: Rat Distortion, T808 OD and T808 Mod;
+  Compressor 1: Modern VCA and Classic VCA. Captured model selectors are
+  respectively pid 0 and pid 12, never conflated with Compressor threshold.
+  Optional per-scene model choices precede voicing and an explicit final
+  level. Omitted choices preserve the model. Drive stages at knob zero,
+  not a negative dB value. Native muted review/send verified 81/81 actions
+  on TestPreset323 with independent preservation checks. Automatic insertion
+  of these families is not yet enabled.
+- FW32.06 existing Drive 1 Rat Distortion, Compressor 1 Modern VCA, GEQ 1
+  10 Band Variable Q and PEQ 1 core voicing: 32 captured numeric controls,
+  explicit typed zeros, per-scene design fields and review summaries.
+  Numeric parameter 0 is handled separately from model selectors.
+  Muted native TC review/execution on TestPreset 323 verified 88/88 writes
+  plus 8/8 engage/bypass round trips, while preserving amp, cab, routing,
+  modifiers, names and other channels.
+  Future selected channels are mode/layout-preflighted before any write.
+  No new model selection, insertion, PEQ Q/type edits, raw Undo or Store;
+  positive EQ boosts are refused and the Drive level knob is capped at 5.
+- Captured FW32.06 Chorus 1 Analog Stereo control: rate, depth, mix and level,
+  typed zero writes and a scene-by-scene review column. Optional text designs
+  configure independent chorus channels; omission preserves an existing
+  Chorus, while unrequested scenes bypass a newly added Chorus.
+- Reviewed Chorus 1 insertion directly after Cab 1 in a contiguous serial
+  row 3 with empty right-hand space. Reuses FM9's read-only splice geometry
+  and cable builders, not its parameter catalog or destructive fallback.
+  Captured rightward moves independently preserve all original block data,
+  modifiers and names. Real TC execution on muted preset 323 passed 13/13
+  actions with complete routing readback. No Store or topology Undo; stops
+  on partial failure. Other layouts/effect insertions remain unsupported.
+- Explicit Wah Auto Engage selection in the AFX3 text workspace: Off,
+  Fast Pos or preserve. The user's choice reaches the deterministic compiler,
+  review and captured executor; the AI cannot override it. Fast Pos warns
+  about shared-channel/scene bypass interaction. Add a scene-by-scene review
+  table, imported cab names/positions and a collapsible retained request.
+- Experimental Axe-Fx III text workspace at `/axefx3`: explicit selected AI,
+  imported Factory/User cab names and deterministic 1-4 scene compilation.
+  Separate amp/delay/reverb channels, final effect levels and explicit IR
+  mixer settings avoid inherited silent/quiet defaults. Single-use reviews
+  recheck device state, require external mute and stop on readback failure.
+  Existing parallel/unsupported routes are refused, never erased. No Store,
+  audio/link analysis, automatic Undo or measured loudness guarantee.
+- Restore the explicit Codex CLI backend and UTF-8 subprocess handling from
+  the owner's fork; never auto-select it or fall back from that choice.
+  Device-specific OpenAI-compatible requests now use the device's system
+  instruction at the top level instead of the FM9 default.
+- Axe-Fx III controller workspace at `/controllers`, linked from TC's shelf.
+  Users choose External 1/2 for verified Wah/Volume targets, review the live
+  preset and confirm external mute before sending. Single-use state-bound
+  reviews reject stale/replayed requests. Unsupported controls/unbinding and
+  the generic tone planner remain blocked in this scoped integration mode;
+  FM9 behavior and global MIDI mapping are unchanged.
+- Experimental bounded pedal-only execution for the captured AFX3 FW 32.06
+  profile: Wah Off/Fast Pos and External 1/2, plus Volume/Pan 1 native binding.
+  Preserves existing parallel grids and verifies all modifier records; no
+  level, global CC or curve writes. Wah mode round-trip passed hardware
+  readback, as did existing Volume source reassignment. Native Volume binding
+  recreation now also passed independent hardware readback and Axe-Edit UI
+  confirmation. Existing source/mode changes passed the real controller UI;
+  the owner confirmed Wah movement/auto-bypass and Volume movement without
+  auto-bypass. General tone planner integration remains gated.
+- Experimental, FW 32.06 native Wah modifier creation from Axe-Edit captures.
+  The device initializes the curve; TC verifies all 32 modifier records before
+  assigning External 1/2. Only Wah 1/2 Control is allowed, no global CC writes
+  or synthetic curve fields. Direct hardware readback and Axe-Edit confirmed
+  a recreated Wah 2 binding; the owner confirmed its physical sweep and
+  auto-bypass. General planner exposure remains gated.
+- Experimental AFX3 cab-name imports, independent IR selection, bounded
+  empty-grid construction, modifier inspection and reviewed-plan execution
+  seam. These are not yet wired into the application. Fresh modifier curves
+  are refused rather than filled with incomplete defaults. A separate
+  explicit read-only inspection tool supports the next hardware checkpoint.
+- Experimental `devices.axefx3` adapter foundation, exposed only through the
+  controller workspace. It isolates captured FW 32.06 parameter/model rosters
+  from the FM9, requires an explicit muted edit session and target preset,
+  independently verifies writes, and preserves cab mixer/channel boundaries.
+  No storage, global routing restore, IR upload or audio-limiter capability
+  is enabled. See `docs/AFX3-INTEGRATION.md` for outstanding integration and
+  hardware gates; offline tests are not a sound-quality claim.
+
+### Fixed
+- Restore Windows runtime/profile paths in planner subprocess environments.
+  Dropping SystemRoot reproduced DNS error 11003 and made the selected Codex
+  backend time out. Keep the per-backend credential allowlist; no provider,
+  model, global Windows setting or safety gate is changed. A live FW 32.06
+  text build passed 163 actions and 193 later readback checks across four
+  scenes; physical pedal behavior and sound matching still require acceptance.
+- Include the new IR-2 and existing ToneX packages in the distribution;
+  the explicit setuptools list previously omitted them. A regression test
+  covers every device package, not just the source checkout imports.
+- AFX3 modifier diagnostics distinguish observed Volume/Pan 1 control PID 0
+  from a model selector and label captured Wah Auto Engage modes read-only.
+  Observed labels do not authorize new writes. Parallel routing rejection is
+  explicitly described as a serial-validator limitation, not an audio verdict.
+- The AFX3 read-only inspection report marks modifier-controlled display
+  readings as unverified effective values. A fixed Control=0 must not be
+  presented as proof of a stationary pedal or a failed modifier binding.
+- Release the already opened MIDI input when output opening fails, on both
+  mido and supriya backends. Successful traffic and the invariant guard are
+  unchanged; fake-port tests exercise both failure paths.
+- The library symlink security test explicitly skips WinError 1314 when a
+  Windows account cannot create symlinks. All other OS errors still fail;
+  the production path containment rule is unchanged.
+### Added
+- English-first interface language packs, using a locally bundled i18next
+  engine. Import version-matched JSON from Settings without AI translation,
+  hardware access, a CDN or changing protocol identifiers. Missing entries
+  stay English. See docs/LANGUAGE-PACKS.md for coverage and release updates.
+
 ### Fixed
 - **The bottom shelf is one row again.** It was laid out for eight
   buttons; since DEVICES made nine, SETTINGS sat on a row of its own. Each
@@ -875,7 +1487,6 @@ yet; see below.
 - `config/fm9_catalog.json` is exempt whole, because it is copied verbatim
   from mcp-midi-control and `config/README.md` says to refresh from upstream
   rather than hand-edit. A test fails if that stops being true.
-
 - `docs/WINDOWS.md`, the step-by-step Windows guide, is its own page with its
   own short link to share: **tonecommand.com/windows**. It was the Windows
   section of `docs/SETUP.md`, which now points at it, so there is one place to
@@ -885,6 +1496,7 @@ yet; see below.
   Windows untested: the suite runs there on every change.
 
 ### Fixed
+
 - The site's `ROUTES` did not know about the new page, so the README's and
   SETUP.md's links to `docs/WINDOWS.md` rendered as
   `.../blob/main/WINDOWS.md`: a path that does not exist, on the two pages

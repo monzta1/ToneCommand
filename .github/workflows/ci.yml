@@ -131,14 +131,37 @@ jobs:
     # job reports as "suite (...)", which branch protection would wait for
     # forever. This gate fails unless every shard on every OS and both
     # accounts passed. A cancelled or skipped job is not coverage.
-    needs: [suite, account, cli, py314]
+    needs: [suite, account, cli, py314, fx3-hygiene]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Every shard, both accounts, the macOS CLI paths and Python 3.14 passed
+      - name: Every shard, both accounts, CLI, Python 3.14 and FX3 gates passed
         run: |
           echo "suite: ${{ needs.suite.result }}; account: ${{ needs.account.result }}; cli: ${{ needs.cli.result }}; py314: ${{ needs.py314.result }}"
           test "${{ needs.suite.result }}" = "success"
           test "${{ needs.account.result }}" = "success"
           test "${{ needs.cli.result }}" = "success"
           test "${{ needs.py314.result }}" = "success"
+          test "${{ needs.fx3-hygiene.result }}" = "success"
+
+  fx3-hygiene:
+    name: FX3 publication and browser gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Audit public Git tree, no account/model files
+        run: python tools/release_audit.py --ref HEAD
+      - name: Install browser test dependency outside the project
+        run: npm install --prefix "$RUNNER_TEMP/tc-browser" playwright
+      - name: Install headless Chromium
+        run: "$RUNNER_TEMP/tc-browser/node_modules/.bin/playwright install --with-deps chromium"
+      - name: Exercise FX3 review, confirmation and send GUI offline
+        run: node tests/axefx3_ui.browser.cjs
+        env:
+          TC_PLAYWRIGHT_MODULE: ${{ runner.temp }}/tc-browser/node_modules/playwright
