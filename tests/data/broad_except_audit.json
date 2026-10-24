@@ -1,5 +1,13 @@
 {
  "_comment": "Every 'except Exception' block in server.py by AST identity (enclosing function qualified name plus the ordinal of the block within that function). tests/test_capability_gates.py enforces exact correspondence and that each block either re-raises CapabilityDeclined first or states why a decline cannot reach it (#111).",
+ "component_blocks": [
+  {
+   "file": "devices/axefx3/amp_writer.py",
+   "function": "AmpWriter.apply_amp",
+   "ordinal": 1,
+   "disposition": "After an attempted SET, wrap ordinary transport and all verification failures as an uncertain AmpReadbackError; latch the connection, never retry or restore. No capability routing occurs in this explicit component."
+  }
+ ],
  "blocks": [
   {
    "function": "read_modifiers",

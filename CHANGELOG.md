@@ -4,6 +4,10 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+- Add an explicitly constructed MK2 Amp 1/channel A parameter experiment:
+  one bounded Gain or Mid change per expiring review, exact output permits,
+  independent display/bulk checks and uncertainty latching. No GUI/planner,
+  model/routing/level change, Store or MK1 write capability is enabled.
 ## 1.6.1 (2026-10-24)
 
 ### Added
