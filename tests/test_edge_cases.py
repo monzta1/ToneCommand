@@ -85,7 +85,12 @@ def test_a_symlink_out_of_the_library_is_refused(tmp_path, monkeypatch):
     secret = tmp_path / "outside.wav"
     secret.write_bytes(b"RIFF____WAVE")
     link = root / "IRs" / "sneaky.wav"
-    link.symlink_to(secret)
+    try:
+        link.symlink_to(secret)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows account lacks symlink privilege; boundary not exercised here")
+        raise
     monkeypatch.setenv("TONECOMMAND_IR_LIBRARY", str(root))
     assert ir_service.safe_ir_path(str(link)) is None, \
         "a symlink inside the library must not reach outside it"

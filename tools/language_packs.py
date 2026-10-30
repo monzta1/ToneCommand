@@ -6,10 +6,12 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
+import subprocess
 import tomllib
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '1.5.16-lang.2'
+VERSION = '1.6.2-lang.2'
 ASSETS = ('en.json', 'template.json', 'manifest.json')
 LOCALE_FILE = re.compile(r'([a-z]{2,3}(?:-[A-Z]{2})?)\.json\Z')
 PROTECTED = re.compile(r'\b(mute[ds]?|overwrite|permanent|firmware|safety|never|read.only|limiter|confirmation|readback|unsaved|discard|reviewed)\b|\bI confirm\b', re.I)
@@ -123,11 +125,38 @@ def check(root=ROOT):
     for name, expected in documents(root).items():
         if json.loads((folder / name).read_text(encoding='utf-8')) != expected:
             raise ValueError('Language assets are stale; run python -m tools.language_packs --refresh: ' + name)
-    print('English catalog, bundled languages and manifest match the source.')
+    print('English catalog, bundled languages and release manifest match the source.')
+
+
+def build(root=ROOT, destination=None):
+    root = Path(root)
+    check(root)
+    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    tracked = subprocess.check_output(['git', 'status', '--porcelain', '--',
+        'ui/languages', 'docs/LANGUAGE-PACKS.md', 'tools/language_packs.py'], cwd=root)
+    if tracked.strip():
+        raise ValueError('Commit tested language assets before publishing an archive')
+    folder = Path(destination or root / 'dist')
+    folder.mkdir(parents=True, exist_ok=True)
+    output = folder / ('ToneCommand-Language-Packs-' + VERSION + '.zip')
+    if output.exists():
+        raise FileExistsError('Refusing to replace an existing language release ZIP')
+    files = {name: (root / 'ui/languages' / name).read_bytes() for name in documents(root)}
+    files['LANGUAGE-PACKS.md'] = (root / 'docs/LANGUAGE-PACKS.md').read_bytes()
+    files['SOURCE.json'] = json.dumps(dict(source_commit=revision, version=VERSION,
+        files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()}), indent=2).encode()
+    with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED) as bundle:
+        for name, data in files.items():
+            bundle.writestr(name, data)
+    checksum = hashlib.sha256(output.read_bytes()).hexdigest()
+    output.with_suffix('.sha256').write_text(checksum + '  ' + output.name + '\n', encoding='ascii')
+    print(json.dumps(dict(path=str(output), source_commit=revision, sha256=checksum)))
+    return output
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--refresh', action='store_true')
+    parser.add_argument('--build', action='store_true')
     args = parser.parse_args()
-    refresh() if args.refresh else check()
+    build() if args.build else refresh() if args.refresh else check()

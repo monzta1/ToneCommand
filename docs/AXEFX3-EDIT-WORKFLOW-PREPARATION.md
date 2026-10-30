@@ -1,5 +1,12 @@
 # Prepared Axe-Fx III review/confirm/send bridge
 
+Full-fork integration candidate,28October: imports map to this fork's explicit
+read-only namespace. The separate opt-in host layer is now registered in the
+shared interface, with default read-only behavior and the unchanged measured
+MK2 identity pin. The preparation-only statements below describe the bridge
+component, not absence of the separate host wiring. Beta5 remains refused.
+Final candidate software/native acceptance is recorded in the A-Z ledger.
+
 This document describes the bridge-only review boundary in #289. The
 separate opt-in host wiring is documented in [the reviewed-edit UI guide](AXEFX3-REVIEWED-EDIT-UI.md).
 Its limited activation does not promote other operations or firmware.

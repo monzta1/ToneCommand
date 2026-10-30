@@ -1,0 +1,46 @@
+// Actual shipped trial page in Chrome. Every API request is mocked.
+const {chromium}=require(process.env.TC_PLAYWRIGHT_MODULE||'playwright');
+const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true,...(process.env.TC_BROWSER_EXECUTABLE?{executablePath:process.env.TC_BROWSER_EXECUTABLE}:{})});
+try{const page=await browser.newPage({viewport:{width:1280,height:1000}});const requests=[],errors=[];
+let connected=false,question=false,fail=false;page.on('pageerror',e=>errors.push(e.message));
+await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.url());
+ if(url.origin!=='http://127.0.0.1:8909')return route.abort();
+ if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(__dirname,'../packaging/mk1-ai/index.html'),'utf8')});
+ if(url.pathname==='/trial.js')return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(__dirname,'../packaging/mk1-ai/trial.js'),'utf8')});
+ if(url.pathname==='/trial.css')return route.fulfill({contentType:'text/css',body:fs.readFileSync(path.join(__dirname,'../ui/index.html'),'utf8').split('<style>')[1].split('</style>')[0]});
+ requests.push({path:url.pathname,method:req.method(),body:req.method()==='POST'?req.postDataJSON():null});
+ if(url.pathname==='/api/settings')return route.fulfill({json:{planning:'Choose your own AI backend',settings:{backend:'codex'},backends:[]}});
+ if(url.pathname==='/api/connect'){connected=true;return route.fulfill({json:{connected:true}});}
+ if(url.pathname==='/api/disconnect'){connected=false;return route.fulfill({json:{connected:false}});}
+ if(url.pathname==='/api/state')return route.fulfill({json:{connected,preset:99,scene:1,version:'development test',source_commit:'a'.repeat(40),source_branch:'my-mk1-work',source_dirty:true,source_digest:'b'.repeat(64),development:true}});
+ if(url.pathname==='/api/discard')return route.fulfill({json:{discarded:true}});
+ if(url.pathname==='/api/plan')return route.fulfill({json:question?{question:'Fuzz is outside this trial. Use AMP/CAB and ambience?'}:{token:'review-token-for-test-123456',target:99,backend:'codex',model:'fake',routing:'Input -> Amp -> Cab -> Chorus -> Delay -> Reverb -> Output',actions:['Choose Hipower Brilliant','Delay 440ms; feedback25%'],design:{name:'AI Floyd',summary:'Spacious album-inspired lead, not a proven match.',amp:'Hipower Brilliant',cab:'Greenback',gain:3.5,chorus:true,delay_ms:440,delay_feedback:25,reverb_mix:12}}});
+ if(url.pathname==='/api/send')return route.fulfill({status:fail?409:200,json:fail?{detail:'Readback mismatch; partial edits may remain'}:{verified:true,stored:false,actions:74,note:'Disconnect MIDI and compare with Axe-Edit before audition.'}});
+ return route.fulfill({status:404,json:{detail:'Not available'}});});
+await page.goto('http://127.0.0.1:8909/');await page.locator('#generate:not([disabled])').waitFor();
+assert.equal(await page.inputValue('#prompt'),'');
+assert((await page.textContent('#requestStage')).includes('336-model'));
+assert((await page.textContent('#buildVersion')).includes('DEVELOPMENT / NOT VALIDATED | my-mk1-work | MODIFIED'));
+assert.equal(requests.filter(r=>r.method==='POST').length,0);
+await page.click('#connect');await page.waitForFunction(()=>document.getElementById('deviceStatus').textContent.includes('99'));
+await page.fill('#target','99');await page.fill('#prompt','Pink Floyd Wish You Were Here, one lead scene');
+await page.locator('#prompt').press('Enter');assert((await page.inputValue('#prompt')).endsWith('\n'));
+assert.equal(requests.filter(r=>r.path==='/api/plan').length,0);
+await page.click('#generate');await page.locator('#planStage').waitFor();assert.equal(requests.filter(r=>r.path==='/api/send').length,0);
+assert((await page.textContent('#planSummary')).includes('album-inspired'));
+await page.click('#toReview');assert((await page.textContent('#design')).includes('440'));
+await page.click('#toConfirm');assert(await page.locator('#send').isDisabled());
+await page.check('#targetConsent');await page.check('#muteConsent');assert(await page.locator('#send').isDisabled());
+await page.check('#experimentConsent');assert(await page.locator('#send').isEnabled());
+await page.click('#send');await page.waitForFunction(()=>document.getElementById('result').textContent.includes('Nothing stored'));
+let sent=requests.filter(r=>r.path==='/api/send');assert.equal(sent.length,1);assert(sent[0].body.experimental_mk1_consent&&sent[0].body.external_audio_muted);
+assert(await page.locator('#send').isDisabled());
+await page.click('#newRequest');question=true;await page.click('#generate');await page.locator('#question').waitFor();assert((await page.textContent('#question')).includes('Fuzz'));
+assert.equal(requests.filter(r=>r.path==='/api/send').length,1);
+question=false;fail=true;await page.click('#generate');await page.locator('#planStage').waitFor();await page.click('#toReview');await page.click('#toConfirm');
+for(const id of ['targetConsent','muteConsent','experimentConsent'])await page.check('#'+id);
+await page.click('#send');await page.waitForFunction(()=>document.getElementById('result').textContent.includes('STOPPED'));
+assert.equal(requests.filter(r=>r.path==='/api/send').length,2);assert(await page.locator('#send').isDisabled());
+assert.deepEqual(errors,[]);console.log('PASS: real trial UI request/Enter/AI question/plan/review/three confirmations/SEND/failure no-retry; all APIs mocked.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

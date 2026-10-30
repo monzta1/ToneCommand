@@ -1,1 +1,1 @@
-"""Experimental, read-only Axe-Fx III support. Importing opens no ports."""
+"""Axe-Fx III support. No MIDI connection or environment changes on import."""

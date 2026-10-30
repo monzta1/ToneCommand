@@ -5,7 +5,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from fm9 import protocol as shared
-from . import protocol
+from . import readonly_protocol as protocol
 
 
 def _number(value, low, high, label):

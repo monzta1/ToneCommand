@@ -1,0 +1,29 @@
+UNOFFICIAL TONECOMMAND MK1 READ-ONLY EVALUATION
+Version 1.5.16-fx3.3-mk1-test.2
+
+This is a Windows source test package, not a full MK1 preset-writing release.
+The normal TC application is included, but this evaluation blocks writes.
+
+1. Extract the complete ZIP to a new writable local folder.
+2. Install Python3.12 64-bit if it is not already present:
+   https://www.python.org/downloads/release/python-31210/
+3. Read docs/MK1-TESTER-GUIDE.md for preparation, limits and test scenarios.
+4. Double-click Install-MK1.cmd. It installs a local environment and tests it.
+5. Close other TC instances and Axe-Edit. Mute external monitoring.
+6. Double-click Start-MK1.cmd. Keep its console open.
+7. Open http://127.0.0.1:8909/mk1-test and follow the English checklist.
+
+Do not start server.py or the normal production launcher for this test.
+Do not choose MK2 or alter guards to bypass unavailable features.
+No drivers, firmware, preset/CAB/NAM memory or global MIDI maps are changed.
+The installer does not require an AI or TONE3000 account.
+
+VS Code: open MK1-Tester.code-workspace, select the local .venv interpreter,
+and use Terminal > Run Task. An example custom scenario is included.
+
+Sharing: download the report JSON, or run the export task to create a ZIP.
+Review it before sending it privately. Screenshots are optional and separate.
+No report is uploaded automatically.
+
+Stop TC normally with Ctrl+C in the server console.
+Record exact firmware/build, not just "latest". Do not update firmware for this test.

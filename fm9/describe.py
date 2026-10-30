@@ -459,7 +459,7 @@ SOURCE:
 """
 
 
-def extract(source_text: str, cancel=None) -> dict:
+def extract(source_text: str, cancel=None, *, ask=None) -> dict:
     """Turn a noisy source into a compact spec, with stated and vague split.
 
     Runs on the configured planner backend, because it is the same kind of
@@ -471,7 +471,9 @@ def extract(source_text: str, cancel=None) -> dict:
     raises SourceCancelled: a STOP button that leaves a minute of model time
     running in the background is only pretending to stop.
     """
-    return _parse_spec(_ask(EXTRACT_TASK + source_text, cancel=cancel))
+    # Device workspaces can supply their explicitly selected text reader.
+    # The existing restricted image reader and default FM9 behavior are unchanged.
+    return _parse_spec((ask or _ask)(EXTRACT_TASK + source_text, cancel=cancel))
 
 
 def _parse_spec(body: str) -> dict:

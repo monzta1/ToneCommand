@@ -104,7 +104,7 @@ def test_the_report_page_needs_no_script(release):
     assert "<script" not in r.text.lower()
     assert "ToneCommand v1.6.1" in r.text
     assert "**Environment**" in r.text and "- OS: " in r.text
-    assert "github.com/monzta1/ToneCommand/issues/new" in r.text
+    assert "github.com/Axelman8/ToneCommand/issues/new" in r.text
 
 
 def test_the_report_page_carries_the_note_escaped(release):
@@ -164,5 +164,5 @@ def test_a_report_too_long_for_a_link_says_copy_and_paste(monkeypatch, release):
     monkeypatch.setattr(diagnostics, "package_for_sharing", lambda **kw: {
         "title": "t", "body": "b", "url": "https://github.com/x?" + "a" * 9000})
     r = TestClient(server.app).get("/report")
-    assert 'href="https://github.com/monzta1/ToneCommand/issues/new"' in r.text
+    assert 'href="https://github.com/Axelman8/ToneCommand/issues/new"' in r.text
     assert "too long for a link" in r.text

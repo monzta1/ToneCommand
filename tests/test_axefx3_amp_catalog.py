@@ -93,7 +93,7 @@ def test_missing_package_resource_is_not_silently_an_empty_roster(monkeypatch):
 
 def test_import_lookup_and_report_open_no_ports_or_enable_writes(monkeypatch):
     from fm9 import midi_transport
-    from devices.axefx3.adapter import ReadOnlyRegistry
+    from devices.axefx3.readonly_adapter import ReadOnlyRegistry
     def forbidden(*args,**kwargs):pytest.fail('Catalog opened MIDI')
     monkeypatch.setattr(midi_transport,'open_ports',forbidden)
     importlib.reload(catalog)

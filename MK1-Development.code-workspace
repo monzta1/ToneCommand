@@ -1,0 +1,12 @@
+{
+  "folders": [{"path": "."}],
+  "settings": {"python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"},
+  "tasks": {"version": "2.0.0", "tasks": [
+    {"label": "MK1 dev: install dependencies and offline tests", "type": "shell", "command": ".\\Install-MK1-Development.cmd", "problemMatcher": []},
+    {"label": "MK1 dev: start own checkout", "type": "shell", "command": ".\\Start-MK1-Development.cmd", "problemMatcher": []},
+    {"label": "MK1 dev: offline regression", "type": "shell", "command": ".\\.venv\\Scripts\\python.exe -m pytest tests/test_mk1_development.py tests/test_mk1_ai_trial.py tests/test_mk1_tester.py -q", "options": {"env": {"TONECOMMAND_SIM": "1"}}, "problemMatcher": []}
+  ]},
+  "launch": {"version": "0.2.0", "configurations": [
+    {"name": "MK1 development (explicit hardware-capable experiment)", "type": "debugpy", "request": "launch", "module": "tools.mk1_development", "cwd": "${workspaceFolder}", "console": "integratedTerminal", "justMyCode": true}
+  ]}
+}

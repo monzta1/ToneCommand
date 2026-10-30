@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import mido
 import pytest
 
-from devices.axefx3 import protocol
-from devices.axefx3.adapter import AxeFxIII, ReadOnlyOutput, snapshot
+from devices.axefx3 import readonly_protocol as protocol
+from devices.axefx3.readonly_adapter import AxeFxIII, ReadOnlyOutput, snapshot
 from devices.axefx3.name_edits import NameEdit
 from fm9 import protocol as shared
 from fm9.device import ReadOnly

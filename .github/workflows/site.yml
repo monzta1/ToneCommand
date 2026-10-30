@@ -33,6 +33,8 @@ concurrency:
 
 jobs:
   publish:
+    # A test release on a contributor fork must not deploy the upstream site.
+    if: github.repository == 'monzta1/ToneCommand'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

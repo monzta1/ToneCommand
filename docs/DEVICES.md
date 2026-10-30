@@ -138,6 +138,11 @@ ledger.
 
 ## Fractal Axe-Fx III (read-only)
 
+In this full Unofficial fork, this section describes the official shared
+Devices path. The separate experimental FX3 workspace retains its own
+measured profile and reviewed writes. Selecting a chassis or reading status
+does not unlock that workspace or grant new firmware/NAM write support.
+
 New in 1.6.0, contributed by [@Axelman8](https://github.com/Axelman8). Choose
 the Axe-Fx III in **Devices** and ToneCommand reads, from the unit:
 

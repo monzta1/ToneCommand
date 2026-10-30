@@ -1,0 +1,24 @@
+{
+  "folders": [{"path": "."}],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "files.exclude": {"**/__pycache__": true}
+  },
+  "extensions": {"recommendations": ["ms-python.python", "ms-python.debugpy"]},
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {"label": "MK1: install and offline checks", "type": "process", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/packaging/mk1/Install.ps1"], "problemMatcher": []},
+      {"label": "MK1: offline safety tests", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "pytest", "tests/test_mk1_tester.py", "-q"], "problemMatcher": []},
+      {"label": "MK1: start read-only TC", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "tools.mk1_tester", "serve"], "problemMatcher": []},
+      {"label": "MK1: observe current state", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "tools.mk1_tester", "observe", "--label", "${input:observationLabel}", "--consent-read-only"], "problemMatcher": []},
+      {"label": "MK1: example custom scenario", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["packaging/mk1/example_scenario.py", "--label", "${input:observationLabel}", "--confirm-monitoring-muted"], "problemMatcher": []},
+      {"label": "MK1: export report for review", "type": "process", "command": "${workspaceFolder}/.venv/Scripts/python.exe", "args": ["-m", "tools.mk1_tester", "export"], "problemMatcher": []}
+    ],
+    "inputs": [{"id": "observationLabel", "type": "promptString", "description": "Observation label. Confirm external audio is muted before running.", "default": "baseline"}]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [{"name": "MK1 read-only TC", "type": "debugpy", "request": "launch", "module": "tools.mk1_tester", "args": ["serve"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "justMyCode": true}]
+  }
+}

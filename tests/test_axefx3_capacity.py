@@ -6,8 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
-from devices.axefx3 import protocol as p
-from devices.axefx3.adapter import AxeFxIII, ReadOnlyOutput, ReadOnlyRegistry, SlotName
+from devices.axefx3 import readonly_protocol as p
+from devices.axefx3.readonly_adapter import AxeFxIII, ReadOnlyOutput, ReadOnlyRegistry, SlotName
 from fm9 import protocol as shared
 from fm9.device import FM9NotFound, ReadOnly
 from tests.test_axefx3_readonly import FakePorts

@@ -267,9 +267,10 @@ def test_clearing_leaves_nothing_behind():
 
 def test_clear_asks_before_deleting_real_work():
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
-    fn = ui.split("$('cclear').onclick")[1].split("\n  };")[0]
+    assert "$('cclear').onclick = startNewDesign;" in ui
+    fn = ui.split("function startNewDesign()")[1].split("\n}\n")[0]
     assert "window.confirm" in fn
-    assert "chatLog.length > 1" in fn, "do not nag over a single line"
+    assert "chatLog.length || currentPlan || $('prompt').value.trim()" in fn
 
 
 # --- the box people actually type into ------------------------------------
@@ -644,7 +645,7 @@ def test_a_cancelled_cli_stream_does_not_burn_the_other_backends(monkeypatch):
 def test_the_stream_endpoint_exists_beside_the_plain_one(client):
     """The non-streaming route stays: a browser that cannot hold a stream
     open, or a backend that cannot stream, still gets an answer."""
-    paths = {r.path for r in server.app.routes}
+    paths = {r.path for r in server.app.routes if hasattr(r, 'path')}
     assert "/api/chat" in paths and "/api/chat/stream" in paths
     assert client.post("/api/chat/stream", json={"messages": []}).status_code == 400
 
@@ -811,7 +812,7 @@ def test_a_reload_starts_a_fresh_conversation():
 # was that BUILD THIS did nothing.
 
 def test_planning_has_a_heartbeat_too(client):
-    paths = {r.path for r in server.app.routes}
+    paths = {r.path for r in server.app.routes if hasattr(r, 'path')}
     assert "/api/plan" in paths and "/api/plan/stream" in paths
     assert "_stream_response(" in inspect.getsource(server.api_plan_stream)
     shared = inspect.getsource(server._stream_response)
@@ -1064,7 +1065,7 @@ def test_both_apply_paths_share_one_loop():
 
 
 def test_the_stream_route_exists_beside_the_plain_one():
-    paths = {r.path for r in server.app.routes}
+    paths = {r.path for r in server.app.routes if hasattr(r, 'path')}
     assert "/api/apply" in paths and "/api/apply/stream" in paths
 
 

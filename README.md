@@ -1,3 +1,17 @@
+> **Unofficial FX3: one repository, one maintained source branch.**
+> This is not an official ToneCommand or Fractal Audio release. Report issues
+> with this fork at [Axelman8/ToneCommand/issues](https://github.com/Axelman8/ToneCommand/issues).
+> Historical test ZIPs and closed-phase instructions are retained for reference;
+> use the current setup guide below rather than copying an old archive over a clone.
+> Use `integration/axefx3-upstream-20261009` for both MK1 development and MK2.
+> Open this folder in VS Code and run **`ToneCommand.cmd`** for the single
+> install / MK1 / MK2 / offline-test menu. Dependencies use `pyproject.toml`;
+> no extra test ZIP or separate MK1 repository is required.
+> [MK1 setup, scope and testing](docs/MK1-DEVELOPMENT.md).
+> MK1 remains an experimental one-scene AMP/CAB + FX build, not full MK1/NAM
+> acceptance. Existing named-release downloads and launchers remain intact
+> for reproducibility; they are not additional independently maintained apps.
+
 <p align="center">
   <img src="docs/img/social-preview.png"
        alt="ToneCommand. Program, connect, command your tone."
@@ -347,6 +361,27 @@ unreachable, on every device, forever.
 The IK Multimedia ToneX pedal is on the same capture contract, read-only for
 now: its 128 programs are listed by name and category from the pedal's own
 dumps, and nothing is written to it until the upload path is decoded (#27).
+
+## Experimental Axe-Fx III adapter
+
+This branch isolates Axe-Fx III behavior in `devices/axefx3` while retaining
+upstream's shared planner, selected AI provider and main FM9 stylesheet. The
+FW32.06 profile and exact measured FW33 NAM beta profile are separate; this is
+not blanket FM9 feature parity or support for arbitrary FW33 versions.
+The bounded Windows/MK2 NAM path includes account search, separately confirmed
+native installation, reviewed edit-buffer builds and separately confirmed
+same-slot Store. No Axe-Edit automation is required by that path.
+
+The exact FW33/MK2 AMP/CAB path also supports reviewed scene designs and
+Cry Babe/Wah1 controller binding. Its additive parameter catalog retains all75
+approved FW32.06 definitions plus eight additions. Parameter coverage is not
+blanket model, channel, routing or Undo support: see the
+[firmware inheritance contract and remaining workflows](docs/AFX3-FIRMWARE-MIGRATION.md).
+
+The integrated source must pass its own hardware regression before deployment;
+historical good-sounding presets do not certify a refactored adapter. See
+[compatibility and remaining limits](docs/FW33-COMPATIBILITY.md) and
+[upstream maintenance, local KB bootstrap and release gates](docs/AFX3-UPSTREAM-MAINTENANCE.md).
 
 ## Next: NAM captures
 

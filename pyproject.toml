@@ -35,6 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+audio = ["yt-dlp>=2026.1"]
 # Building tonecommand.com (site/build.py). Not needed to run the app.
 site = [
     "markdown>=3.7",

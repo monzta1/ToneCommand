@@ -9,6 +9,7 @@ ASSETS = {
     'i18next.min.js': 'text/javascript',
     'i18next.LICENSE': 'text/plain',
     'tc-language.js': 'text/javascript',
+    'tc-language.css': 'text/css',
     'en.json': 'application/json',
     'template.json': 'application/json',
     'manifest.json': 'application/json',

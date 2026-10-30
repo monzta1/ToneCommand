@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import mido
 import pytest
 
-from devices.axefx3 import protocol as p
-from devices.axefx3.adapter import AxeFxIII, ReadOnlyOutput, snapshot
+from devices.axefx3 import readonly_protocol as p
+from devices.axefx3.readonly_adapter import AxeFxIII, ReadOnlyOutput, snapshot
 from devices.axefx3.name_edits import NameEdit
 from devices.axefx3.name_writer import (MK2_FW33_IDENTITY, NameReadbackError,
                                        NameWriter, _NameOutput)

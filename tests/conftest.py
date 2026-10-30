@@ -41,6 +41,9 @@ def isolated_env(tmp_path, monkeypatch):
     later.
     """
     from fm9 import planner, share
+    from devices.axefx3 import amp_refresh
+    # Never inspect a developer's real editor cache from an API test.
+    monkeypatch.setattr(amp_refresh,'cache_directory',lambda:tmp_path/'no-editor-cache')
     monkeypatch.setattr(planner, "_env_path", lambda: tmp_path / ".env")
     # Third time, same lesson. share.endpoint() gained a .env fallback the day
     # the service was deployed, because reading only os.environ meant the
@@ -59,6 +62,14 @@ def isolated_env(tmp_path, monkeypatch):
     # is pinned here for every module whether the test asks or not.
     monkeypatch.setenv("TONECOMMAND_STORE_SLOTS_FILE",
                        str(tmp_path / "store_slots.json"))
+    # A persisted provider choice must never send a test to a real account.
+    monkeypatch.setenv("TONECOMMAND_AI_SETTINGS", str(tmp_path / "ai_settings.json"))
+    monkeypatch.setenv('TONECOMMAND_TONE3000_DIR',str(tmp_path / 'afx3-tone3000'))
+    monkeypatch.setenv('TONECOMMAND_NAM_BACKUP_DIR',str(tmp_path / 'nam-backups'))
+    monkeypatch.setenv('TONECOMMAND_AXEFX3_STATE_DIR',str(tmp_path / 'afx3-state'))
+    from devices.axefx3 import tone3000 as afx3_tone3000
+    monkeypatch.delenv('TONECOMMAND_TONE3000_CLIENT_ID',raising=False)
+    monkeypatch.setattr(afx3_tone3000,'build_opener',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('Offline test reached Tone3000 network')))
     # Fourth time, same lesson, and this one hangs rather than corrupts. Tests
     # reach get_fm9(), which opens the real MIDI port when one is there. With
     # the app running and holding that port, the whole suite blocks: it ran
@@ -68,6 +79,7 @@ def isolated_env(tmp_path, monkeypatch):
     # The simulator is a real implementation, so nothing is lost by pinning
     # it here for every module whether the test asks or not.
     monkeypatch.setenv("TONECOMMAND_SIM", "1")
+    monkeypatch.delenv('TONECOMMAND_BETA5_CORE',raising=False)
     # Fifth time, same lesson, and this one downloads. /api/acquire routes a
     # catalogued artist through fm9.gallery's verified fetch (#157), and a
     # test that faked acquire._download only found "Periphery" in the real
@@ -75,6 +87,10 @@ def isolated_env(tmp_path, monkeypatch):
     # downloader refuses here unless a test replaces it, and its cache
     # lands in tmp_path, never in the developer's ~/.tonecommand.
     from fm9 import gallery
+    import server
+    # #293: pending downloaded bytes must not survive into another test.
+    # Replace the dictionary for this test; do not clear a retained object.
+    monkeypatch.setattr(server, "_install_cache", {})
 
     def _no_network(url):
         raise AssertionError(f"a test reached the network for {url}; "
@@ -84,7 +100,8 @@ def isolated_env(tmp_path, monkeypatch):
     for name in ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
                  "PLANNER_API_KEY", "PLANNER_TIMEOUT", "PLANNER_MAX_TOKENS",
                  "GROK_CLI_MODEL", "ANTHROPIC_API_KEY",
-                 "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL"):
+                 "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL", "CODEX_CLI_MODEL",
+                 "TONECOMMAND_CODEX_CLI"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path / ".env"
 

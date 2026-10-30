@@ -8,7 +8,11 @@ window.AFX3ReviewedEdit = (() => {
   const active=()=>!!currentPlan?.afx3_edit;
   const ticket=()=>currentPlan?.afx3_ticket;
   const status=text=>{node('afx3editstatus').textContent=text;};
-  function controls(){node('afx3prepare').disabled=busy||!metadata?.available;}
+  function controls(){
+    node('afx3prepare').disabled=busy||!metadata?.available;
+    const blocked=busy||(typeof newDesignBusy==='function'&&newDesignBusy());
+    for(const id of ['newrequest','newdesign']){const n=node(id);if(n)n.disabled=blocked;}
+  }
   async function api(path,body){
     const r=await fetch('/api/axefx3/edit/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -184,5 +188,5 @@ window.AFX3ReviewedEdit = (() => {
   }
   const readonlyNote=()=>tcText("General controls remain read-only. This opt-in proposal edits only Amp 1/channel A Gain or Mid through REVIEW, CONFIRM and SEND. No Store or automatic Undo.");
   const completionNote=()=>tcText(". This edit stays unsaved. There is no automatic Undo.");
-  return {active,prepare,review,restart,renderConfirm,consentChanged,arm,send,invalidate,poll,lockCards,renderRail,readonlyNote,completionNote};
+  return {active,working:()=>busy,prepare,review,restart,renderConfirm,consentChanged,arm,send,invalidate,poll,lockCards,renderRail,readonlyNote,completionNote};
 })();

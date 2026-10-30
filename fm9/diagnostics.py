@@ -38,7 +38,8 @@ DEFAULT_LOG_PATH = Path.home() / ".tonecommand" / "diagnostics.jsonl"
 #: convention elsewhere (14 days).
 RETENTION_DAYS = 14
 
-REPO = "monzta1/ToneCommand"
+# Unofficial fork reports belong to its maintainer, not the upstream queue.
+REPO = "Axelman8/ToneCommand"
 
 _SECRET_PATTERNS = [
     # Anthropic API keys: sk-ant-<...>

@@ -1,0 +1,26 @@
+Unofficial TC MK1 evaluation checklist
+
+Package version:
+Windows version:
+Python version and 64-bit confirmation:
+Exact Fractal firmware/build:
+Axe-Edit version:
+Hardware declared by its owner: Mark I / Mark I Turbo
+
+For each item record PASS / FAIL / NOT TESTED and a short non-sensitive note.
+
+MK1 01 Offline installation and guard tests:
+MK1 02 Current preset/scene match the unit; baseline observation coherent:
+MK1 03 Manually selected scene observed, not selected by TC:
+MK1 04 Independent Axe-Edit names/grid/bypass/channel comparison:
+MK1 05 Write/Store/NAM/account actions remain unavailable; MK2 refused:
+MK1 06 Existing NAM/Cab memory reviewed manually, no installation or deletion:
+
+Did all reads preserve the selected preset/scene and visible state?
+Which read_errors were reported?
+Was any error message difficult to understand?
+Was the TC interface usable at your screen resolution?
+
+Attach only the reviewed report JSON/ZIP. Review screenshots separately.
+Do not include secrets, serial numbers, NAM payloads or complete preset banks.
+No MK1 writes are authorized or validated by this checklist.

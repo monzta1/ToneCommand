@@ -1,5 +1,12 @@
 # Opt-in Axe-Fx III reviewed Amp edit
 
+Full-fork candidate,28October: default connections use `readonly_adapter`;
+the opt-in writer uses that same read-only boundary plus its exact reviewed
+operation. No writer/profile promotion follows from this namespace mapping.
+New Design waits while a reviewed operation is in flight. The new script is
+included in launcher source identity; added labels use bundled EN/NL/DE.
+Browser POST origins must be actual loopback origins, not a reflected Host.
+
 This is a small developer experiment, not full preset planning or a new
 release. It builds on the separate single-edit bridge in #289. Normal
 Axe-Fx III connections remain read-only and the FM9 flow stays unchanged.

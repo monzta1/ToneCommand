@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "catalog_version": "1.5.16-lang.2",
-  "catalog_sha256": "20ffc2d3e90076a3179eb9df156748302c9e58a54a6c2eecc15c4f1984220156",
+  "catalog_version": "1.6.2-lang.2",
+  "catalog_sha256": "e91bb87ada84441b37fc93f5a5a4d695e03ebc46173ce50f7e8aed62c1ac0aa6",
   "app_version": "1.6.2",
   "base_language": "en",
   "available": [
@@ -26,6 +26,6 @@
   "engine": "i18next",
   "engine_version": "26.5.5",
   "engine_sha256": "da9b1d487188c3ef5b252ddefb0d8e2162c171d19cc82e59a8ff6b9cfd95f57d",
-  "key_count": 730,
+  "key_count": 757,
   "coverage": "Initial shipped markup and marked FX3/controller messages; live plans and device/user text excluded."
 }

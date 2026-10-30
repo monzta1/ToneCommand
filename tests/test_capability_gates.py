@@ -141,6 +141,9 @@ def world(monkeypatch, tmp_path):
 
 def _stub_world(monkeypatch, tmp_path) -> list[str]:
     calls: list[str] = []
+    from devices.axefx3 import tone_search, reference_audio
+    monkeypatch.setattr(tone_search, 'search', lambda *a, **k: {'candidates': [], 'hardware_written': False})
+    monkeypatch.setattr(reference_audio, 'fetch_audio', lambda url: b'test audio')
     monkeypatch.setattr(urllib.request, "urlopen", _refuse("urlopen", calls))
     monkeypatch.setattr(socket, "create_connection",
                         _refuse("socket.create_connection", calls))
@@ -294,6 +297,49 @@ def _table(sim) -> list[dict]:
     rows = [
         ("GET", "/", {}, None, None),
         ("GET", "/logo.png", {}, None, None),
+        ("GET", "/controllers", {}, None, None),
+        ("GET", "/controllers.js", {}, None, None),
+        ("GET", "/axefx3", {}, None, None),
+        ("GET", "/axefx3.js", {}, None, None),
+        ("GET", "/axefx3.css", {}, None, None),
+        ("GET", "/api/axefx3/state", {}, None, None),
+        ("GET", "/api/axefx3/history", {}, None, None),
+        ("POST", "/api/axefx3/history/resume", {}, {"record_id":"a"*32,"expected_preset":324}, None),
+        ("POST", "/api/axefx3/amps/refresh", {}, {"expected_firmware":"33.00-beta.20261006"}, None),
+        ("POST", "/api/axefx3/profile", {}, {"variant":"mk1"}, None),
+        ("POST", "/api/axefx3/search", {}, {"query":"Marshall Plexi","format":"nam"}, None),
+        ("POST", "/api/axefx3/audio", {}, {"url":"https://example.com/reference.wav"}, None),
+        ("POST", "/api/axefx3/audio/compare", {}, {"reference":{"sample_seconds":1,"rms_dbfs":-18,"peak_dbfs":-3,"crest_db":15,"centroid_hz":440,"band_energy":[0,1,0,0,0]},"recording":{"sample_seconds":1,"rms_dbfs":-18,"peak_dbfs":-3,"crest_db":15,"centroid_hz":440,"band_energy":[0,1,0,0,0]}}, None),
+        ("POST", "/api/axefx3/cabs", {}, {"kind":"user","text":"U1.0001 Test"}, None),
+        ("POST", "/api/axefx3/plan", {}, {"prompt":"test preset","expected_preset":324,"scenes":4}, None),
+        ("POST", "/api/axefx3/options", {}, {"prompt":"test preset","expected_preset":324}, None),
+        ("POST", "/api/axefx3/intake", {}, {"prompt":"test preset","expected_preset":324,"scenes":4}, None),
+        ("GET", "/api/axefx3/navigation/presets", {}, None, None),
+        ("POST", "/api/axefx3/navigation/prepare", {}, {"kind":"scene","value":1,"expected_preset":324,"expected_scene":1}, None),
+        ("POST", "/api/axefx3/navigation/select", {}, {"token":"fake-navigation-ticket"}, None),
+        ("POST", "/api/axefx3/discard", {}, {}, None),
+        ("POST", "/api/axefx3/send", {}, {"token":"none","target_confirmed":True,"external_audio_muted":True}, None),
+        ("GET", "/api/axefx3/tone3000/status", {}, None, None),
+        ("GET", "/api/axefx3/tone3000/slots", {}, None, None),
+        ("POST", "/api/axefx3/tone3000/config", {}, {"client_id":""}, None),
+        ("POST", "/api/axefx3/tone3000/auth/start", {}, {}, None),
+        ("POST", "/api/axefx3/tone3000/disconnect", {}, {}, None),
+        ("GET", "/api/axefx3/tone3000/tones", {}, None, None),
+        ("GET", "/api/axefx3/tone3000/tones/{tone_id}", {"tone_id":1}, None, None),
+        ("POST", "/api/axefx3/tone3000/select", {}, {"tone_id":1}, None),
+        ("POST", "/api/axefx3/tone3000/selection/clear", {}, {}, None),
+        ("GET", "/api/axefx3/tone3000/download/{model_id}", {"model_id":1}, None, None),
+        ("POST", "/api/axefx3/tone3000/suggest", {}, {"query":"test"}, None),
+        ("POST", "/api/axefx3/tone3000/install/prepare", {}, {"model_id":1,"expected_preset":133,"slot":1}, None),
+        ("POST", "/api/axefx3/tone3000/install", {}, {"prepared_id":"x"*32}, None),
+        ("POST", "/api/axefx3/store/prepare", {}, {"expected_preset":133}, None),
+        ("POST", "/api/axefx3/store", {}, {"token":"x"*32}, None),
+        ("GET", "/api/controllers/state", {}, None, None),
+        ("POST", "/api/controllers/connect", {}, {}, None),
+        ("POST", "/api/controllers/disconnect", {}, {}, None),
+        ("POST", "/api/controllers/review", {}, {"effect_id":95,"source":12}, None),
+        ("POST", "/api/controllers/discard", {}, {}, None),
+        ("POST", "/api/controllers/send", {}, {"token":"none","target_confirmed":True,"external_audio_muted":True}, None),
         ("GET", "/axefx3-reviewed-edit.js", {}, None, None),
         ("GET", "/api/axefx3/edit/state", {}, None, None),
         ("POST", "/api/axefx3/edit/discard", {}, None, None),
@@ -480,10 +526,16 @@ EXTRA_PROBES = [
 
 def _registered_routes() -> set[tuple[str, str]]:
     out = set()
-    for r in server.app.routes:
-        if isinstance(r, APIRoute):
-            for m in r.methods:
-                out.add((m, r.path))
+    def visit(routes):
+        for r in routes:
+            if isinstance(r, APIRoute):
+                for m in r.methods:
+                    out.add((m, r.path))
+            elif getattr(r, 'original_router', None) is not None:
+                # Recent FastAPI preserves included routers lazily. Their
+                # API routes must not disappear from substitution coverage.
+                visit(r.original_router.routes)
+    visit(server.app.routes)
     return out
 
 

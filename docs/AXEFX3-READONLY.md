@@ -1,5 +1,53 @@
 # Axe-Fx III read only review
 
+## Read-only follow-up, 28 October 2026
+
+On the owner's Mark II with the exact Beta5 build20261026, all1024 native
+name reads were compared with an independent Axe-Edit III1.15.02 text export
+from Tools > Export As Text > Preset List. Every requested address replied
+with its correct number. There were1022 exact name matches, including511 of
+the512 upper-half names. Two exported names omitted an initial space retained
+by the native reader, one in each half. These differences remain visible;
+do not call this1024 byte-exact name matches or silently trim stored names.
+All other name characters agreed. This does not verify MK1/Turbo hardware.
+
+The name scan sent only strict read forms and preserved its complete basic
+status snapshot. Separate double full-grid/bulk/modifier/name reads before
+and after it also matched. During editor preparation, the disposable327
+unsaved Amp/Pitch fixture was reloaded; its full prior observation was kept.
+The comparison itself did not select/store presets. No Save, NAM/IR install,
+global change or write to326/328 was performed by these tools.
+
+The shared read-only adapter now labels previously observed full firmware
+responses by their exact existing fingerprints. An unknown response still
+falls back to its raw fields, including97.00; it is not assumed to be a known
+build. The read-only final output guard and all write capabilities are unchanged.
+Recognizing Beta5 does not make it a general write profile or identify chassis.
+
+The optional offline checker preserves spaces and reports counts/indices only:
+
+```text
+python -m tools.axefx3_name_list --editor-export editor.txt --tc-export tc.json --chassis mk2
+```
+
+The TC file contains a complete list of `{number, name}` entries, optionally
+under a `slots` key, for the declared MK1/512 or MK2/Turbo/1024 range. Invalid,
+duplicate or incomplete inputs fail visibly. Raw differences return exit1,
+even if they contain only outer spaces. The checker opens no MIDI connection
+and grants no hardware permission. Keep name-list inputs private; share only
+the resulting counts/slot indices unless you intentionally want names public.
+
+## Full-fork path mapping, 28 October 2026
+
+The upstream read-only implementation maps to `readonly_adapter.py` and
+`readonly_protocol.py` under `devices/axefx3` in this Unofficial fork. The
+shared Devices selector uses that boundary. The existing `adapter.py` and
+`protocol.py` remain the separate guarded workspace. Do not substitute those
+in this slice's tests or infer write permission from read-only acceptance.
+
+The remainder records the original slice's historical scope and evidence;
+the dated follow-up above supersedes its upper-half/known-label status.
+
 This is the basic reading slice of [the larger contribution](https://github.com/monzta1/ToneCommand/pull/270).
 It lets the existing Devices selector open an Axe-Fx III without enabling
 preset writing, NAM installation or account workflows. The full working fork

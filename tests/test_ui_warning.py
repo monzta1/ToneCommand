@@ -298,12 +298,13 @@ def test_result_cards_are_not_knocked_out_of_step_by_extra_results():
     assert "cards[card]" in body and "cards[i]" not in body
 
 
-def test_the_app_carries_the_mark():
-    """In the header beside the wordmark, and on the tab. The mark is what you
-    recognise among twenty tabs; the wordmark is what you read."""
+def test_unofficial_app_identifies_the_fork_without_the_upstream_mark():
+    """Unofficial distributions must not masquerade as the upstream release."""
     assert 'class="brand"' in UI
-    assert 'src="/logo.png"' in UI
-    assert 'rel="icon"' in UI
+    assert 'src="/logo.png"' not in UI
+    assert '<h1>Unofficial FX3</h1>' in UI
+    assert 'rel="icon" href="data:,"' in UI
+    assert 'https://github.com/Axelman8/ToneCommand/issues' in UI
     style = UI.split("<style>")[1].split("</style>")[0]
     assert ".brand {" in style
 

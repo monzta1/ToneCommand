@@ -5,6 +5,10 @@ are bundled with ToneCommand. The choice applies immediately and is remembered
 in this browser profile. There is no separate dialog, import step or download.
 If browser storage is unavailable, the choice lasts for the current session.
 
+The experimental FX3/controller workspaces expose the same native dropdown
+inside SETTINGS. There is no additional language dialog or import control.
+The same bundled loader and catalogs serve all three surfaces.
+
 Dutch and German currently cover core request, navigation and Settings labels.
 Other text falls back to English. Coverage is initial shipped markup and
 explicitly marked messages; unmarked dynamic messages remain English.
@@ -58,5 +62,10 @@ all network requests and does not connect a device or use an AI account.
 
 Language files ship with the normal app release. The manifest records catalog
 version/hash, available native language names and the local engine checksum.
-This contribution does not add a separate language-release workflow. Language
-support is independent of firmware, device write permissions and MK1 acceptance.
+Upstream ships these files with the normal application. This fork retains its
+optional local archive builder for historical package users, but no separate
+publishing workflow or extra in-app download control.
+After committing and testing a changed catalog, `python -m tools.language_packs
+--build` creates a new archive/checksum; never overwrite an older release asset.
+Language support is independent of firmware, device write permissions and MK1
+acceptance. `tests/language_picker.browser.cjs` also covers the native workspace controls.

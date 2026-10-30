@@ -90,7 +90,7 @@ def test_share_package_is_scrubbed_and_never_sent_automatically(tmp_path):
     pkg = diag.package_for_sharing(path=path)
     assert "shouldnotship1234" not in pkg["body"]
     assert "shouldnotship1234" not in pkg["title"]
-    assert pkg["url"].startswith("https://github.com/monzta1/ToneCommand/issues/new")
+    assert pkg["url"].startswith("https://github.com/Axelman8/ToneCommand/issues/new")
     assert pkg["entry_count"] == 1
 
     # package_for_sharing must not itself perform any network I/O - it

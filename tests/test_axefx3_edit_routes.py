@@ -5,9 +5,14 @@ from fastapi.testclient import TestClient
 
 import server
 from devices.axefx3 import edit_routes
-from devices.axefx3.adapter import ReadOnlyRegistry
+from devices.axefx3.readonly_adapter import ReadOnlyRegistry
 from devices.axefx3.amp_writer import AmpWriter
 from tests.test_axefx3_amp_writer import AmpPorts
+
+
+@pytest.fixture(autouse=True)
+def forbid_physical_ports(monkeypatch):
+    monkeypatch.setattr('fm9.midi_transport.open_ports',lambda *a,**k:pytest.fail('Physical MIDI is forbidden in route tests'))
 
 
 @pytest.fixture
@@ -170,10 +175,27 @@ def test_javascript_is_static_and_does_not_open_midi(api):
     assert r.status_code==200 and not p.sent
 
 
+def test_reflected_non_loopback_origin_cannot_prepare_or_discard(api):
+    c,dev,p=api
+    headers={'host':'untrusted.example','origin':'http://untrusted.example'}
+    body=dict(actions=[dict(kind='set_param',block='amp',param='DISTORT_DRIVE',value=3.3)],expected_preset=320,expected_scene=1)
+    assert c.post('/api/axefx3/edit/prepare',json=body,headers=headers).status_code==403
+    assert c.post('/api/axefx3/edit/discard',headers=headers).status_code==403
+    assert not p.sent
+
+
+def test_actual_loopback_browser_origin_can_prepare_without_a_write(api):
+    c,dev,p=api
+    headers={'host':'127.0.0.1:8909','origin':'http://127.0.0.1:8909'}
+    body=dict(actions=[dict(kind='set_param',block='amp',param='DISTORT_DRIVE',value=3.3)],expected_preset=320,expected_scene=1)
+    assert c.post('/api/axefx3/edit/prepare',json=body,headers=headers).status_code==200
+    assert not p.writes
+
+
 def test_normal_connection_factory_stays_readonly_unless_explicitly_enabled(monkeypatch):
     calls=[]
     monkeypatch.delenv('TONECOMMAND_AXEFX3_REVIEWED_AMP',raising=False)
-    monkeypatch.setattr('devices.axefx3.adapter.AxeFxIII',lambda **kw:calls.append(kw) or 'readonly')
+    monkeypatch.setattr('devices.axefx3.readonly_adapter.AxeFxIII',lambda **kw:calls.append(kw) or 'readonly')
     assert edit_routes.connect('mk1')=='readonly' and calls==[{'chassis':'mk1'}]
     monkeypatch.setenv('TONECOMMAND_AXEFX3_REVIEWED_AMP','1')
     for chassis in ('mk1','turbo'):

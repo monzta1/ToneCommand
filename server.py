@@ -55,7 +55,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="FM9 Tone Control", lifespan=_lifespan)
+app = FastAPI(title="Unofficial FX3 | ToneCommand fork", lifespan=_lifespan)
 
 
 # --- who may talk to this server (#291) --------------------------------------
@@ -121,8 +121,6 @@ class _LocalOnly:
                 return
         await self.inner(scope, receive, send)
 
-
-app.add_middleware(_LocalOnly)
 
 #: WARNING and above reach stderr even with no handler configured (Python's
 #: last-resort handler), which is exactly the bar: a failed action inside a
@@ -326,7 +324,7 @@ def _build_context(kind: str, *, axefx3_chassis=None) -> DeviceContext:
     if kind == "fm9":
         return _default_context
     if kind == "axefx3":
-        from devices.axefx3.adapter import ReadOnlyRegistry
+        from devices.axefx3.readonly_adapter import ReadOnlyRegistry
         from devices.axefx3.edit_routes import connect as connect_reviewed_iii
         chassis = axefx3_chassis or _axefx3_chassis['value']
         return DeviceContext(kind, ReadOnlyRegistry(), connect_reviewed_iii(chassis), DEVICE_KINDS[kind])
@@ -379,7 +377,10 @@ def _axefx3_read_profile() -> dict:
     ctx = device_context()
     if ctx.kind != 'axefx3':
         return {}
-    from devices.axefx3 import protocol
+    from devices.axefx3 import readonly_protocol as protocol
+    from devices.axefx3.readonly_adapter import is_readonly_device
+    if not is_readonly_device(ctx.adapter):
+        return {'axefx3': {'read_only': False, 'workspace': '/axefx3'}}
     chassis = getattr(ctx.adapter, 'chassis', _axefx3_chassis['value'])
     return {'axefx3': {'chassis': chassis, 'preset_count': protocol.preset_count(chassis),
                       'declared': True, 'read_only': True}}
@@ -401,7 +402,8 @@ def api_device():
     kind, avail = device_target()
     return {"selected": kind, "active": device_context().kind,
             "available": avail,
-            "ambiguous": kind is None, **_axefx3_read_profile()}
+            "ambiguous": kind is None, "detected": detected_devices(),
+            **_axefx3_read_profile()}
 
 
 @app.post("/api/device/select")
@@ -412,7 +414,7 @@ def api_device_select(body: dict):
     kind = str(body.get("kind") or "")
     chassis = body.get('chassis', _axefx3_chassis['value'])
     if kind == 'axefx3':
-        from devices.axefx3 import protocol
+        from devices.axefx3 import readonly_protocol as protocol
         try:
             protocol.preset_count(chassis)
         except ValueError as exc:
@@ -791,6 +793,9 @@ def get_fm9() -> DeviceAdapter:
     context's adapter, gated exactly the same way."""
     global _fm9
     ctx = device_context()
+    from devices.axefx3.readonly_adapter import is_readonly_device
+    if ctx.kind == "axefx3" and not is_readonly_device(ctx.adapter):
+        raise CapabilityDeclined("controller_workspace_only", "get_fm9")
     if ctx.kind != "fm9" or ctx.adapter is not None:
         if ctx.adapter is None:
             if ctx.kind == "fm3":
@@ -2030,7 +2035,7 @@ def scene_names(fm9: DeviceAdapter) -> list[dict]:
 
 def snapshot(fm9: DeviceAdapter) -> dict:
     if device_context().kind == "axefx3":
-        from devices.axefx3.adapter import snapshot as readonly_snapshot
+        from devices.axefx3.readonly_adapter import snapshot as readonly_snapshot
         return readonly_snapshot(fm9, _gig_mode["on"])
     preset = fm9.current_preset()
     if preset is None:
@@ -2405,15 +2410,18 @@ def _badge_text() -> str:
 _SERVER_VERSION_SLOT = re.compile(r"(<span\b[^>]*\bdata-server-version\b[^>]*>)(</span>)")
 
 
-@app.get("/")
-def index():
-    """The page, with the running version filled in by the server (#282),
-    so it shows even when the page's own script fails to run."""
+def interface_page(filename: str):
+    """Fixed app entry pages show a version even when their script fails."""
     import html as _html
-    page = resource_path("ui", "index.html").read_text(encoding="utf-8")
+    page = resource_path("ui", filename).read_text(encoding="utf-8")
     badge = _html.escape(_badge_text())
     page = _SERVER_VERSION_SLOT.sub(lambda m: m.group(1) + badge + m.group(2), page)
     return HTMLResponse(page, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/")
+def index():
+    return interface_page("index.html")
 
 
 _REPORT_PAGE = """<!doctype html>
@@ -2421,7 +2429,7 @@ _REPORT_PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ToneCommand: report a problem</title>
+<title>Unofficial FX3: report a problem</title>
 <style>
   body {{ margin: 0; padding: 24px 16px; background: #05080d; color: #c9dcea;
          font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace; }}
@@ -2439,7 +2447,7 @@ _REPORT_PAGE = """<!doctype html>
 </head>
 <body>
 <main>
-<h1>REPORT A PROBLEM</h1>
+<h1>UNOFFICIAL FX3: REPORT A PROBLEM</h1>
 <p>ToneCommand {version}. This page works even when the main page does not.</p>
 <p class="muted">Nothing is sent from here. Read the report below, then open a
 GitHub issue with it yourself, or copy it and paste it anywhere.</p>
@@ -2451,7 +2459,7 @@ GitHub issue with it yourself, or copy it and paste it anywhere.</p>
 <label for="report">What will be included</label>
 <textarea id="report" rows="18" readonly>{text}</textarea>
 {hint}<p><a class="go" href="{url}" target="_blank" rel="noopener">OPEN A GITHUB ISSUE WITH THIS REPORT</a>
-<a class="go" href="/">BACK TO TONECOMMAND</a></p>
+<a class="go" href="/">BACK TO UNOFFICIAL FX3</a></p>
 </main>
 </body>
 </html>
@@ -3549,7 +3557,7 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         from fm9.device import FM3_READ_ONLY
         return {"error": FM3_READ_ONLY, "read_only": True}
     if kind == "axefx3":
-        from devices.axefx3.adapter import READ_ONLY
+        from devices.axefx3.readonly_adapter import READ_ONLY
         return {"error": READ_ONLY, "read_only": True}
     # #84: a new plan reads the rig as it is; an audition still hanging in
     # the edit buffer would be read as the player's cab. Put it back first.
@@ -7307,11 +7315,16 @@ def api_tone3000_login(prompt: str | None = None, tone_id: int | None = None):
 
 
 @app.get("/api/tone3000/callback")
-def api_tone3000_callback(code: str | None = None, state: str | None = None,
+def api_tone3000_callback(request: Request, code: str | None = None, state: str | None = None,
                           tone_id: int | None = None, error: str | None = None):
     """TONE3000 sends the browser back here. The state must be the one we
     sent; an error parameter stores nothing; the code is exchanged and
     the tokens kept at 0600. Then back to the app with a one-line note."""
+    from devices.axefx3 import tone3000_routes as afx3_tone3000
+    with afx3_tone3000.t3.client.lock:
+        afx3_login = state in afx3_tone3000.t3.client.pending if state else False
+    if request.cookies.get(afx3_tone3000.COOKIE) or afx3_login:
+        return afx3_tone3000.callback(request)
     pending = _t3k_consume_pending()
     if error:
         return RedirectResponse(f"/?tone3000=refused:{error}", status_code=302)
@@ -8817,6 +8830,15 @@ def _apply_for(body: ApplyBody, on_step=None):
                                     "seconds": r["seconds"]} for r in slow]}}
 
 
+import sys as _sys
+from devices.axefx3.controller_ui import register as _register_controller_ui
+from devices.axefx3.tone_ui import register as _register_afx3_tone_ui
+_controller_reviews = _register_controller_ui(app, _sys.modules[__name__])
+_afx3_tone_reviews = _register_afx3_tone_ui(app, _sys.modules[__name__])
+from devices.axefx3.nam_ui import register as _register_afx3_nam_ui
+_afx3_nam_installer = _register_afx3_nam_ui(app, _sys.modules[__name__])
+
+
 def main():
     # a choice made in the UI has to survive a restart, and the planner reads
     # its configuration from the environment, so push the saved one there
@@ -8888,6 +8910,9 @@ def api_plan_revise(body: ApplyBody):
 import sys as _edit_sys
 from devices.axefx3.edit_routes import register as _register_reviewed_iii
 _afx3_edit_workflow = _register_reviewed_iii(app, _edit_sys.modules[__name__])
+
+# Validate local headers before workspace redirects or device-specific guards.
+app.add_middleware(_LocalOnly)
 
 if __name__ == "__main__":
     main()

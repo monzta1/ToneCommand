@@ -24,6 +24,11 @@ The primary foundation of this project's protocol layer.
   display-to-wire scaling, the 8-to-7 packing algorithms, and the sub 0x2E
   grid-layout bitstream decode. Portions modified; see README "Protocol
   Contributions" for changes and corrections made in this project.
+- `devices/axefx3/amp_cache.py` adapts the strict Gen-3 metadata record grammar
+  from `parse-effectdefinitions-cache.ts` at commit
+  `59047175cfc4f23e092931b54a7c54f2bffde3ea`, via this fork's prior local
+  inventory tool. Modified for bounded read-only parsing and amplifier-only
+  output; no private IR table, editor cache or new write authority is included.
 
 Reproduction of that project's NOTICE (as required by Apache-2.0):
 

@@ -29,9 +29,12 @@ import json
 import tempfile
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -64,6 +67,36 @@ def find_grok_cli() -> str | None:
         return path
     bundled = Path.home() / ".grok" / "bin" / "grok"
     return str(bundled) if bundled.exists() else None
+
+
+def find_codex_cli() -> str | None:
+    """Resolve an explicit install, PATH, or the current Windows editor bundle."""
+    configured = _env("TONECOMMAND_CODEX_CLI").strip()
+    if configured:
+        candidate = Path(os.path.expandvars(configured)).expanduser()
+        return str(candidate) if candidate.is_absolute() and candidate.is_file() else None
+    found = shutil.which("codex")
+    if found or sys.platform != "win32":
+        return found
+    user_dir = Path.home()
+    installed = [user_dir / ".local" / "bin" / "codex.exe"]
+    if os.environ.get("APPDATA"):
+        installed.append(Path(os.environ["APPDATA"]) / "npm" / "codex.cmd")
+    for candidate in installed:
+        if candidate.is_file():
+            return str(candidate)
+    architecture = {"amd64": "windows-x86_64", "x86_64": "windows-x86_64",
+                    "arm64": "windows-aarch64", "aarch64": "windows-aarch64"}.get(platform.machine().lower())
+    if not architecture:
+        return None
+    bundled = []
+    for editor in (".vscode", ".vscode-insiders"):
+        for extension in (user_dir / editor / "extensions").glob("openai.chatgpt-*"):
+            version = re.fullmatch(r"openai\.chatgpt-(\d+(?:\.\d+)*)(?:-[\w.-]+)?", extension.name)
+            candidate = extension / "bin" / architecture / "codex.exe"
+            if version and candidate.is_file():
+                bundled.append((tuple(map(int, version[1].split("."))), str(candidate)))
+    return max(bundled, key=lambda entry: entry[0])[1] if bundled else None
 
 
 PLAN_SCHEMA = {
@@ -268,7 +301,7 @@ if _TONE_RULES:
               "not the rule:\n\n" + _TONE_RULES)
 
 
-BACKENDS = ("openai", "cli", "grok", "api")
+BACKENDS = ("openai", "cli", "grok", "api", "codex")
 
 FAILURE_CLASSES = (
     "unavailable",         # not configured, or its binary is missing
@@ -543,8 +576,11 @@ def _validate(plan_obj: dict) -> dict:
     return plan_obj
 
 
-SHELL_ENV_KEYS = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG",
-                  "LC_ALL", "TERM", "TMPDIR")
+# Windows needs SystemRoot for Winsock/DNS and its profile paths for CLI
+# configuration. Keep these runtime paths without forwarding foreign secrets.
+SHELL_ENV_KEYS = ("PATH", "HOME", "USER", "USERPROFILE", "APPDATA",
+                  "LOCALAPPDATA", "SystemRoot", "ComSpec", "LOGNAME",
+                  "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR")
 
 # How a machine reaches the network at all. Stripping these turns a working
 # planner into a backend_error on any host behind a proxy or a TLS-inspecting
@@ -575,6 +611,7 @@ CLAUDE_ENV_KEYS = NETWORK_ENV_KEYS + (
 # NETWORK_ENV_KEYS exists to prevent (@Triumph1701 on #25). No Anthropic or
 # cloud keys here: a second vendor's binary has no business with them.
 GROK_ENV_KEYS = NETWORK_ENV_KEYS + ("XAI_API_KEY", "GROK_API_KEY")
+CODEX_ENV_KEYS = NETWORK_ENV_KEYS + ("CODEX_HOME", "CODEX_CLI_MODEL")
 
 
 def cli_env(binary_keys: tuple[str, ...] = (),
@@ -1167,7 +1204,7 @@ def _plan_via_openai(prompt: str, device_state: str,
     payload = json.dumps({
         "model": model,
         "messages": [
-            {"role": "system", "content": f"{SYSTEM}\n\n{JSON_ONLY}"},
+            {"role": "system", "content": f"{system or SYSTEM}\n\n{JSON_ONLY}"},
             {"role": "user",
              "content": _full_prompt(prompt, device_state, param_reference, system, shape)},
         ],
@@ -1284,7 +1321,54 @@ def _api_available() -> bool:
     return bool(_env("ANTHROPIC_API_KEY"))
 
 
+def _plan_via_codex(prompt: str, device_state: str, param_reference: str,
+                    system: str = "", shape: str = "",
+                    schema: dict | None = None) -> tuple[dict, str]:
+    """Explicit-only CLI proposal backend. UTF-8 avoids Windows charmap errors.
+
+    Read-only/ephemeral CLI flags are not an audio safety boundary. TC still
+    validates the returned design and requires its own separate send review.
+    """
+    binary = find_codex_cli()
+    if not binary:
+        raise BackendFailure("codex", "unavailable", "codex binary not found")
+    model = _env("CODEX_CLI_MODEL")
+    fd, name = tempfile.mkstemp(prefix="tonecommand-codex-", suffix=".txt")
+    os.close(fd)
+    output = Path(name)
+    try:
+        args = [binary, "exec", "--ephemeral", "--skip-git-repo-check",
+                "--sandbox", "read-only", "--color", "never",
+                "--output-last-message", str(output), "-"]
+        if model:
+            args[2:2] = ["--model", model]
+        try:
+            proc = subprocess.run(args, input=_full_prompt(
+                prompt, device_state, param_reference, system, shape),
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout_s(), cwd=tempfile.gettempdir(), env=cli_env(CODEX_ENV_KEYS))
+        except subprocess.TimeoutExpired as exc:
+            raise BackendFailure("codex", "timeout", f"no reply within {timeout_s()}s",
+                                 target=binary, model=model or None) from exc
+        except OSError as exc:
+            raise BackendFailure("codex", "unavailable", str(exc)[:200], target=binary) from exc
+        if proc.returncode:
+            # CLI diagnostics can contain account/config details; keep them local.
+            raise BackendFailure("codex", "backend_error",
+                                 f"Codex exited with code {proc.returncode}", target=binary)
+        result = output.read_text(encoding="utf-8").strip()
+        if not result:
+            raise BackendFailure("codex", "empty_output", "Codex produced no final message", target=binary)
+        try:
+            return _extract_json(result), model or "Codex configured default"
+        except ValueError as exc:
+            raise BackendFailure("codex", "unreadable_output", str(exc)[:200], target=binary) from exc
+    finally:
+        output.unlink(missing_ok=True)
+
+
 _RUNNERS = {
+    "codex": _plan_via_codex,
     "openai": _plan_via_openai,
     "grok": _plan_via_grok_cli,
     "cli": _plan_via_cli,
@@ -1294,6 +1378,7 @@ _RUNNERS = {
 # What each backend aims at, for the attempt record. A failure carries its own
 # target; a success has to be resolved the same way the runner resolved it.
 _TARGETS = {
+    "codex": find_codex_cli,
     "openai": _openai_base_url,
     "grok": find_grok_cli,
     "cli": find_claude_cli,

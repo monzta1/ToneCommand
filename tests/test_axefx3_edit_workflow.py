@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 import server
-from devices.axefx3.adapter import AxeFxIII, ReadOnlyRegistry
+from devices.axefx3.readonly_adapter import AxeFxIII, ReadOnlyRegistry
 from devices.axefx3.amp_writer import AmpWriter, AmpReadbackError
 from devices.axefx3.name_writer import NameWriter, NameReadbackError
 from devices.axefx3.edit_workflow import EditWorkflow, proposal
@@ -24,6 +24,11 @@ GAIN = dict(kind='set_param', block='amp', instance=1, param='DISTORT_DRIVE', va
 MID = dict(kind='set_param', block='DISTORT', param='DISTORT_MID', value=5.6)
 NAME = dict(kind='rename_preset', type_name='Exact Name')
 SCENE = dict(kind='rename_scene', block='SCENE', value=8, type_name='Final Scene')
+
+
+@pytest.fixture(autouse=True)
+def forbid_physical_ports(monkeypatch):
+    monkeypatch.setattr('fm9.midi_transport.open_ports',lambda *a,**k:pytest.fail('Physical MIDI is forbidden in workflow tests'))
 
 
 @pytest.fixture(params=['amp', 'name'])

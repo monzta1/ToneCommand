@@ -1,0 +1,27 @@
+Unofficial ToneCommand MK1 experimental AI builder
+
+This is NOT the previous read-only test and NOT a production MK1 release.
+Use a NEW folder. Do not overwrite your old TC checkout or change its guard.
+
+1. Install official Windows Python3.12 64-bit if not already available.
+2. Open Install-MK1-AI-Trial.cmd; wait for offline checks to pass.
+3. Close old TC normally, close Axe-Edit, then Start-MK1-AI-Trial.cmd.
+4. In AI SETTINGS, choose your own signed-in CLI or API/backend, then SAVE.
+5. Select your own genuinely empty preset and scene 1 manually on the MK1.
+6. CONNECT MK1, enter that test preset number, and type your request.
+7. GENERATE PLAN -> REVIEW CHANGES -> CONTINUE TO CONFIRM.
+8. Keep external monitoring muted. Confirm all three conditions, then SEND.
+9. Stop on ANY error; do not repeat a partial/uncertain write or edit a guard.
+10. On verified completion DISCONNECT MIDI, then inspect with Axe-Edit.
+11. After independent confirmation, lower physical listening level first,
+    unmute and audition gently. Do not Store in this first trial.
+12. DOWNLOAD TEST REPORT and share your reviewed summary. Do not post keys.
+
+Try: Create one scene inspired by Pink Floyd's Wish You Were Here album,
+for an expressive spacious lead. Choose an amp/cab and suitable chorus,
+delay and reverb. No NAM, fuzz, pitch, controllers or permanent storage.
+
+Only this recorded MK1 FW33 Beta2 fingerprint is supported. A mismatch is
+a stop, not a request to update firmware or pretend your unit is MK2.
+See docs/MK1-AI-TRIAL.md. This trial proves neither an exact record match
+nor safe physical loudness; the first MK1 writes remain experimental.

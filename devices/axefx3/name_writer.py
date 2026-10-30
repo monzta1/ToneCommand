@@ -15,8 +15,8 @@ import mido
 
 from fm9.device import FM9NotFound, ReadOnly
 from fm9.safety import sysex_guard
-from . import protocol
-from .adapter import AxeFxIII, ReadOnlyOutput, snapshot
+from . import readonly_protocol as protocol
+from .readonly_adapter import AxeFxIII, ReadOnlyOutput, snapshot
 from .name_edits import NameEdit
 
 
