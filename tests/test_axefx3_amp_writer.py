@@ -12,6 +12,8 @@ import pytest
 from devices.axefx3 import protocol as p
 from devices.axefx3.adapter import AxeFxIII, ReadOnlyOutput
 from devices.axefx3.amp_writer import AmpEdit, AmpWriter, AmpReadbackError, _AmpOutput
+from devices.axefx3.beta5_amp_writer import Beta5AmpWriter
+from tests.axefx3_beta5_identity import BETA5
 from devices.axefx3.name_writer import MK2_FW33_IDENTITY
 from fm9.device import ReadOnly
 from fm9.safety import BrickGuardRefusal
@@ -87,10 +89,13 @@ class AmpPorts(FakePorts):
         return super().answer(wire)
 
 
-@pytest.fixture
-def writer(monkeypatch):
+@pytest.fixture(params=[AmpWriter, Beta5AmpWriter])
+def writer(monkeypatch, request):
     ports=AmpPorts()
-    dev=AmpWriter((ports.inp,ports.outp))
+    if request.param is Beta5AmpWriter:
+        ports.identity=BETA5
+        ports.amp[0]=0
+    dev=request.param((ports.inp,ports.outp))
     monkeypatch.setattr('devices.axefx3.amp_writer.time.sleep',lambda _:None)
     yield dev,ports
     dev.close()

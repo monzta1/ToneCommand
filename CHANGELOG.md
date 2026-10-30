@@ -5,6 +5,10 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
+  firmware 33.00 beta 5, pinned to its exact identity and limited to an
+  existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default
+  read-only behavior and Store restrictions are unchanged.
 - Add an explicitly opt-in, single Gain/Mid edit through the existing
   REVIEW/CONFIRM/SEND screens. The measured MK2 writer retains its exact
   firmware pin, shared-channel warning, explicit external-mute confirmation,

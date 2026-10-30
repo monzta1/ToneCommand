@@ -49,6 +49,9 @@ const path = require('node:path');
       }
       if (url.pathname === '/') return route.fulfill({contentType: 'text/html',
         body: fs.readFileSync(path.join(__dirname, '../ui/index.html'), 'utf8')});
+      if (url.pathname === '/axefx3-reviewed-edit.js') return route.fulfill({contentType:'text/javascript',
+        body:fs.readFileSync(path.join(__dirname,'../ui/axefx3-reviewed-edit.js'),'utf8')});
+      if (url.pathname === '/api/axefx3/edit/state') return route.fulfill({json:{configured:false,available:false}});
       if (url.pathname === '/logo.png') return route.fulfill({contentType: 'image/png',
         body: fs.readFileSync(path.join(__dirname, '../ui/logo.png'))});
       if (url.pathname === '/api/state') return route.fulfill({json: state()});

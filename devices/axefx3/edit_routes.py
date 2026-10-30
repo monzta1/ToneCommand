@@ -13,15 +13,27 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, Strict
 from fm9.device import ReadOnly
 from fm9.paths import resource_path
 from .amp_writer import AmpWriter, AmpReadbackError
+from .beta5_amp_writer import Beta5AmpWriter
 from .edit_workflow import EditWorkflow
 
 
 def enabled():
-    return os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP') == '1'
+    return configured_writer() is not None
+
+
+def configured_writer():
+    legacy = os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP') == '1'
+    beta5 = os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP_BETA5') == '1'
+    if legacy == beta5:  # Neither, or conflicting explicit selections: no writer.
+        return None
+    return Beta5AmpWriter if beta5 else AmpWriter
 
 
 def connect(chassis):
     """One constructor, no fallback or second MIDI connection."""
+    if (os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP') == '1'
+            and os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP_BETA5') == '1'):
+        raise ReadOnly('Select only one explicitly measured Amp experiment')
     if not enabled():
         from .adapter import AxeFxIII
         return AxeFxIII(chassis=chassis)
@@ -29,7 +41,7 @@ def connect(chassis):
         raise ReadOnly('The reviewed Amp experiment requires declared MK2 hardware')
     if os.environ.get('TONECOMMAND_SIM') == '1':
         raise ReadOnly('The opt-in writer cannot open physical MIDI in simulator mode')
-    return AmpWriter(chassis=chassis)
+    return configured_writer()(chassis=chassis)
 
 
 class Preparation(BaseModel):
@@ -54,7 +66,8 @@ def register(app, host):
     def selected():
         ctx = host.device_context()
         dev = ctx.adapter
-        return dev if (enabled() and ctx.kind == 'axefx3' and type(dev) is AmpWriter) else None
+        return dev if (enabled() and ctx.kind == 'axefx3'
+                       and type(dev) is configured_writer()) else None
 
     flow = EditWorkflow(selected=selected, host_lock=host._lock,
                         gig_locked=lambda: host._gig_mode['on'], fingerprint=host.plan_digest)
@@ -102,6 +115,10 @@ def register(app, host):
                 amps = [b for b in blocks if b.effect_id == 58]
                 if len(amps) != 1 or amps[0].channel != 0 or amps[0].channels_supported != 4:
                     raise ReadOnly('An existing four-channel Amp 1 on channel A is required')
+                if type(dev) is Beta5AmpWriter:
+                    words = dev._bulk(58)
+                    if words is None or words[0] != 0:
+                        raise ReadOnly('This Beta5 experiment requires existing 59 Bassguy Bright on Amp 1/A')
                 values = {'DISTORT_DRIVE':dev._display(1), 'DISTORT_MID':dev._display(3)}
                 if any(type(v) not in (int,float) or not 0 <= v <= 10 for v in values.values()):
                     raise ReadOnly('Independent Gain and Mid displays must be readable')

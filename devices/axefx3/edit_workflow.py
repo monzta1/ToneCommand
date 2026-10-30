@@ -12,6 +12,7 @@ import time
 
 from fm9.device import ReadOnly
 from .amp_writer import AmpEdit, AmpWriter
+from .beta5_amp_writer import Beta5AmpWriter
 from .name_edits import NameEdit
 from .name_writer import NameWriter
 
@@ -101,7 +102,7 @@ class EditWorkflow:
 
     def _context(self, writer, preset, scene):
         if (self._gig_locked() is not False or self._selected() is not writer
-                or type(writer) not in (NameWriter, AmpWriter)
+                or type(writer) not in (NameWriter, AmpWriter, Beta5AmpWriter)
                 or writer._closed or writer._uncertain or writer.chassis != 'mk2'):
             raise ReadOnly('Selected measured writer, Gig Lock off and a certain open connection required')
         if type(scene) is not int or scene not in range(1, 9):
@@ -129,7 +130,8 @@ class EditWorkflow:
             action, edit = proposal(actions, expected_preset)
             writer = self._selected()
             needed = AmpWriter if type(edit) is AmpEdit else NameWriter
-            if type(writer) is not needed:
+            accepted = (AmpWriter, Beta5AmpWriter) if needed is AmpWriter else (NameWriter,)
+            if type(writer) not in accepted:
                 raise ReadOnly('Explicit matching writer injection required; no fallback or second connection')
             self._context(writer, expected_preset, expected_scene)
             method = writer.review_amp if needed is AmpWriter else writer.review_name
