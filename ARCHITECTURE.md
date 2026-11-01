@@ -56,6 +56,11 @@ to the selected context/connection/chassis; FM9 retains its 512-name default.
 Name-list formatting uses each adapter's slot labels: the III displays wire
 numbers directly, while FM9 keeps its existing one-based display numbering.
 
+`devices/axefx3/observed_words.py` and `preset_observation.py` validate complete
+received words and preserve opaque preset observations. They are unregistered
+data/read-callback components, not a live reader or an expansion of the output
+gate. Fresh transport provenance and native acceptance remain separate work.
+
 | Layer | Files | Knows about |
 |---|---|---|
 | Protocol | `protocol.py` | SysEx bytes, effect ids, nothing above |
