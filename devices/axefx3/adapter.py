@@ -75,9 +75,19 @@ class AxeFxIII:
 
     def __init__(self, ports=None, *, chassis='mk1'):
         protocol.preset_count(chassis)  # Refuse before opening a MIDI port.
+        self._port_lease = None
         if ports is None:
             from fm9 import midi_transport
-            ports = midi_transport.open_ports("axe-fx")
+            from . import port_owner
+            lease = port_owner.acquire()
+            opened = False
+            try:
+                ports = midi_transport.open_ports("axe-fx")
+                opened = True
+                self._port_lease = lease
+            finally:
+                if not opened:
+                    lease.close()
         self.inp, outp = ports
         self.outp = self._output(outp, chassis)
         self._lock = threading.RLock()
@@ -118,10 +128,17 @@ class AxeFxIII:
     def close(self):
         if not self._closed:
             self._closed = True
+            input_closed = output_closed = False
             try:
                 self.inp.close()
+                input_closed = True
             finally:
-                self.outp.close()
+                try:
+                    self.outp.close()
+                    output_closed = True
+                finally:
+                    if input_closed and output_closed and self._port_lease:
+                        self._port_lease.close()
 
     def _send(self, frame):
         # Validate before mido can normalize, reject, or strip an argument.
@@ -149,8 +166,8 @@ class AxeFxIII:
         return None
 
     def firmware_label(self):
-        got = self._request(8, [], lambda d: d[5:7] if len(d) >= 8 else None)
-        return f"{got[0]}.{got[1]:02d}" if got else ""
+        from .observed_firmware import parse_reply, display_label
+        return display_label(self._request(8, [], parse_reply))
 
     def current_preset(self):
         def parse(data):
