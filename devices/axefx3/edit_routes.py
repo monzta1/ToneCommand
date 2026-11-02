@@ -24,6 +24,12 @@ def enabled():
 def configured_writer():
     legacy = os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP') == '1'
     beta5 = os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP_BETA5') == '1'
+    existing = os.environ.get('TONECOMMAND_AXEFX3_EXISTING_SCALAR') == '1'
+    if existing:
+        if legacy or beta5:
+            return None
+        from .existing_scalar import ExistingEditor
+        return ExistingEditor
     if legacy == beta5:  # Neither, or conflicting explicit selections: no writer.
         return None
     return Beta5AmpWriter if beta5 else AmpWriter
@@ -31,8 +37,8 @@ def configured_writer():
 
 def connect(chassis):
     """One constructor, no fallback or second MIDI connection."""
-    if (os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP') == '1'
-            and os.environ.get('TONECOMMAND_AXEFX3_REVIEWED_AMP_BETA5') == '1'):
+    if sum(os.environ.get(name) == '1' for name in ('TONECOMMAND_AXEFX3_REVIEWED_AMP',
+            'TONECOMMAND_AXEFX3_REVIEWED_AMP_BETA5', 'TONECOMMAND_AXEFX3_EXISTING_SCALAR')) > 1:
         raise ReadOnly('Select only one explicitly measured Amp experiment')
     if not enabled():
         from .adapter import AxeFxIII
@@ -66,7 +72,7 @@ def register(app, host):
     def selected():
         ctx = host.device_context()
         dev = ctx.adapter
-        return dev if (enabled() and ctx.kind == 'axefx3'
+        return dev if (enabled() and ctx.kind == 'axefx3' and type(dev) in (AmpWriter, Beta5AmpWriter)
                        and type(dev) is configured_writer()) else None
 
     flow = EditWorkflow(selected=selected, host_lock=host._lock,

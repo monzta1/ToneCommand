@@ -5,6 +5,9 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Add a disabled-by-default existing-preset text workflow on the shared TC
+  Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,
+  selected-provider scope questions and one-use bounded scalar execution.
 - Prepare connection-owned existing-preset scalar deltas using eight actual
   scene maps, the pure proposal contract and full opaque-state verification.
 - Prepare a separate externally muted eight-scene observation survey with

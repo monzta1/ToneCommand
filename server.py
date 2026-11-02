@@ -8888,6 +8888,8 @@ def api_plan_revise(body: ApplyBody):
 import sys as _edit_sys
 from devices.axefx3.edit_routes import register as _register_reviewed_iii
 _afx3_edit_workflow = _register_reviewed_iii(app, _edit_sys.modules[__name__])
+from devices.axefx3.existing_routes import register as _register_existing_iii
+_afx3_existing_workflow = _register_existing_iii(app, _edit_sys.modules[__name__])
 
 if __name__ == "__main__":
     main()

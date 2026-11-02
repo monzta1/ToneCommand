@@ -30,6 +30,12 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/existing_routes.py` is an explicit opt-in bridge for the bounded
+existing-scalar component. It owns scan/review tokens, uses the selected provider
+and shared musical rules without generic FM9 execution, and wires the original
+UI stages through a separate addon. Disabled by default; older modes remain
+separate. `server.py` is now 8,895 lines, adding only the two registration lines.
+
 `devices/axefx3/existing_scalar.py` composes the unchanged #297 pure contract
 with complete observations, muted original-scene survey and exact typed scalar
 output. Host-owned context stays private; only sanitized metadata reaches the
@@ -57,7 +63,7 @@ It asks for an ephemeral, read-only proposal, reads a UTF-8 final-message
 file, then removes that temporary file. Only Codex runtime configuration and
 network settings enter its subprocess. Other providers, automatic backend
 order and device authorization are unchanged. No new server route is added;
-server.py remains 8893 lines.
+This backend alone adds no server lines; its upstream baseline is 8,893.
 
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
@@ -127,7 +133,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 8,893 lines and 123 routes
+### 2. `server.py` is 8,895 lines
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

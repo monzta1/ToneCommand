@@ -4244,6 +4244,7 @@
 <script src="/language/i18next.min.js"></script>
 <script src="/language/tc-language.js"></script>
 <script src="/axefx3-reviewed-edit.js"></script>
+<script src="/axefx3-existing-edit.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -12828,6 +12829,7 @@ if ($('aboutreport')) $('aboutreport').onclick = () => openReport();
 // #282: the last statement. If the script failed to parse or stopped on an
 // error before here, the notice stays and points at /report.
 if (!window.AFX3ReviewedEdit) throw new Error('Reviewed-edit controls failed to start. Open /report.');
+window.AFX3Existing = window.installAFX3Existing();
 $('bootfail')?.remove();
 </script>
 </body>

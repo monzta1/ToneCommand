@@ -67,7 +67,7 @@ def page_script() -> str:
 def test_the_page_has_one_application_script_and_local_language_assets():
     scripts = page_scripts()
     assert len(scripts.inline) == 1
-    assert scripts.external == ["/language/i18next.min.js", "/language/tc-language.js", "/axefx3-reviewed-edit.js"]
+    assert scripts.external == ["/language/i18next.min.js", "/language/tc-language.js", "/axefx3-reviewed-edit.js", "/axefx3-existing-edit.js"]
     page = UI.read_text(encoding='utf-8')
     assert page.index('<script src="/axefx3-reviewed-edit.js"></script>') < page.index('<script>')
     assert "if (!window.AFX3ReviewedEdit) throw new Error(" in page
@@ -91,9 +91,10 @@ def test_the_page_script_parses(tmp_path):
     assert r.returncode == 0, (
         "ui/index.html's script does not parse, so the whole page is dead in "
         "a browser:\n" + (r.stderr or r.stdout))
-    extra = subprocess.run([node, '--check', str(UI.parent / 'axefx3-reviewed-edit.js')],
-                           capture_output=True, text=True)
-    assert extra.returncode == 0, extra.stderr
+    for addon in ('axefx3-reviewed-edit.js', 'axefx3-existing-edit.js'):
+        extra = subprocess.run([node, '--check', str(UI.parent / addon)],
+                               capture_output=True, text=True)
+        assert extra.returncode == 0, extra.stderr
 
 
 def test_node_is_available_wherever_this_suite_gates_a_merge():
