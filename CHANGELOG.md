@@ -5,6 +5,8 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Prepare a separate externally muted eight-scene observation survey with
+  one-shot recalls and complete original-state preservation checks.
 - Prepare a separate exact official 33.01 MK2 Gain/Mid experiment using
   complete opaque observations; no app activation or prior writer promotion.
 - Prepare an explicit, unregistered live Axe-Fx III observation reader with
