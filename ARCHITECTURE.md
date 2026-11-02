@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/observed_firmware.py` names complete observed firmware responses
+for status display only. Unknown replies retain their raw version. Recognition
+does not select a writer or change its independent identity pin. No routes or
+server code are added by this slice.
+
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
 Settings selects a shipped language. The local i18next engine translates registered
@@ -195,3 +200,10 @@ Break these and the program is a different, worse program.
    whatever produced it.
 5. An undo snapshot is taken before any write, automatically.
 6. Pedal 1 is never touched.
+
+## Axe-Fx III existing-preset proposal contract
+
+`devices/axefx3/existing_contract.py` is a pure proposal contract, currently unused
+by the app. It validates a host-qualified scalar surface and all eight original
+scene maps without importing a device or executor. Its review-only result does
+not contain generic actions or grant firmware, model or write permissions.
