@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/existing_scalar.py` composes the unchanged #297 pure contract
+with complete observations, muted original-scene survey and exact typed scalar
+output. Host-owned context stays private; only sanitized metadata reaches the
+provider. It is not app-registered. `server.py` stays unchanged at 8,893 lines.
+
 `devices/axefx3/scene_observation.py` explicitly recalls existing scenes under
 external mute, compares complete opaque observations and returns the original
 scene only on verified success. It is not app-registered, never rewrites scene

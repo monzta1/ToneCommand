@@ -5,6 +5,8 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Prepare connection-owned existing-preset scalar deltas using eight actual
+  scene maps, the pure proposal contract and full opaque-state verification.
 - Prepare a separate externally muted eight-scene observation survey with
   one-shot recalls and complete original-state preservation checks.
 - Prepare a separate exact official 33.01 MK2 Gain/Mid experiment using
