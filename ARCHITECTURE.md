@@ -37,6 +37,11 @@ network settings enter its subprocess. Other providers, automatic backend
 order and device authorization are unchanged. No new server route is added;
 server.py remains 8893 lines.
 
+`devices/axefx3/observed_firmware.py` names complete observed firmware responses
+for status display only. Unknown replies retain their raw version. Recognition
+does not select a writer or change its independent identity pin. No routes or
+server code are added by this slice.
+
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
 Settings selects a shipped language. The local i18next engine translates registered
@@ -62,6 +67,11 @@ Shared name scans derive their bound from the adapter and scope their cache
 to the selected context/connection/chassis; FM9 retains its 512-name default.
 Name-list formatting uses each adapter's slot labels: the III displays wire
 numbers directly, while FM9 keeps its existing one-based display numbering.
+
+`devices/axefx3/observed_words.py` and `preset_observation.py` validate complete
+received words and preserve opaque preset observations. They are unregistered
+data/read-callback components, not a live reader or an expansion of the output
+gate. Fresh transport provenance and native acceptance remain separate work.
 
 | Layer | Files | Knows about |
 |---|---|---|
@@ -197,3 +207,10 @@ Break these and the program is a different, worse program.
    whatever produced it.
 5. An undo snapshot is taken before any write, automatically.
 6. Pedal 1 is never touched.
+
+## Axe-Fx III existing-preset proposal contract
+
+`devices/axefx3/existing_contract.py` is a pure proposal contract, currently unused
+by the app. It validates a host-qualified scalar surface and all eight original
+scene maps without importing a device or executor. Its review-only result does
+not contain generic actions or grant firmware, model or write permissions.
