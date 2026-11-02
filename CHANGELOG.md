@@ -11,6 +11,9 @@ Notable changes to ToneCommand. Dates are UTC.
   firmware 33.00 beta 5, pinned to its exact identity and limited to an
   existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default
   read-only behavior and Store restrictions are unchanged.
+- Prepare a receive-only block-broadcast assembler and opaque-preserving
+  preset-observation layer with bounded injected-read settling. No live
+  transport, editor-read permission, navigation or write capability is added.
 - Add an explicitly opt-in, single Gain/Mid edit through the existing
   REVIEW/CONFIRM/SEND screens. The measured MK2 writer retains its exact
   firmware pin, shared-channel warning, explicit external-mute confirmation,
@@ -22,7 +25,6 @@ Notable changes to ToneCommand. Dates are UTC.
 - Bundle the exact FW33 Axe-Fx III Amp model names/ordinals as a validated,
   offline reference catalog. No model selector, app/planner write capability,
   live discovery, firmware/chassis promotion or account workflow is enabled.
-
 - Prepare an unregistered, pure existing-preset scalar proposal contract with
   eight-scene active coverage, shared-channel impact and preservation intent.
   No device execution, UI activation or write capability is added.
