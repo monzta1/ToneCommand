@@ -195,3 +195,10 @@ Break these and the program is a different, worse program.
    whatever produced it.
 5. An undo snapshot is taken before any write, automatically.
 6. Pedal 1 is never touched.
+
+## Axe-Fx III existing-preset proposal contract
+
+`devices/axefx3/existing_contract.py` is a pure proposal contract, currently unused
+by the app. It validates a host-qualified scalar surface and all eight original
+scene maps without importing a device or executor. Its review-only result does
+not contain generic actions or grant firmware, model or write permissions.

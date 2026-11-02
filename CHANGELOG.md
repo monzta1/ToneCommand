@@ -23,6 +23,10 @@ Notable changes to ToneCommand. Dates are UTC.
   offline reference catalog. No model selector, app/planner write capability,
   live discovery, firmware/chassis promotion or account workflow is enabled.
 
+- Prepare an unregistered, pure existing-preset scalar proposal contract with
+  eight-scene active coverage, shared-channel impact and preservation intent.
+  No device execution, UI activation or write capability is added.
+
 ### Fixed
 - Give every test its own pending-install cache, so a download left over by
   one test module can no longer fail another depending on run order (#293).
