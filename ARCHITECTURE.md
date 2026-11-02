@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+Recipe firmware warnings recognize one short stable-release label paired with
+the same release's valid full build-date label. This affects prose only, never
+an adapter identity or write gate. Different full dates and beta labels retain
+warnings. This shared fix leaves server.py at8,893 lines.
+
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition
 does not select a writer or change its independent identity pin. No routes or
