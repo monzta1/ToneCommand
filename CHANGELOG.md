@@ -11,6 +11,8 @@ Notable changes to ToneCommand. Dates are UTC.
   a separate literal-GET-only output gate and complete repeated observations.
 - Correct the observation assembler's 0x75 prefix to the independently
   measured chunk word count; reject mismatched, zero and oversized chunks.
+- Display exact observed Axe-Fx III beta 5, official 33.00 and official 33.01
+  build labels without promoting firmware or chassis write permissions.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
   firmware 33.00 beta 5, pinned to its exact identity and limited to an
   existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default
@@ -29,8 +31,13 @@ Notable changes to ToneCommand. Dates are UTC.
 - Bundle the exact FW33 Axe-Fx III Amp model names/ordinals as a validated,
   offline reference catalog. No model selector, app/planner write capability,
   live discovery, firmware/chassis promotion or account workflow is enabled.
+- Prepare an unregistered, pure existing-preset scalar proposal contract with
+  eight-scene active coverage, shared-channel impact and preservation intent.
+  No device execution, UI activation or write capability is added.
 
 ### Fixed
+- Require exclusive III MIDI ownership before physical open, and bound receive
+  time, traffic and frame/total bytes before complete-observation buffering.
 - Give every test its own pending-install cache, so a download left over by
   one test module can no longer fail another depending on run order (#293).
 - The local server answers only to 127.0.0.1, localhost and ::1, and
