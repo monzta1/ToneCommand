@@ -18,6 +18,9 @@ from .observed_words import assemble
 
 
 GRID_QUERY = tuple(protocol.envelope(1, [shared.SUB_GRID_LAYOUT, 0] + [0] * 13))
+MAX_FRAME_BYTES = 8 + 3 * 256  # Measured maximum body:256 uint16 words.
+MAX_BURST_BYTES = 65536       # Declared16383 words plus bounded framing.
+MAX_TRAFFIC_MESSAGES = 4096  # Includes non-SysEx MIDI traffic.
 
 
 def extra_read(frame):
@@ -86,10 +89,42 @@ class LiveReader(AxeFxIII):
             raise ReadOnly('No writes on the observation connection')
         self.outp.send(mido.Message('sysex', data=frame[1:-1]))
 
-    def _discard_pending(self):
+    def _discard_pending(self, deadline):
         for index, _ in enumerate(self.inp.iter_pending()):
-            if index >= 4096:
+            if index >= MAX_TRAFFIC_MESSAGES or time.monotonic() >= deadline:
                 raise ValueError('Excessive pending traffic; no fresh burst can be isolated')
+
+    def _request(self, function, payload, parser, timeout=.6):
+        """Bound inherited status/identity reads as well as block broadcasts."""
+        if type(timeout) not in (int, float) or not .01 <= timeout <= 5:
+            raise ValueError('A bounded observation request timeout is required')
+        with self._lock:
+            if self._closed:
+                raise FM9NotFound('Axe-Fx III connection is closed')
+            deadline = time.monotonic() + timeout
+            self._discard_pending(deadline)
+            self._send(protocol.envelope(function, payload))
+            traffic = total = 0
+            while time.monotonic() < deadline:
+                for message in self.inp.iter_pending():
+                    traffic += 1
+                    if time.monotonic() >= deadline or traffic > MAX_TRAFFIC_MESSAGES:
+                        raise ValueError('Observation request timeout or excessive MIDI traffic')
+                    if message.type != 'sysex':
+                        continue
+                    size = len(message.data)
+                    if not 6 <= size <= 4096 or total + size > MAX_BURST_BYTES:
+                        raise ValueError('Observation request byte limit exceeded before copying')
+                    total += size
+                    data = list(message.data)
+                    if protocol.valid_reply(data) and data[4] == function:
+                        result = parser(data)
+                        if result is not None:
+                            if time.monotonic() >= deadline:
+                                raise ValueError('Observation parser exceeded request deadline')
+                            return result
+                time.sleep(.003)
+            return None
 
     def broadcast(self, effect_id, timeout=1.5):
         if type(effect_id) is not int or not 1 <= effect_id <= 207:
@@ -99,21 +134,31 @@ class LiveReader(AxeFxIII):
         with self._lock:
             if self._closed:
                 raise FM9NotFound('Axe-Fx III connection is closed')
-            self._discard_pending()
+            deadline = time.monotonic() + timeout
+            self._discard_pending(deadline)
             self._send(protocol.envelope(31, list(shared.encode14(effect_id))))
-            deadline, packets = time.monotonic() + timeout, []
+            packets, total_bytes, traffic = [], 0, 0
             while time.monotonic() < deadline:
                 ended = False
                 for message in self.inp.iter_pending():
+                    traffic += 1
+                    if time.monotonic() >= deadline or traffic > MAX_TRAFFIC_MESSAGES:
+                        raise ValueError('Broadcast timeout or excessive incoming MIDI traffic')
                     if message.type != 'sysex':
                         continue
+                    size = len(message.data)
+                    if not 6 <= size <= MAX_FRAME_BYTES or total_bytes + size > MAX_BURST_BYTES:
+                        raise ValueError('Broadcast frame or total byte limit exceeded before buffering')
                     data = list(message.data)
                     if (len(packets) >= 1024 or not protocol.valid_reply(data)
                             or data[4] not in (116, 117, 118)):
                         raise ValueError('Damaged, interleaved or excessive broadcast traffic')
                     packets.append(data)
+                    total_bytes += size
                     ended = ended or data[4] == 118
                 if ended:
+                    if time.monotonic() >= deadline:
+                        raise ValueError('Broadcast deadline expired before complete assembly')
                     return assemble(packets, effect_id)
                 time.sleep(.005)
             raise ValueError('Incomplete fresh block broadcast; no cached fallback')
