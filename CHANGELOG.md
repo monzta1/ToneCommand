@@ -5,6 +5,8 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Correct the observation assembler's 0x75 prefix to the independently
+  measured chunk word count; reject mismatched, zero and oversized chunks.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
   firmware 33.00 beta 5, pinned to its exact identity and limited to an
   existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default

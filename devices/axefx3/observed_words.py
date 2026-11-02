@@ -45,8 +45,10 @@ def assemble(packets, expected_id):
                 raise ValueError('Broadcast target or declared count differs')
         elif fn == shared.FN_BCAST_BODY:
             body = data[7:-1]
-            if (count is None or tuple(data[5:7]) != (0, 0) or not body
-                    or len(body) % 3 or any(b > 3 for b in body[2::3])):
+            if (count is None or not body or len(body) % 3
+                    or not 1 <= len(body) // 3 <= 256
+                    or shared.decode14(*data[5:7]) != len(body) // 3
+                    or any(b > 3 for b in body[2::3])):
                 raise ValueError('Incomplete or unobserved broadcast body layout')
             words.extend(shared.parse_bcast_body(list(data)))
             if len(words) > count:

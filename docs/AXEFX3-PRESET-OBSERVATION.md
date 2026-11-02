@@ -12,8 +12,13 @@ It checks product, checksum, target ID, header/body/end layout, declared word
 count, uint16 packing and bounded packet sizes/counts. Truncated, extra, wrong
 or unrelated packets fail rather than returning partial/default-filled words.
 The existing codecs and third-party-spec attribution stay in `fm9.protocol`.
-Only the observed zero section/reserved body layout is admitted; other layouts
-refuse rather than being guessed or silently skipped.
+The two 0x75 bytes before the payload are a little-endian 14-bit chunk word
+count, not reserved zero fields. Each chunk must declare its actual 1..256
+words; totals must match the 0x74 header. Zero or mismatched chunks refuse.
+This corrects the initial synthetic-only assumption using read-only official
+33.01 MK2 measurements on 2 November: all 51 current blocks/modifiers matched,
+including Amp 1 chunks of 256/256/56 words and 25-word modifier records.
+No firmware, model or write permission follows from receive-layout metrology.
 No outgoing frame or query is constructed or sent by this component.
 
 `preset_observation.observe` requires the complete *observed* surface: raw

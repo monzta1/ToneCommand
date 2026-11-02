@@ -12,7 +12,8 @@ def burst(eid=58, words=(0, 65535, 16383, 65534), chunk=2):
     result = [packet(116, [eid & 127, eid >> 7, len(words) & 127, len(words) >> 7])]
     for start in range(0, len(words), chunk):
         body = [v for w in words[start:start + chunk] for v in (w & 127, w >> 7 & 127, w >> 14)]
-        result.append(packet(117, [0, 0, *body]))
+        size = len(body) // 3
+        result.append(packet(117, [size & 127, size >> 7, *body]))
     return [*result, packet(118, [])]
 
 
@@ -72,3 +73,28 @@ def test_excessive_fragment_count_is_bounded():
 @pytest.mark.parametrize('packets', [None, 3, True])
 def test_non_iterable_input_is_not_a_default_empty_broadcast(packets):
     with pytest.raises(ValueError, match='iterable'): assemble(packets, 58)
+
+
+@pytest.mark.parametrize('size', [25, 28, 40, 56, 94, 100, 104, 128, 132, 140,
+                                    148, 168, 176, 245, 256])
+def test_measured_nonzero_chunk_word_counts_are_not_reserved_fields(size):
+    packets = burst(58, (65535,) * size, chunk=256)
+    assert packets[1][5:7] == [size & 127, size >> 7]
+    assert assemble(packets, 58).words == (65535,) * size
+
+
+def test_complete_amp_broadcast_is_256_256_56_words():
+    packets = burst(58, (7,) * 568, chunk=256)
+    assert [p[5:7] for p in packets[1:-1]] == [[0, 2], [0, 2], [56, 0]]
+    assert assemble(packets, 58).count == 568
+
+
+@pytest.mark.parametrize('count', [0, 1, 3, 257])
+def test_zero_or_mismatched_chunk_count_does_not_bypass_total_count(count):
+    packets = burst(58, (7, 8))
+    packets[1] = protocol.envelope(117, [count & 127, count >> 7, 7, 0, 0, 8, 0, 0])[1:-1]
+    with pytest.raises(ValueError): assemble(packets, 58)
+
+
+def test_chunk_over_measured_256_word_bound_is_refused_even_if_counts_match():
+    with pytest.raises(ValueError): assemble(burst(58, (1,) * 257, chunk=257), 58)
