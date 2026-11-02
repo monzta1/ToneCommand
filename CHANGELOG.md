@@ -5,6 +5,8 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Prepare an explicit, unregistered live Axe-Fx III observation reader with
+  a separate literal-GET-only output gate and complete repeated observations.
 - Correct the observation assembler's 0x75 prefix to the independently
   measured chunk word count; reject mismatched, zero and oversized chunks.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on

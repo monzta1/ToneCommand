@@ -30,6 +30,12 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/live_observation.py` composes the receive-only observation
+foundation with a separate literal-GET-only output boundary. It is unregistered,
+does not change the ordinary adapter, and checks fresh identity/target before
+and after complete reads. No writer, scene recall or UI route is enabled.
+This slice leaves `server.py` unchanged at 8,893 lines.
+
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
 Settings selects a shipped language. The local i18next engine translates registered
