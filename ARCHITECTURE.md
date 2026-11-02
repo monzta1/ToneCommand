@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/observed_firmware.py` names complete observed firmware responses
+for status display only. Unknown replies retain their raw version. Recognition
+does not select a writer or change its independent identity pin. No routes or
+server code are added by this slice.
+
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
 Settings selects a shipped language. The local i18next engine translates registered

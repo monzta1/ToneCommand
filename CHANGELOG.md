@@ -5,6 +5,8 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Display exact observed Axe-Fx III beta 5, official 33.00 and official 33.01
+  build labels without promoting firmware or chassis write permissions.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
   firmware 33.00 beta 5, pinned to its exact identity and limited to an
   existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default
