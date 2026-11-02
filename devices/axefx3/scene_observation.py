@@ -76,13 +76,14 @@ class SceneSurvey(OfficialAmpWriter):
 
     def _recall(self, number, current):
         recall = SceneRecall(number)
-        self._identity()
-        if self.capture().data() != current:
-            raise ReadOnly('Concurrent preset change before scene recall')
-        if current['scene'] == number:
-            return current
         success = False
         try:
+            self._identity()
+            if self.capture().data() != current:
+                raise ReadOnly('Concurrent preset change before scene recall')
+            if current['scene'] == number:
+                success = True
+                return current
             with self.outp._scene_once(recall):
                 self._send(recall.frame())
             for _ in range(4):
@@ -104,23 +105,29 @@ class SceneSurvey(OfficialAmpWriter):
                 or type(expected_preset) is not int or expected_preset not in range(1024)):
             raise ReadOnly('Explicit current target and external mute required before scene recalls')
         with self._lock:
-            self._review = None
-            self._identity()
-            initial = self.capture().data()
-            if initial['preset'][0] != expected_preset:
-                raise ReadOnly('Selected preset differs from the pinned survey target')
-            current, maps = initial, []
-            deadline = time.monotonic() + 120
-            for number in range(1, 9):
-                if time.monotonic() >= deadline:
+            success = False
+            try:
+                self._review = None
+                self._identity()
+                initial = self.capture().data()
+                if initial['preset'][0] != expected_preset:
+                    raise ReadOnly('Selected preset differs from the pinned survey target')
+                current, maps = initial, []
+                deadline = time.monotonic() + 120
+                for number in range(1, 9):
+                    if time.monotonic() >= deadline:
+                        self._uncertain = True
+                        raise ReadOnly('Scene survey expired; no automatic restore')
+                    current = self._recall(number, current)
+                    maps.append(dict(scene=number, name=current['scenes'][number - 1][1],
+                                     status=deepcopy(current['status'])))
+                current = self._recall(initial['scene'], current)
+                if current != initial or self.capture().data() != initial:
                     self._uncertain = True
-                    raise ReadOnly('Scene survey expired; no automatic restore')
-                current = self._recall(number, current)
-                maps.append(dict(scene=number, name=current['scenes'][number - 1][1],
-                                 status=deepcopy(current['status'])))
-            current = self._recall(initial['scene'], current)
-            if current != initial or self.capture().data() != initial:
-                self._uncertain = True
-                raise ReadOnly('Original scene did not return unchanged; inspect without retry')
-            return dict(state=initial, maps=maps, stored=False, parameter_writes=0,
-                        scene_survey_verified=True, original_scene_returned=True)
+                    raise ReadOnly('Original scene did not return unchanged; inspect without retry')
+                success = True
+                return dict(state=initial, maps=maps, stored=False, parameter_writes=0,
+                            scene_survey_verified=True, original_scene_returned=True)
+            finally:
+                if not success:
+                    self._uncertain = True

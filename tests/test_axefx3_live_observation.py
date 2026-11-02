@@ -257,6 +257,72 @@ def test_each_grid_request_byte_is_pinned():
         assert not live.extra_read(p.envelope(1, args))
 
 
+@pytest.mark.parametrize('kind',['clock','sysex'])
+def test_continuous_traffic_checks_deadline_inside_iterator(device,monkeypatch,kind):
+    dev,ports=device
+    ticks=[0.]
+    monkeypatch.setattr(live.time,'monotonic',lambda:ticks[0])
+    original=ports.inp.iter_pending
+    def pending():
+        if not ports.queue:return
+        while True:
+            ticks[0]+=.01
+            yield mido.Message('clock') if kind=='clock' else mido.Message('sysex',data=p.envelope(116,[58,0,1,0])[1:-1])
+    ports.inp.iter_pending=pending
+    with pytest.raises(ValueError,match='timeout'):dev.broadcast(58,timeout=.05)
+    assert ticks[0]<=.07
+    ports.inp.iter_pending=original
+
+
+def test_non_sysex_messages_count_toward_total_traffic(device,monkeypatch):
+    dev,ports=device
+    monkeypatch.setattr(live.time,'monotonic',lambda:0.)
+    seen=[]
+    def pending():
+        if ports.queue:
+            for i in range(live.MAX_TRAFFIC_MESSAGES+2):
+                seen.append(i);yield mido.Message('clock')
+    ports.inp.iter_pending=pending
+    with pytest.raises(ValueError,match='traffic'):dev.broadcast(58)
+    assert len(seen)==live.MAX_TRAFFIC_MESSAGES+1
+
+
+def test_inherited_identity_requests_cannot_spin_forever_on_realtime_traffic(device,monkeypatch):
+    dev,ports=device;ticks=[0.]
+    monkeypatch.setattr(live.time,'monotonic',lambda:ticks[0])
+    def pending():
+        if ports.queue:
+            while True:
+                ticks[0]+=.01
+                yield mido.Message('clock')
+    ports.inp.iter_pending=pending
+    with pytest.raises(ValueError,match='timeout'):
+        dev._request(8,[],tuple,timeout=.05)
+    assert ticks[0]<=.07
+
+
+def test_size_is_rejected_before_copying_or_assembling(device):
+    dev,ports=device
+    class Huge:
+        def __len__(self):return live.MAX_FRAME_BYTES+1
+        def __iter__(self):pytest.fail('Oversize data must never be copied')
+    ports.transform=lambda frame,data:[SimpleNamespace(type='sysex',data=Huge())] if frame[5]==31 else data
+    original=ports.send
+    def send(message):
+        if message.bytes()[5]==31:
+            ports.sent.append(message.bytes());ports.queue.append(SimpleNamespace(type='sysex',data=Huge()))
+        else:original(message)
+    ports.outp.send=send
+    with pytest.raises(ValueError,match='before buffering'):dev.broadcast(58)
+
+
+def test_total_bytes_are_bounded_before_assembler_or_large_copy(device,monkeypatch):
+    dev,ports=device
+    monkeypatch.setattr(live,'MAX_BURST_BYTES',20)
+    monkeypatch.setattr(live,'assemble',lambda *a:pytest.fail('No unbounded assembly'))
+    with pytest.raises(ValueError,match='byte limit'):dev.broadcast(58)
+
+
 @pytest.mark.parametrize('frame', [[], [240], [240, 247], list(live.GRID_QUERY[:-2]) + [0, 247],
     p.envelope(31, [58, 0])[:-1], [240, 0, 1, 116, 18, 31, 58, 0, 0, 247]])
 def test_malformed_extra_frames_refused(frame):

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
 import json
+import math
 import threading
 import time
 
@@ -54,23 +55,32 @@ class _DeltaOutput(_SceneOutput):
     def __init__(self, port, chassis):
         super().__init__(port, chassis)
         self._scalar_permit = None
+        self._scalar_deadline = None
 
     @contextmanager
-    def _scalar_once(self, edit):
+    def _scalar_once(self, edit, deadline):
         if (type(edit) is not ScalarWrite or self._scalar_permit is not None
-                or self._scene_permit is not None or self._permit is not None):
+                or self._scene_permit is not None or self._permit is not None
+                or type(deadline) not in (int,float) or not math.isfinite(deadline)
+                or time.monotonic() >= deadline):
             raise ReadOnly('One exact scalar requires an idle output boundary')
         self._scalar_permit = (threading.get_ident(), tuple(edit.frame()))
+        self._scalar_deadline = deadline
         try:
             yield
         finally:
             self._scalar_permit = None
+            self._scalar_deadline = None
 
     def send(self, message):
         frame = message.bytes() if message.type == 'sysex' else []
         if self._scalar_permit == (threading.get_ident(), tuple(frame)):
+            deadline = self._scalar_deadline
             self._scalar_permit = None
+            self._scalar_deadline = None
             self.guard.check(frame[5])
+            if deadline is None or time.monotonic() >= deadline:
+                raise ReadOnly('Scalar review expired before final transmission')
             return self._port.send(mido.Message('sysex', data=frame[1:-1]))
         return super().send(message)
 
@@ -120,10 +130,21 @@ class ExistingEditor(SceneSurvey):
     def scan(self, preset, *, external_audio_muted=False, target_confirmed=False):
         with self._lock:
             self._scan, self._delta = None, None
-            survey = self.survey(preset, external_audio_muted=external_audio_muted,
-                                 target_confirmed=target_confirmed)
-            self._scan = (survey, time.monotonic() + 900)
-            return self.reference()
+            if (external_audio_muted is not True or target_confirmed is not True
+                    or type(preset) is not int or preset not in range(1024)):
+                raise ReadOnly('Explicit current target and external mute required before scanning')
+            success = False
+            try:
+                survey = self.survey(preset, external_audio_muted=external_audio_muted,
+                                     target_confirmed=target_confirmed)
+                self._scan = (survey, time.monotonic() + 900)
+                reference = self.reference()
+                success = True
+                return reference
+            finally:
+                if not success:
+                    self._uncertain = True
+                    self._scan, self._delta = None, None
 
     def reference(self):
         if self._scan is None or time.monotonic() >= self._scan[1] or self._uncertain:
@@ -192,7 +213,9 @@ class ExistingEditor(SceneSurvey):
                     if self.capture().data() != current:
                         raise ReadOnly('Concurrent preset change before scalar SET')
                     before = current
-                    with self.outp._scalar_once(edit):
+                    if time.monotonic() >= review._expires:
+                        raise ReadOnly('Delta expired after preflights; no scalar permit armed')
+                    with self.outp._scalar_once(edit, review._expires):
                         self._send(edit.frame())
                     sent += 1
                     for _ in range(4):

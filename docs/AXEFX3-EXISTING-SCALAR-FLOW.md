@@ -27,6 +27,10 @@ state. Before any scalar, SEND surveys all eight maps again and compares them
 with the original survey. Each scalar recalls an original scene using its
 channel, rechecks ownership/context, consumes one exact typed output permit,
 then compares the entire complete state and independent formatted display.
+Expiry is checked again after those potentially slow preflights, immediately
+before the permit, and again at final output. An expired permit is consumed
+without any SET. Mutating scan failures, including final reference construction,
+latch uncertainty and discard both scan and review context; no automatic restore.
 Only reads settle. After all scalars, another complete eight-scene survey
 checks original assignments, and the original scene returns with exactly the
 approved words changed. Unknown outcomes stop/latch without SET retry,

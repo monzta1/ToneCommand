@@ -180,3 +180,54 @@ def test_preparation_without_real_scan_has_no_io(device):
     dev,ports=device;before=len(ports.sent)
     with pytest.raises(ReadOnly):dev.prepare_delta(design())
     assert len(ports.sent)==before and not ports.recalls
+
+
+def test_scan_failure_after_survey_completion_latches_and_discards_context(device,monkeypatch):
+    dev,ports=device
+    with monkeypatch.context() as patch:
+        def fail():raise OSError('reference unavailable after completed mutating survey')
+        patch.setattr(dev,'reference',fail)
+        with pytest.raises(OSError):scan(dev)
+    assert dev._uncertain and dev._scan is None and dev._delta is None
+    recalls=len(ports.recalls)
+    with pytest.raises(ReadOnly):scan(dev)
+    assert len(ports.recalls)==recalls
+
+
+@pytest.mark.parametrize('stage',['recall','preflight'])
+def test_expiry_during_preflights_cannot_arm_one_more_set(device,monkeypatch,stage):
+    import time
+    dev,ports=device;scan(dev);review=dev.prepare_delta(design())
+    now=[review._expires-1];ready=[False];after_recall=[False]
+    old_survey,old_recall,old_capture=dev.survey,dev._recall,dev.capture
+    def survey(*args,**kwargs):
+        value=old_survey(*args,**kwargs);ready[0]=True;return value
+    def recall(*args):
+        value=old_recall(*args)
+        if ready[0]:
+            after_recall[0]=True
+            if stage=='recall':now[0]=review._expires
+        return value
+    def capture(*args,**kwargs):
+        value=old_capture(*args,**kwargs)
+        if after_recall[0] and stage=='preflight':now[0]=review._expires
+        return value
+    monkeypatch.setattr(time,'monotonic',lambda:now[0])
+    monkeypatch.setattr(dev,'survey',survey);monkeypatch.setattr(dev,'_recall',recall)
+    monkeypatch.setattr(dev,'capture',capture)
+    monkeypatch.setattr(dev.outp,'_scalar_once',lambda *a:pytest.fail('Expired review armed a scalar permit'))
+    with pytest.raises(ReadOnly,match='expired'):
+        dev.apply_delta(review,external_audio_muted=True,target_confirmed=True)
+    assert not ports.writes and dev._uncertain and dev._delta is None
+
+
+def test_final_output_rechecks_expiry_after_permit_was_armed(device,monkeypatch):
+    import time
+    dev,ports=device;now=[10.]
+    monkeypatch.setattr(time,'monotonic',lambda:now[0])
+    edit=ScalarWrite(0,0,'DISTORT_DRIVE',3.4)
+    with dev.outp._scalar_once(edit,11.):
+        now[0]=11.
+        with pytest.raises(ReadOnly,match='expired'):dev._send(edit.frame())
+        assert dev.outp._scalar_permit is None
+    assert not ports.writes

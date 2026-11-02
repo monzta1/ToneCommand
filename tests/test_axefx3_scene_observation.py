@@ -135,3 +135,50 @@ def test_survey_clears_a_previous_pending_scalar_review(device):
     dev._review=object()
     dev.survey(323,external_audio_muted=True,target_confirmed=True)
     assert dev._review is None
+
+
+@pytest.mark.parametrize('surface',['identity','capture','mismatch'])
+def test_recall_preflight_failure_after_success_is_sticky(device,monkeypatch,surface):
+    dev,ports=device;initial=dev.capture().data()
+    current=dev._recall(1,initial)
+    assert ports.scene==0 and len(ports.recalls)==1
+    with monkeypatch.context() as patch:
+        if surface=='mismatch':
+            changed=deepcopy(current);changed['bulk']['201'][0]-=1
+            patch.setattr(dev,'capture',lambda:type('Observation',(),{'data':lambda self:changed})())
+        else:
+            def fail():raise OSError('preflight failed after a successful recall')
+            patch.setattr(dev,'_identity' if surface=='identity' else 'capture',fail)
+        with pytest.raises((OSError,ReadOnly)):
+            dev._recall(2,current)
+    assert dev._uncertain and len(ports.recalls)==1 and ports.scene==0
+    with pytest.raises(ReadOnly):dev.survey(323,external_audio_muted=True,target_confirmed=True)
+    assert len(ports.recalls)==1  # Neither retry nor automatic original restore.
+
+
+@pytest.mark.parametrize('surface',['identity','capture'])
+def test_full_survey_preflight_failure_latches_even_outside_recall(device,monkeypatch,surface):
+    dev,ports=device
+    with monkeypatch.context() as patch:
+        def fail():raise OSError('survey preflight unavailable')
+        patch.setattr(dev,'_identity' if surface=='identity' else 'capture',fail)
+        with pytest.raises(OSError):dev.survey(323,external_audio_muted=True,target_confirmed=True)
+    assert dev._uncertain and not ports.recalls
+    with pytest.raises(ReadOnly):dev.survey(323,external_audio_muted=True,target_confirmed=True)
+
+
+def test_final_survey_verification_failure_latches_after_original_return(device,monkeypatch):
+    dev,ports=device;original=dev._recall;capture=dev.capture;returned=[]
+    def recall(number,current):
+        result=original(number,current)
+        if len(ports.recalls)==9:returned.append(True)
+        return result
+    def read():
+        if returned:raise OSError('final observation unavailable')
+        return capture()
+    with monkeypatch.context() as patch:
+        patch.setattr(dev,'_recall',recall);patch.setattr(dev,'capture',read)
+        with pytest.raises(OSError):dev.survey(323,external_audio_muted=True,target_confirmed=True)
+    assert dev._uncertain and len(ports.recalls)==9 and ports.scene==3
+    with pytest.raises(ReadOnly):dev.survey(323,external_audio_muted=True,target_confirmed=True)
+    assert len(ports.recalls)==9
