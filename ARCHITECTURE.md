@@ -30,6 +30,13 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+The explicit `codex` planner uses the already installed CLI and local login.
+It asks for an ephemeral, read-only proposal, reads a UTF-8 final-message
+file, then removes that temporary file. Only Codex runtime configuration and
+network settings enter its subprocess. Other providers, automatic backend
+order and device authorization are unchanged. No new server route is added;
+server.py remains 8893 lines.
+
 Interface languages are local data, not AI or device actions. `fm9/language.py`
 serves an asset allowlist including bundled locale files. A single dropdown in
 Settings selects a shipped language. The local i18next engine translates registered

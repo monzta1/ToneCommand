@@ -5,6 +5,9 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Add an explicitly selected Codex CLI planner using an existing local login.
+  No automatic selection or provider fallback, API-key forwarding, device
+  permission, Store or account sign-in flow is added.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
   firmware 33.00 beta 5, pinned to its exact identity and limited to an
   existing 59 Bassguy Bright on Amp 1, channel A. The FW33 writer, default
