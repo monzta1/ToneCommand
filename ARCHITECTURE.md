@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/official_amp_writer.py` composes the complete read-only observer
+with the bounded existing Gain/Mid edit and one-use output permit. Its exact
+official identity is independent of old writers. It is not registered by the
+app and preserves every unrelated observed word. `server.py` stays 8,893 lines.
+
 `devices/axefx3/live_observation.py` composes the receive-only observation
 foundation with a separate literal-GET-only output boundary. It is unregistered,
 does not change the ordinary adapter, and checks fresh identity/target before
