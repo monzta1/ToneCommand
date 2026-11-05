@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.3 (2026-11-05)
+
 ### Added
 - Display exact observed Axe-Fx III beta 5, official 33.00 and official 33.01
   build labels without promoting firmware or chassis write permissions.
