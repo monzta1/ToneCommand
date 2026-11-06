@@ -12,6 +12,11 @@ Notable changes to ToneCommand. Dates are UTC.
 - Require exclusive III MIDI ownership before physical open, and bound receive
   time, traffic and frame/total bytes before complete-observation buffering.
 
+### Security
+- Withdraw the unqualified Codex CLI runner from this draft. Retain saved-choice
+  compatibility, report unavailable, and refuse without process or output IO.
+
+
 ### Added
 - Add a disabled-by-default existing-preset text workflow on the shared TC
   Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,

@@ -86,33 +86,26 @@ def test_windows_editor_resolver_uses_architecture_and_numeric_version(
         assert found is None
 
 
-@pytest.mark.parametrize('failure',['none','timeout','exit','empty','malformed','launch'])
-def test_utf8_final_file_and_cleanup(monkeypatch,failure):
-    monkeypatch.setattr(planner,'find_codex_cli',lambda:'codex.exe')
-    monkeypatch.setenv('CODEX_CLI_MODEL','chosen-model')
-    monkeypatch.setenv('ANTHROPIC_API_KEY','must-not-travel')
-    paths=[]
-    def run(args,**kw):
-        path=Path(args[args.index('--output-last-message')+1]);paths.append(path)
-        assert '--ephemeral' in args and args[args.index('--sandbox')+1]=='read-only'
-        assert args[args.index('--model')+1]=='chosen-model'
-        assert kw['encoding']=='utf-8' and '\u2192' in kw['input']
-        assert 'CUSTOM AXEFX3' in kw['input'] and 'Fractal FM9' not in kw['input']
-        assert 'ANTHROPIC_API_KEY' not in kw['env']
-        if failure=='timeout':raise subprocess.TimeoutExpired(args,1)
-        if failure=='launch':raise OSError('failed to start')
-        if failure=='none':path.write_text(json.dumps({'name':'AI-Test'}),encoding='utf-8')
-        if failure=='malformed':path.write_text('not json',encoding='utf-8')
-        return subprocess.CompletedProcess(args,1 if failure=='exit' else 0,'progress not a plan','private diagnostic')
-    monkeypatch.setattr(planner.subprocess,'run',run)
-    if failure=='none':
-        result,model=planner._plan_via_codex('amp \u2192 cab','state','ref',system='CUSTOM AXEFX3',shape='JSON')
-        assert result=={'name':'AI-Test'} and model=='chosen-model'
-    else:
-        with pytest.raises(planner.BackendFailure) as error:
-            planner._plan_via_codex('amp \u2192 cab','state','ref',system='CUSTOM AXEFX3',shape='JSON')
-        assert 'private diagnostic' not in str(error.value)
-    assert paths and not paths[0].exists()
+def test_suspended_runner_has_no_process_config_account_or_file_io(monkeypatch):
+    def forbidden(*a,**kw):pytest.fail('Suspended runner must not perform IO')
+    monkeypatch.setattr(planner.subprocess,'run',forbidden)
+    monkeypatch.setattr(planner.subprocess,'Popen',forbidden)
+    monkeypatch.setattr(planner,'find_codex_cli',forbidden)
+    monkeypatch.setattr(planner.tempfile,'mkstemp',forbidden)
+    with pytest.raises(planner.BackendFailure,match='tool-free'):
+        planner._plan_via_codex('prompt','state','reference')
+
+
+@pytest.mark.parametrize('stream',['plan','converse'])
+def test_stop_never_falls_back_to_a_blocking_codex_run(monkeypatch,stream):
+    from threading import Event
+    monkeypatch.setenv('PLANNER_BACKEND','codex')
+    monkeypatch.setattr(planner,'plan',lambda *a:pytest.fail('Blocking fallback'))
+    monkeypatch.setattr(planner,'converse',lambda *a:pytest.fail('Blocking fallback'))
+    cancel=Event();cancel.set()
+    with pytest.raises(planner.PlanCancelled):
+        if stream=='plan':list(planner.plan_stream('prompt','state','ref',cancel=cancel))
+        else:list(planner.converse_stream([{'role':'user','content':'prompt'}],'state','ref',cancel=cancel))
 
 
 def test_saved_codex_choice_and_optional_model(tmp_path,monkeypatch):
@@ -124,6 +117,6 @@ def test_saved_codex_choice_and_optional_model(tmp_path,monkeypatch):
     assert ai_settings.planning_line()['service']=='ChatGPT via Codex CLI'
     assert ai_settings.list_models('codex')['models']==[]
     option=next(x for x in ai_settings.available_backends() if x['backend']=='codex')
-    assert option['available'] and not option['needsKey'] and not option['needsBaseUrl']
+    assert not option['available'] and not option['needsKey'] and not option['needsBaseUrl']
     monkeypatch.setattr(planner,'find_codex_cli',lambda:None)
     assert not next(x for x in ai_settings.available_backends() if x['backend']=='codex')['available']

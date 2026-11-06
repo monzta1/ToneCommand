@@ -63,12 +63,13 @@ foundation with a separate literal-GET-only output boundary. It is unregistered,
 does not change the ordinary adapter, and checks fresh identity/target before
 and after complete reads. No writer, scene recall or UI route is enabled.
 This slice leaves `server.py` unchanged at 8,893 lines.
+The Codex CLI proposal runner in this draft is withdrawn pending a verified
+tool-free contract. Saved choices stay readable but the picker reports
+unavailable and execution refuses before process/account/output IO. STOP
+before a stream starts cancels without a blocking fallback. This is a hold,
+not a completed safe Codex transport; older runner descriptions below are
+historical. Other providers and device gates are unchanged.
 
-The explicit `codex` planner uses the already installed CLI and local login.
-It asks for an ephemeral, read-only proposal, reads a UTF-8 final-message
-file, then removes that temporary file. Only Codex runtime configuration and
-network settings enter its subprocess. Other providers, automatic backend
-order and device authorization are unchanged. No new server route is added;
 This backend alone adds no server lines; its upstream baseline is 8,893.
 Recipe firmware warnings recognize one short stable-release label paired with
 the same release's valid full build-date label. This affects prose only, never
