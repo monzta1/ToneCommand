@@ -4,6 +4,10 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- Require fresh target-bound survey consent after context changes, use the
+  server REVIEW transition from the sidebar, and catalog existing-edit messages.
+
 ### Added
 - Add a disabled-by-default existing-preset text workflow on the shared TC
   Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,

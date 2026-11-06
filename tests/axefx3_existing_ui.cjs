@@ -46,7 +46,8 @@ const III={device:{active:'axefx3'},preset:{number:329},scene:{number:1}};
 const count=path=>calls.filter(c=>c.path===path).length;
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function suspend(path){let release;const promise=new Promise(resolve=>{release=resolve;});hold={path,promise};return release;}
-async function scanned(){await ui.poll(III);node('afx3existtarget').checked=true;node('afx3existscanmute').checked=true;await ui.scan();}
+function scanConsent(){node('afx3existtarget').checked=true;node('afx3existscanmute').checked=true;node('afx3existscanmute').onchange();}
+async function scanned(){await ui.poll(III);scanConsent();await ui.scan();}
 async function prepared(){await scanned();node('prompt').value='More body without replacing the rig.';await ui.submit();}
 async function reviewed(){await prepared();await ui.review();bridge.renderConfirm();}
 async function armed(){await reviewed();node('ack').checked=true;node('afx3muted').checked=true;await ui.arm();}
@@ -65,7 +66,19 @@ async function armed(){await reviewed();node('ack').checked=true;node('afx3muted
   }else if(scenario==='scan-consent'){
     await ui.poll(III);await ui.scan();assert.equal(count('scan'),0);
     node('afx3existtarget').checked=true;await ui.scan();assert.equal(count('scan'),0);
-    node('afx3existscanmute').checked=true;await ui.scan();assert.equal(count('scan'),1);
+    node('afx3existscanmute').checked=true;node('afx3existscanmute').onchange();await ui.scan();assert.equal(count('scan'),1);
+  }else if(scenario==='target-consent-before-scan'||scenario==='target-consent-after-scan'){
+    if(scenario.endsWith('after-scan'))await scanned();else {await ui.poll(III);scanConsent();}
+    const previous=count('scan');
+    await ui.poll({...III,preset:{number:328}});await tick();
+    assert.equal(node('afx3existtarget').checked,false);assert.equal(node('afx3existscanmute').checked,false);
+    assert.equal(node('afx3existread').disabled,true);await ui.scan();assert.equal(count('scan'),previous);
+  }else if(scenario==='sidebar-review-from-plan'){
+    await prepared();assert.equal(context.currentPlan.afx3_ticket.stage,'plan');
+    await bridge.restart('review');assert.equal(count('review'),1);
+    assert.equal(context.currentPlan.afx3_ticket.stage,'review');assert.equal(context.stage,'review');
+    bridge.renderConfirm();node('ack').checked=true;node('afx3muted').checked=true;
+    await ui.arm();assert.equal(count('confirm'),1);assert.equal(context.currentPlan.afx3_ticket.stage,'confirm');
   }else if(scenario==='question'){
     await scanned();questionNext=true;node('prompt').value='Broaden this preset.';await ui.submit();
     assert.equal(context.currentPlan,null);assert.equal(node('prompt').value,'');assert.match(node('engage').textContent,/ANSWER/);

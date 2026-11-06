@@ -4,7 +4,7 @@ window.installAFX3Existing = () => {
   const node=id=>document.getElementById(id), legacy=window.AFX3ReviewedEdit;
   const t=(key)=>window.TCLanguage?.t(key)??key;
   let metadata=null, scanToken=null, busy=false, question=false, original='', generation=0;
-  let polling=false, latest='', invalidating=Promise.resolve();
+  let polling=false, latest='', scanConsentTarget='', invalidating=Promise.resolve();
   const active=()=>!!currentPlan?.afx3_existing;
   const ticket=()=>currentPlan?.afx3_ticket;
   const status=text=>{node('afx3existingstatus').textContent=text;};
@@ -12,15 +12,16 @@ window.installAFX3Existing = () => {
   const title=document.createElement('strong');title.textContent=t('Adjust this existing preset');
   const note=document.createElement('p');note.textContent=t('Read all eight scenes first. Keep the original chain, effects, models, controllers and levels. This experimental mode adjusts supported Gain/Mid settings only.');
   panel.append(title,note);
-  for(const [id,label] of [['afx3existtarget','I confirm the current preset is the one to adjust.'],['afx3existscanmute','External speakers/headphones are muted and will remain muted during scene recalls and editing.']]){
+  for(const [id,label] of [['afx3existtarget',t('I confirm the current preset is the one to adjust.')],['afx3existscanmute',t('External speakers/headphones are muted and will remain muted during scene recalls and editing.')]]){
     const line=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.id=id;
-    line.append(input,document.createTextNode(' '+t(label)));line.style.display='block';panel.append(line);input.onchange=controls;
+    line.append(input,document.createTextNode(' '+label));line.style.display='block';panel.append(line);
+    input.onchange=()=>{scanConsentTarget=latest;controls();};
   }
   const scanButton=document.createElement('button');scanButton.id='afx3existread';scanButton.type='button';scanButton.textContent=t('READ ALL 8 SCENES');
   const message=document.createElement('p');message.id='afx3existingstatus';message.setAttribute('role','status');
   panel.append(scanButton,message);node('chat').before(panel);
   function controls(){
-    scanButton.disabled=busy||!metadata?.available||!node('afx3existtarget').checked||!node('afx3existscanmute').checked;
+    scanButton.disabled=busy||!metadata?.available||scanConsentTarget!==latest||!node('afx3existtarget').checked||!node('afx3existscanmute').checked;
     if(metadata?.configured){
       node('engage').disabled=busy||!metadata.available||!scanToken||!node('prompt').value.trim();
       node('engage').textContent=t(question?'SEND ANSWER':'SEND REQUEST');
@@ -28,6 +29,9 @@ window.installAFX3Existing = () => {
   }
   function clearConsent(){
     node('ack').checked=false;node('afx3muted').checked=false;disarmSend();node('armbtn').disabled=true;
+  }
+  function clearScanConsent(){
+    scanConsentTarget='';node('afx3existtarget').checked=false;node('afx3existscanmute').checked=false;
   }
   async function api(path,body){
     const r=await fetch('/api/axefx3/existing/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -45,12 +49,12 @@ window.installAFX3Existing = () => {
   }
   function invalidate(){
     generation++;scanToken=null;question=false;original='';
-    if(active())currentPlan.afx3_ticket=null;clearConsent();
+    if(active())currentPlan.afx3_ticket=null;clearConsent();clearScanConsent();
     invalidating=invalidating.catch(()=>{}).then(()=>api('discard',{}));
     void invalidating.catch(e=>status(e.message));controls();
   }
   async function scan(){return run(async()=>{
-    if(!metadata?.available||!node('afx3existtarget').checked||!node('afx3existscanmute').checked)throw new Error(t('Confirm the target and external audio mute first.'));
+    if(!metadata?.available||scanConsentTarget!==latest||!node('afx3existtarget').checked||!node('afx3existscanmute').checked)throw new Error(t('Confirm the target and external audio mute first.'));
     scanToken=null;question=false;original='';
     if(active())currentPlan.afx3_ticket=null;clearConsent();
     const out=await transition('scan',{expected_preset:metadata.preset,expected_scene:metadata.scene,target_confirmed:true,external_audio_muted:true});
@@ -99,6 +103,7 @@ window.installAFX3Existing = () => {
     stageDone.plan=true;setStage('review');lockCards();clearConsent();
   });}
   async function restart(destination){
+    if(destination==='review'){await review();return;}
     if(ticket()?.stage==='confirm'){await review();if(destination==='plan')setStage('plan');return;}
     clearConsent();setStage(destination);lockCards();
   }
@@ -152,7 +157,7 @@ window.installAFX3Existing = () => {
   }
   async function poll(s){
     const key=JSON.stringify([s.device?.active,s.preset?.number,s.scene?.number]);
-    if(latest&&key!==latest&&(scanToken||ticket()))invalidate();
+    if(latest&&key!==latest)invalidate();
     if(key!==latest){metadata=null;panel.hidden=true;controls();}latest=key;
     if(polling||busy)return;polling=true;
     try{
