@@ -5,6 +5,11 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- Bind survey consent to the actual metadata preset/scene, reject disagreeing
+  device reads, and recheck consent immediately before posting SCAN. Remove
+  the withdrawn Codex contribution from this UI slice; use main's backends.
+- Require fresh target-bound survey consent after context changes, use the
+  server REVIEW transition from the sidebar, and catalog existing-edit messages.
 - Recheck scalar expiry after recalls/preflights and at final output, and latch
   failed mutating scans without retaining a usable context or automatic restore.
 - Release III MIDI ownership after attempting both port closes, including
@@ -15,6 +20,9 @@ Notable changes to ToneCommand. Dates are UTC.
   identity/capture preflights and final observation failures. Never auto-restore.
 
 ### Added
+- Add a disabled-by-default existing-preset text workflow on the shared TC
+  Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,
+  selected-provider scope questions and one-use bounded scalar execution.
 - Prepare connection-owned existing-preset scalar deltas using eight actual
   scene maps, the pure proposal contract and full opaque-state verification.
 - Prepare a separate externally muted eight-scene observation survey with

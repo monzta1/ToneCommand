@@ -40,6 +40,7 @@ def isolated_env(tmp_path, monkeypatch):
     test asserting the built-in default - the same ambient-env leak, one PR
     later.
     """
+    monkeypatch.delenv('TONECOMMAND_AXEFX3_EXISTING_SCALAR', raising=False)
     from fm9 import planner, share
     monkeypatch.setattr(planner, "_env_path", lambda: tmp_path / ".env")
     # Third time, same lesson. share.endpoint() gained a .env fallback the day

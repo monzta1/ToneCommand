@@ -1,6 +1,7 @@
 """Refresh/check the English catalog and bundled, data-only translations."""
 from __future__ import annotations
 import argparse
+import ast
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -47,12 +48,14 @@ def source_keys(root=ROOT):
             parser = Markup()
             parser.feed((root / page).read_text(encoding='utf-8'))
             keys.update(parser.keys)
-    for script in ('ui/languages/tc-language.js', 'ui/axefx3.js', 'ui/controllers.js', 'ui/axefx3-reviewed-edit.js'):
+    for script in ('ui/languages/tc-language.js', 'ui/axefx3.js', 'ui/controllers.js',
+                   'ui/axefx3-reviewed-edit.js', 'ui/axefx3-existing-edit.js'):
         if not (root / script).exists():
             continue
         source = (root / script).read_text(encoding='utf-8')
-        for literal in re.findall(r'\b(?:tr|tcText)\(("(?:[^"\\]|\\.)*")', source):
-            value = json.loads(literal)
+        for literal in re.findall(r'''\b(?:tr|tcText|t)\(\s*((?:"(?:[^"\\]|\\.)*")|(?:'(?:[^'\\]|\\.)*'))''', source):
+            # Both quote styles are allowed for marked static UI messages.
+            value = ast.literal_eval(literal)
             if not value.lstrip().startswith('<'):
                 keys.add(value)
         if script.endswith('tc-language.js'):
