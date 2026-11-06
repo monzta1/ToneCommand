@@ -7,12 +7,18 @@ Notable changes to ToneCommand. Dates are UTC.
 ### Fixed
 - Release III MIDI ownership after attempting both port closes, including
   unplugged handles, and share a stable per-user lock across temporary roots.
+- Require exclusive III MIDI ownership before physical open, and bound receive
+  time, traffic and frame/total bytes before complete-observation buffering.
 
 ### Added
 - Prepare an explicit, unregistered live Axe-Fx III observation reader with
   a separate literal-GET-only output gate and complete repeated observations.
 - Correct the observation assembler's 0x75 prefix to the independently
   measured chunk word count; reject mismatched, zero and oversized chunks.
+
+## 1.6.3 (2026-11-05)
+
+### Added
 - Display exact observed Axe-Fx III beta 5, official 33.00 and official 33.01
   build labels without promoting firmware or chassis write permissions.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
@@ -38,8 +44,8 @@ Notable changes to ToneCommand. Dates are UTC.
   No device execution, UI activation or write capability is added.
 
 ### Fixed
-- Require exclusive III MIDI ownership before physical open, and bound receive
-  time, traffic and frame/total bytes before complete-observation buffering.
+- Avoid a recipe warning for a stable release label and that same release's
+  full build-date label. Distinct builds, beta labels and write pins stay strict.
 - Give every test its own pending-install cache, so a download left over by
   one test module can no longer fail another depending on run order (#293).
 - The local server answers only to 127.0.0.1, localhost and ::1, and
