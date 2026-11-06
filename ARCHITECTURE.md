@@ -35,6 +35,10 @@ existing-scalar component. It owns scan/review tokens, uses the selected provide
 and shared musical rules without generic FM9 execution, and wires the original
 UI stages through a separate addon. Disabled by default; older modes remain
 separate. `server.py` is now 8,895 lines, adding only the two registration lines.
+Scan consent is bound to the metadata preset/scene as well as the main state.
+Disagreeing reads clear the confirmations; SCAN freezes that target and checks
+the same consent again immediately before posting. Planner and AI-settings
+implementations are unchanged from main; no Codex dependency is included.
 
 `devices/axefx3/existing_scalar.py` composes the unchanged #297 pure contract
 with complete observations, muted original-scene survey and exact typed scalar
@@ -63,14 +67,6 @@ foundation with a separate literal-GET-only output boundary. It is unregistered,
 does not change the ordinary adapter, and checks fresh identity/target before
 and after complete reads. No writer, scene recall or UI route is enabled.
 This slice leaves `server.py` unchanged at 8,893 lines.
-The Codex CLI proposal runner in this draft is withdrawn pending a verified
-tool-free contract. Saved choices stay readable but the picker reports
-unavailable and execution refuses before process/account/output IO. STOP
-before a stream starts cancels without a blocking fallback. This is a hold,
-not a completed safe Codex transport; older runner descriptions below are
-historical. Other providers and device gates are unchanged.
-
-This backend alone adds no server lines; its upstream baseline is 8,893.
 Recipe firmware warnings recognize one short stable-release label paired with
 the same release's valid full build-date label. This affects prose only, never
 an adapter identity or write gate. Different full dates and beta labels retain

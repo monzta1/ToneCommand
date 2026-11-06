@@ -5,18 +5,15 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- Bind survey consent to the actual metadata preset/scene, reject disagreeing
+  device reads, and recheck consent immediately before posting SCAN. Remove
+  the withdrawn Codex contribution from this UI slice; use main's backends.
 - Require fresh target-bound survey consent after context changes, use the
   server REVIEW transition from the sidebar, and catalog existing-edit messages.
 - Release III MIDI ownership after attempting both port closes, including
   unplugged handles, and share a stable per-user lock across temporary roots.
 - Require exclusive III MIDI ownership before physical open, and bound receive
   time, traffic and frame/total bytes before complete-observation buffering.
-
-### Security
-- Withdraw the unqualified Codex CLI runner from this draft. Retain saved-choice
-  compatibility, report unavailable, and refuse without process or output IO.
-  The planning status line also reports the hold instead of claiming readiness.
-
 
 ### Added
 - Add a disabled-by-default existing-preset text workflow on the shared TC
@@ -32,9 +29,6 @@ Notable changes to ToneCommand. Dates are UTC.
   a separate literal-GET-only output gate and complete repeated observations.
 - Correct the observation assembler's 0x75 prefix to the independently
   measured chunk word count; reject mismatched, zero and oversized chunks.
-- Add an explicitly selected Codex CLI planner using an existing local login.
-  No automatic selection or provider fallback, API-key forwarding, device
-  permission, Store or account sign-in flow is added.
 
 ## 1.6.3 (2026-11-05)
 

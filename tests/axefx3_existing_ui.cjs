@@ -3,6 +3,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync(process.argv[2],'utf8'),scenario=process.argv[3];
 const nodes={},calls=[],timers=[],announcements=[];let hold=null,questionNext=false,sendError=false,configured=true,legacyPolls=0,legacySubmits=0;
+let statePreset=329,stateScene=1;
 function element(){return {hidden:false,disabled:false,checked:false,value:'',textContent:'',children:[],style:{},
   set id(value){this._id=value;nodes[value]=this;},get id(){return this._id;},
   classList:{add(){}},append(...items){this.children.push(...items);},before(){},setAttribute(){},addEventListener(){},
@@ -26,7 +27,7 @@ const context={console,structuredClone,JSON,Promise,Error,Number,String,
     calls.push({path,body});
     if(hold?.path===path){const waiting=hold;hold=null;await waiting.promise;}
     let out;
-    if(path==='state')out={configured,available:configured,preset:329,scene:1};
+    if(path==='state')out={configured,available:configured,preset:statePreset,scene:stateScene};
     if(path==='scan')out={scan_token:'s'.repeat(43),reference:{},scene_maps_verified:8};
     if(path==='discard')out={stage:'request'};
     if(path==='plan'){
@@ -73,6 +74,28 @@ async function armed(){await reviewed();node('ack').checked=true;node('afx3muted
     await ui.poll({...III,preset:{number:328}});await tick();
     assert.equal(node('afx3existtarget').checked,false);assert.equal(node('afx3existscanmute').checked,false);
     assert.equal(node('afx3existread').disabled,true);await ui.scan();assert.equal(count('scan'),previous);
+  }else if(scenario==='metadata-target-disagreement'||scenario==='metadata-scene-disagreement'){
+    await ui.poll(III);scanConsent();assert.equal(node('afx3existread').disabled,false);
+    if(scenario==='metadata-target-disagreement')statePreset=330;
+    stateScene=2;
+    await ui.poll(III);await tick();
+    assert.equal(node('afx3existtarget').checked,false);assert.equal(node('afx3existscanmute').checked,false);
+    assert.equal(node('afx3existread').disabled,true);await ui.scan();assert.equal(count('scan'),0);
+    scanConsent();assert.equal(node('afx3existtarget').checked,false);await ui.scan();assert.equal(count('scan'),0);
+    await ui.poll({...III,preset:{number:statePreset},scene:{number:stateScene}});await tick();
+    assert.equal(node('afx3existtarget').checked,false);assert.equal(node('afx3existscanmute').checked,false);
+    await ui.scan();assert.equal(count('scan'),0);
+    scanConsent();await ui.scan();assert.equal(count('scan'),1);
+    const body=calls.find(c=>c.path==='scan').body;
+    assert.equal(body.expected_preset,statePreset);assert.equal(body.expected_scene,stateScene);
+  }else if(scenario==='initial-metadata-disagreement'){
+    statePreset=330;stateScene=2;await ui.poll(III);scanConsent();
+    assert.equal(node('afx3existtarget').checked,false);assert.equal(node('afx3existscanmute').checked,false);
+    await ui.scan();assert.equal(count('scan'),0);
+  }else if(scenario==='scan-consent-revoked-while-waiting'){
+    await ui.poll(III);const release=suspend('discard');ui.invalidate();await tick();
+    scanConsent();const pending=ui.scan();node('afx3existtarget').checked=false;
+    release();await pending;assert.equal(count('scan'),0);
   }else if(scenario==='sidebar-review-from-plan'){
     await prepared();assert.equal(context.currentPlan.afx3_ticket.stage,'plan');
     await bridge.restart('review');assert.equal(count('review'),1);

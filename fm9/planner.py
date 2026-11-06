@@ -31,8 +31,6 @@ import logging
 import os
 import re
 import shutil
-import platform
-import sys
 import subprocess
 import time
 import urllib.error
@@ -66,36 +64,6 @@ def find_grok_cli() -> str | None:
         return path
     bundled = Path.home() / ".grok" / "bin" / "grok"
     return str(bundled) if bundled.exists() else None
-
-
-def find_codex_cli() -> str | None:
-    """Resolve an explicit install, PATH, or the current Windows editor bundle."""
-    configured = _env("TONECOMMAND_CODEX_CLI").strip()
-    if configured:
-        candidate = Path(os.path.expandvars(configured)).expanduser()
-        return str(candidate) if candidate.is_absolute() and candidate.is_file() else None
-    found = shutil.which("codex")
-    if found or sys.platform != "win32":
-        return found
-    user_dir = Path.home()
-    installed = [user_dir / ".local" / "bin" / "codex.exe"]
-    if os.environ.get("APPDATA"):
-        installed.append(Path(os.environ["APPDATA"]) / "npm" / "codex.cmd")
-    for candidate in installed:
-        if candidate.is_file():
-            return str(candidate)
-    architecture = {"amd64": "windows-x86_64", "x86_64": "windows-x86_64",
-                    "arm64": "windows-aarch64", "aarch64": "windows-aarch64"}.get(platform.machine().lower())
-    if not architecture:
-        return None
-    bundled = []
-    for editor in (".vscode", ".vscode-insiders"):
-        for extension in (user_dir / editor / "extensions").glob("openai.chatgpt-*"):
-            version = re.fullmatch(r"openai\.chatgpt-(\d+(?:\.\d+)*)(?:-[\w.-]+)?", extension.name)
-            candidate = extension / "bin" / architecture / "codex.exe"
-            if version and candidate.is_file():
-                bundled.append((tuple(map(int, version[1].split("."))), str(candidate)))
-    return max(bundled, key=lambda entry: entry[0])[1] if bundled else None
 
 
 PLAN_SCHEMA = {
@@ -300,7 +268,7 @@ if _TONE_RULES:
               "not the rule:\n\n" + _TONE_RULES)
 
 
-BACKENDS = ("openai", "cli", "grok", "api", "codex")
+BACKENDS = ("openai", "cli", "grok", "api")
 
 FAILURE_CLASSES = (
     "unavailable",         # not configured, or its binary is missing
@@ -607,12 +575,6 @@ CLAUDE_ENV_KEYS = NETWORK_ENV_KEYS + (
 # NETWORK_ENV_KEYS exists to prevent (@Triumph1701 on #25). No Anthropic or
 # cloud keys here: a second vendor's binary has no business with them.
 GROK_ENV_KEYS = NETWORK_ENV_KEYS + ("XAI_API_KEY", "GROK_API_KEY")
-
-# Only Codex gets these runtime paths; other providers keep their allowlists.
-CODEX_ENV_KEYS = NETWORK_ENV_KEYS + (
-    "CODEX_HOME", "CODEX_CLI_MODEL", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-    "SystemRoot", "ComSpec", "TEMP", "TMP",
-)
 
 
 def cli_env(binary_keys: tuple[str, ...] = (),
@@ -1322,26 +1284,7 @@ def _api_available() -> bool:
     return bool(_env("ANTHROPIC_API_KEY"))
 
 
-def _plan_via_codex(prompt: str, device_state: str, param_reference: str,
-                    system: str = "", shape: str = "",
-                    schema: dict | None = None) -> tuple[dict, str]:
-    """Retain saved choice compatibility, but do not ship the unsafe runner.
-
-    Read-only exec does not prohibit tool use. No verified all-tools-off CLI
-    contract is available for this contribution. Refuse before discovery,
-    account/config reads, subprocess creation or output-file allocation.
-    This is a suspended backend, not an implemented safe CLI transport.
-    """
-    raise BackendFailure("codex", "unavailable", CODEX_UNAVAILABLE)
-
-
-CODEX_UNAVAILABLE = ("Codex CLI planning is temporarily unavailable pending a "
-    "verified tool-free runner. Select another backend explicitly; no fallback "
-    "or Codex process was started.")
-
-
 _RUNNERS = {
-    "codex": _plan_via_codex,
     "openai": _plan_via_openai,
     "grok": _plan_via_grok_cli,
     "cli": _plan_via_cli,
@@ -1351,7 +1294,6 @@ _RUNNERS = {
 # What each backend aims at, for the attempt record. A failure carries its own
 # target; a success has to be resolved the same way the runner resolved it.
 _TARGETS = {
-    "codex": find_codex_cli,
     "openai": _openai_base_url,
     "grok": find_grok_cli,
     "cli": find_claude_cli,
@@ -1477,8 +1419,6 @@ def plan_stream(prompt: str, device_state: str, param_reference: str,
 
     pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
-    if pinned == 'codex' and cancel is not None and cancel.is_set():
-        raise PlanCancelled('stopped before starting the planner')
     if not base or (pinned not in ("", "openai")):
         if pinned in ("", "cli") and _cli_can_stream():
             # Streaming beats fallthrough here: in auto order the CLI is the
@@ -1654,8 +1594,6 @@ def converse_stream(messages: list[dict], device_state: str,
     prompt = _chat_prompt(messages)
     pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
-    if pinned == 'codex' and cancel is not None and cancel.is_set():
-        raise PlanCancelled('stopped before starting the planner')
     if not base or (pinned not in ("", "openai")):
         if pinned in ("", "cli") and _cli_can_stream():
             try:

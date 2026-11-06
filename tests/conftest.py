@@ -89,8 +89,7 @@ def isolated_env(tmp_path, monkeypatch):
     for name in ("PLANNER_BACKEND", "PLANNER_BASE_URL", "PLANNER_MODEL",
                  "PLANNER_API_KEY", "PLANNER_TIMEOUT", "PLANNER_MAX_TOKENS",
                  "GROK_CLI_MODEL", "ANTHROPIC_API_KEY",
-                 "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL",
-                 "CODEX_CLI_MODEL", "TONECOMMAND_CODEX_CLI", "CODEX_HOME"):
+                 "CLAUDE_CLI_MODEL", "CLAUDE_API_MODEL"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path / ".env"
 

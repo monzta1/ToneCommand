@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "catalog_version": "1.5.16-lang.2",
-  "catalog_sha256": "dfa7fb05b00ec75045aaf6f80e34bb1dd8e75efdaafe14e8e54bbc5f1bc4a4d8",
+  "catalog_sha256": "1d0075e263ba670c224966f73d0183832e6bc677c8b60725f2d8e89c2872a842",
   "locale": "en",
   "name": "English",
   "translations": {
@@ -208,6 +208,7 @@
     "Design a preset with text": "Design a preset with text",
     "Design check, not listening evidence. ": "Design check, not listening evidence. ",
     "Design checked again. Select scenes and describe your adjustment; nothing stored.": "Design checked again. Select scenes and describe your adjustment; nothing stored.",
+    "Device readings disagree. Refresh the device state and confirm the target again.": "Device readings disagree. Refresh the device state and confirm the target again.",
     "Devices": "Devices",
     "Diagnostics": "Diagnostics",
     "Disconnect": "Disconnect",

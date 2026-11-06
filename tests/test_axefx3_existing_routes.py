@@ -20,8 +20,8 @@ def api(monkeypatch):
     monkeypatch.setattr('fm9.midi_transport.open_ports',lambda *a,**k:pytest.fail('No real MIDI'))
     monkeypatch.setattr('devices.axefx3.scene_observation.time.sleep',lambda _:None)
     monkeypatch.setattr(existing_routes.ai_settings,'apply_to_env',lambda:None)
-    monkeypatch.setattr(existing_routes.planner,'_env',lambda name:'codex' if name=='PLANNER_BACKEND' else '')
-    monkeypatch.setattr(existing_routes.planner,'candidates',lambda:['codex'])
+    monkeypatch.setattr(existing_routes.planner,'_env',lambda name:'openai' if name=='PLANNER_BACKEND' else '')
+    monkeypatch.setattr(existing_routes.planner,'candidates',lambda:['openai'])
     monkeypatch.setattr(server,'_gig_mode',{'on':False})
     monkeypatch.setattr(server,'_plan_revisions',{})
     ports=ExistingPorts();dev=ExistingEditor((ports.inp,ports.outp))
@@ -31,7 +31,7 @@ def api(monkeypatch):
     calls=[]
     def selected_ai(prompt,device,reference,**kwargs):
         calls.append(dict(prompt=prompt,reference=reference,schema=kwargs['schema']))
-        return dict(kwargs['validate'](dict(design=design(),question=None)),backend='codex',model='fake')
+        return dict(kwargs['validate'](dict(design=design(),question=None)),backend='openai',model='fake')
     monkeypatch.setattr(existing_routes.planner,'plan',selected_ai)
     monkeypatch.setattr(server,'run_action',lambda *a,**k:pytest.fail('No generic executor'))
     client=TestClient(server.app)
@@ -119,7 +119,7 @@ def test_scope_question_is_answered_with_original_request_and_empty_execution(ap
     def provider(prompt,device,reference,**kwargs):
         captured.append(prompt)
         raw=dict(design=None,question='Keep this adjustment to Gain and Mid only?') if len(captured)==1 else dict(design=design(),question=None)
-        return dict(kwargs['validate'](raw),backend='codex',model='fake')
+        return dict(kwargs['validate'](raw),backend='openai',model='fake')
     monkeypatch.setattr(existing_routes.planner,'plan',provider)
     scanned=scan(client);base=dict(scan_token=scanned['scan_token'],prompt='Make this existing preset broader.')
     out=client.post('/api/axefx3/existing/plan',json=base)
@@ -137,7 +137,7 @@ def test_one_bounded_same_provider_repair_for_invalid_design(api,monkeypatch):
     def provider(prompt,device,reference,**kwargs):
         calls.append(prompt);raw=design()
         if len(calls)==1:raw['changes'][0]['value']=9.
-        return dict(kwargs['validate'](dict(design=raw,question=None)),backend='codex',model='fake')
+        return dict(kwargs['validate'](dict(design=raw,question=None)),backend='openai',model='fake')
     monkeypatch.setattr(existing_routes.planner,'plan',provider)
     propose(client);assert len(calls)==2 and 'Correct the rejected proposal' in calls[-1] and not ports.writes
 
@@ -155,7 +155,7 @@ def test_discard_during_provider_call_cannot_restore_a_stale_review(api,monkeypa
     client,dev,ports,_=api
     def provider(*a,**kwargs):
         assert client.post('/api/axefx3/existing/discard',json={}).status_code==200
-        return dict(kwargs['validate'](dict(design=design(),question=None)),backend='codex',model='fake')
+        return dict(kwargs['validate'](dict(design=design(),question=None)),backend='openai',model='fake')
     monkeypatch.setattr(existing_routes.planner,'plan',provider)
     scanned=scan(client)
     out=client.post('/api/axefx3/existing/plan',json=dict(scan_token=scanned['scan_token'],prompt='More body.'))

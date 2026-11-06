@@ -2,8 +2,8 @@
 
 This draft composes the focused observation, original-scene and scalar ports
 with the original TC interface. The larger local integration is not imported.
-The optional shared Codex CLI provider is a separate dependency, preserving an
-existing explicit backend choice rather than switching providers for this UI.
+It uses the existing planner interfaces and backends already on main. No
+new provider, suspended backend choice or CLI runner is a dependency.
 The ordinary III connection remains read-only. Enable only one explicit mode:
 `TONECOMMAND_AXEFX3_EXISTING_SCALAR=1` selects the new existing-preset component.
 Combining it with an older experimental Amp flag refuses connection before
@@ -45,6 +45,14 @@ be overwritten by a late provider response. Unrelated FM9 and earlier manual
 review modes keep their original behavior. The addon is hidden when its mode
 is not configured; it reuses existing stages instead of introducing another
 application or server instance. English remains the fallback for new strings.
+
+Scan confirmations belong to the preset and scene in the existing-state
+metadata itself. Both independent state reads must agree. A metadata target
+change clears all confirmations, including before the first scan. Disagreeing
+reads disable SCAN and require refreshed state plus fresh confirmation. The
+request freezes that confirmed target and rechecks consent after any pending
+discard, immediately before posting. No simulated race test recalls hardware
+scenes or accesses a preset outside the owner's test range.
 
 Synthetic API/DOM tests, real Chrome with mocked HTTP, selected-provider native
 GUI acceptance, independent Axe-Edit and exact installed-source proof are

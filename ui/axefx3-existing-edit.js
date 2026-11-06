@@ -15,13 +15,26 @@ window.installAFX3Existing = () => {
   for(const [id,label] of [['afx3existtarget',t('I confirm the current preset is the one to adjust.')],['afx3existscanmute',t('External speakers/headphones are muted and will remain muted during scene recalls and editing.')]]){
     const line=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.id=id;
     line.append(input,document.createTextNode(' '+label));line.style.display='block';panel.append(line);
-    input.onchange=()=>{scanConsentTarget=latest;controls();};
+    input.onchange=()=>{
+      const target=metadataTarget();
+      if(!target||target!==latest)clearScanConsent();else scanConsentTarget=target;
+      controls();
+    };
   }
   const scanButton=document.createElement('button');scanButton.id='afx3existread';scanButton.type='button';scanButton.textContent=t('READ ALL 8 SCENES');
   const message=document.createElement('p');message.id='afx3existingstatus';message.setAttribute('role','status');
   panel.append(scanButton,message);node('chat').before(panel);
+  function metadataTarget(value=metadata){
+    if(!value?.available||!Number.isInteger(value.preset)||value.preset<0||value.preset>1023||
+        !Number.isInteger(value.scene)||value.scene<1||value.scene>8)return '';
+    return JSON.stringify(['axefx3',value.preset,value.scene]);
+  }
+  function scanConfirmed(target=metadataTarget()){
+    return !!target&&target===metadataTarget()&&target===latest&&scanConsentTarget===target&&
+      node('afx3existtarget').checked&&node('afx3existscanmute').checked;
+  }
   function controls(){
-    scanButton.disabled=busy||!metadata?.available||scanConsentTarget!==latest||!node('afx3existtarget').checked||!node('afx3existscanmute').checked;
+    scanButton.disabled=busy||!scanConfirmed();
     if(metadata?.configured){
       node('engage').disabled=busy||!metadata.available||!scanToken||!node('prompt').value.trim();
       node('engage').textContent=t(question?'SEND ANSWER':'SEND REQUEST');
@@ -37,8 +50,9 @@ window.installAFX3Existing = () => {
     const r=await fetch('/api/axefx3/existing/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();if(!r.ok)throw new Error(d.error||d.detail||t('Existing-preset operation refused.'));return d;
   }
-  async function transition(path,body,revision=generation){
+  async function transition(path,body,revision=generation,beforeSend=null){
     await invalidating;if(revision!==generation)throw new Error(t('The context changed. Read the scenes again.'));
+    if(beforeSend)beforeSend();
     const out=await api(path,body);
     if(revision!==generation)throw new Error(t('The context changed. Read the scenes again.'));return out;
   }
@@ -54,10 +68,14 @@ window.installAFX3Existing = () => {
     void invalidating.catch(e=>status(e.message));controls();
   }
   async function scan(){return run(async()=>{
-    if(!metadata?.available||scanConsentTarget!==latest||!node('afx3existtarget').checked||!node('afx3existscanmute').checked)throw new Error(t('Confirm the target and external audio mute first.'));
+    const target=metadataTarget();
+    if(!scanConfirmed(target))throw new Error(t('Confirm the target and external audio mute first.'));
+    const body={expected_preset:metadata.preset,expected_scene:metadata.scene,target_confirmed:true,external_audio_muted:true};
     scanToken=null;question=false;original='';
     if(active())currentPlan.afx3_ticket=null;clearConsent();
-    const out=await transition('scan',{expected_preset:metadata.preset,expected_scene:metadata.scene,target_confirmed:true,external_audio_muted:true});
+    const out=await transition('scan',body,generation,()=>{
+      if(!scanConfirmed(target))throw new Error(t('Confirm the target and external audio mute first.'));
+    });
     scanToken=out.scan_token;question=false;original='';
     status(t('All eight original scene maps read. Describe your adjustment below. Nothing stored; no physical limiter.'));
   });}
@@ -162,9 +180,14 @@ window.installAFX3Existing = () => {
     if(polling||busy)return;polling=true;
     try{
       const value=s.device?.active==='axefx3'?await api('state'):null;
-      if(key!==latest)return;metadata=value;
+      if(key!==latest)return;
+      const previousTarget=metadataTarget(),nextTarget=metadataTarget(value);
+      if(previousTarget&&nextTarget!==previousTarget)invalidate();
+      if(nextTarget!==key)clearScanConsent();
+      metadata=value;
       panel.hidden=!metadata?.configured;
       if(metadata?.configured){node('afx3editbox').hidden=true;if(!metadata.available)status(metadata.reason);}
+      if(nextTarget&&nextTarget!==key)status(t('Device readings disagree. Refresh the device state and confirm the target again.'));
       if(!metadata?.configured&&!active())void legacy.poll(s);
       controls();
     }catch(e){metadata=null;controls();status(e.message);}

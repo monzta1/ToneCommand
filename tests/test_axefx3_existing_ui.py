@@ -11,7 +11,9 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize('scenario',['lifecycle','scan-consent','question','confirm-consent',
     'late-plan','late-state','unsafe-result','arm-expiry','legacy','text-only','rescan',
-    'target-consent-before-scan','target-consent-after-scan','sidebar-review-from-plan'])
+    'target-consent-before-scan','target-consent-after-scan','sidebar-review-from-plan',
+    'metadata-target-disagreement','metadata-scene-disagreement','initial-metadata-disagreement',
+    'scan-consent-revoked-while-waiting'])
 def test_shipped_existing_edit_controls(scenario):
     node=shutil.which('node')
     if not node:
