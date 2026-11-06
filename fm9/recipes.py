@@ -36,6 +36,7 @@ stays as the fallback so a site outage never empties the shelf.
 from __future__ import annotations
 
 import json
+from datetime import date
 import os
 import re
 import time
@@ -194,6 +195,21 @@ def pr_url(recipe: dict) -> str:
             f"?filename=recipes/{name}.json&value={quote(body)}")
 
 
+def _same_release_with_one_build_date(tested: str, rig: str) -> bool:
+    """Display advice only; never used to qualify firmware for writes."""
+    pattern = r'(\d+)\.(\d{2})(?:\.(\d{8}))?'
+    left, right = re.fullmatch(pattern, tested), re.fullmatch(pattern, rig)
+    if (not left or not right or left.groups()[:2] != right.groups()[:2]
+            or bool(left[3]) == bool(right[3])):
+        return False
+    build = left[3] or right[3]
+    try:
+        date(int(build[:4]), int(build[4:6]), int(build[6:]))
+    except ValueError:
+        return False
+    return True
+
+
 def firmware_note(tested: str, rig: str) -> str:
     """What to say when a recipe was made on different firmware.
 
@@ -211,7 +227,7 @@ def firmware_note(tested: str, rig: str) -> str:
     """
     tested = (tested or "").strip()
     rig = (rig or "").strip()
-    if not tested or not rig or tested == rig:
+    if not tested or not rig or tested == rig or _same_release_with_one_build_date(tested, rig):
         return ""
     return (f"made on firmware {tested}, and this rig is on {rig}. Model names "
             f"resolve against your own rosters, so nothing will load the wrong "

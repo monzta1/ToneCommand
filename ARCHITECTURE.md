@@ -69,6 +69,10 @@ file, then removes that temporary file. Only Codex runtime configuration and
 network settings enter its subprocess. Other providers, automatic backend
 order and device authorization are unchanged. No new server route is added;
 This backend alone adds no server lines; its upstream baseline is 8,893.
+Recipe firmware warnings recognize one short stable-release label paired with
+the same release's valid full build-date label. This affects prose only, never
+an adapter identity or write gate. Different full dates and beta labels retain
+warnings. This shared fix leaves server.py at8,893 lines.
 
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition

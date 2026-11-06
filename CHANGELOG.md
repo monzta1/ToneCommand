@@ -56,6 +56,8 @@ Notable changes to ToneCommand. Dates are UTC.
   identity/capture preflights and final observation failures. Never auto-restore.
 - Require exclusive III MIDI ownership before physical open, and bound receive
   time, traffic and frame/total bytes before complete-observation buffering.
+- Avoid a recipe warning for a stable release label and that same release's
+  full build-date label. Distinct builds, beta labels and write pins stay strict.
 - Give every test its own pending-install cache, so a download left over by
   one test module can no longer fail another depending on run order (#293).
 - The local server answers only to 127.0.0.1, localhost and ::1, and
