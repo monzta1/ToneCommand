@@ -6,13 +6,16 @@ External editors must still close normally; this does not force their ports.
 import os
 from pathlib import Path
 import stat
-import tempfile
 
 from fm9.device import FM9NotFound
 
 
 def _lock_path():
-    return Path(tempfile.gettempdir()) / 'tonecommand-axefx3-midi-owner.lock'
+    # Temp roots can differ between cooperating processes/checkouts. Use one
+    # persistent per-user location, independent of TEMP/TMP/TMPDIR and cwd.
+    folder = Path.home() / '.tonecommand' / 'locks'
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return folder / 'axefx3-midi-owner.lock'
 
 
 class Lease:

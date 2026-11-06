@@ -53,8 +53,9 @@ official identity is independent of old writers. It is not registered by the
 app and preserves every unrelated observed word. `server.py` stays 8,893 lines.
 
 Physical III adapters acquire the same nonblocking OS lease before MIDI open.
-Only closing both ports releases ownership; failed closes retain it until
-process exit. Injected test ports do not acquire physical ownership. No forced
+Closing attempts both ports and releases ownership even if a dead handle raises.
+The lock is per-user, independent of temporary roots. Injected test ports do
+not acquire physical ownership. No forced
 closure, takeover or second open is attempted.
 
 `devices/axefx3/live_observation.py` composes the receive-only observation

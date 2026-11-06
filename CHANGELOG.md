@@ -7,6 +7,10 @@ Notable changes to ToneCommand. Dates are UTC.
 ### Fixed
 - Require fresh target-bound survey consent after context changes, use the
   server REVIEW transition from the sidebar, and catalog existing-edit messages.
+- Release III MIDI ownership after attempting both port closes, including
+  unplugged handles, and share a stable per-user lock across temporary roots.
+- Require exclusive III MIDI ownership before physical open, and bound receive
+  time, traffic and frame/total bytes before complete-observation buffering.
 
 ### Added
 - Add a disabled-by-default existing-preset text workflow on the shared TC
@@ -25,6 +29,10 @@ Notable changes to ToneCommand. Dates are UTC.
 - Add an explicitly selected Codex CLI planner using an existing local login.
   No automatic selection or provider fallback, API-key forwarding, device
   permission, Store or account sign-in flow is added.
+
+## 1.6.3 (2026-11-05)
+
+### Added
 - Display exact observed Axe-Fx III beta 5, official 33.00 and official 33.01
   build labels without promoting firmware or chassis write permissions.
 - Add a separate, explicitly opt-in Gain/Mid edit for the Axe-Fx III MK2 on
@@ -54,8 +62,6 @@ Notable changes to ToneCommand. Dates are UTC.
   failed mutating scans without retaining a usable context or automatic restore.
 - Latch uncertainty across the complete mutating scene survey, including
   identity/capture preflights and final observation failures. Never auto-restore.
-- Require exclusive III MIDI ownership before physical open, and bound receive
-  time, traffic and frame/total bytes before complete-observation buffering.
 - Avoid a recipe warning for a stable release label and that same release's
   full build-date label. Distinct builds, beta labels and write pins stay strict.
 - Give every test its own pending-install cache, so a download left over by

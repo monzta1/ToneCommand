@@ -54,16 +54,48 @@ def test_failed_initial_read_closes_pair_and_releases_lease(owner_file,monkeypat
 
 
 @pytest.mark.parametrize('failed_port',['in','out'])
-def test_uncertain_close_does_not_hand_ownership_to_second_reader(owner_file,monkeypatch,failed_port):
+def test_dead_port_close_releases_lease_and_allows_reconnect(owner_file,monkeypatch,failed_port):
     pair=ObservationPorts()
     monkeypatch.setattr(midi_transport,'open_ports',lambda *a:(pair.inp,pair.outp))
     reader=LiveReader()
-    def fail():raise OSError('fake uncertain close')
+    def fail():
+        pair.closes.append(failed_port)
+        raise OSError('fake dead handle after unplug')
     (pair.inp if failed_port=='in' else pair.outp).close=fail
-    try:
-        with pytest.raises(OSError):reader.close()
-        with pytest.raises(FM9NotFound):port_owner.acquire()
-    finally:reader._port_lease.close()  # Fake ports only; explicit test teardown.
+    with pytest.raises(OSError):reader.close()
+    assert pair.closes==['in','out']
+    assert reader._closed
+    reader.close()  # Idempotent; no second access to either dead handle.
+    assert pair.closes==['in','out']
+    lease=port_owner.acquire();lease.close()
+    fresh=ObservationPorts()
+    monkeypatch.setattr(midi_transport,'open_ports',lambda *a:(fresh.inp,fresh.outp))
+    replacement=LiveReader()
+    replacement.close()
+    assert fresh.closes==['in','out']
+
+
+def test_owner_path_ignores_process_specific_temporary_directories(tmp_path,monkeypatch):
+    monkeypatch.setattr(Path,'home',classmethod(lambda cls:tmp_path))
+    first=port_owner._lock_path()
+    for key in ('TEMP','TMP','TMPDIR'):
+        monkeypatch.setenv(key,str(tmp_path/key))
+    assert port_owner._lock_path()==first
+    assert first.parent==tmp_path/'.tonecommand'/'locks'
+
+
+def test_both_close_failures_still_release_lease(owner_file,monkeypatch):
+    pair=ObservationPorts()
+    monkeypatch.setattr(midi_transport,'open_ports',lambda *a:(pair.inp,pair.outp))
+    reader=LiveReader()
+    def fail_in():
+        pair.closes.append('in');raise OSError('input dead')
+    def fail_out():
+        pair.closes.append('out');raise OSError('output dead')
+    pair.inp.close=fail_in;pair.outp.close=fail_out
+    with pytest.raises(OSError):reader.close()
+    assert pair.closes==['in','out']
+    lease=port_owner.acquire();lease.close()
 
 
 def test_another_process_cannot_acquire_until_normal_handoff(owner_file):
