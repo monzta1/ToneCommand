@@ -215,6 +215,25 @@ def test_no_note_when_there_is_nothing_to_say():
     assert recipes.firmware_note("13.00", "") == ""
 
 
+@pytest.mark.parametrize('tested,rig',[
+    ('33.01','33.01.20261031'),('33.01.20261031','33.01'),
+    (' 33.01 ','33.01.20261031 '),('13.00','13.00.20260109')])
+def test_same_stable_release_with_one_full_build_label_has_no_false_warning(tested,rig):
+    from fm9 import recipes
+    assert recipes.firmware_note(tested,rig)==''
+
+
+@pytest.mark.parametrize('tested,rig',[
+    ('33.00','33.01.20261031'),('33.01','33.02.20261031'),
+    ('33.01.20261030','33.01.20261031'),
+    ('33.00','33.00-beta5.20261026'),('33.01-beta2','33.01'),
+    ('33.01','33.01.99999999'),('33.01','33.01.20260230'),
+    ('33.01','33.01.20261031-extra'),('33.1','33.01.20261031')])
+def test_unproven_build_equivalence_keeps_the_warning(tested,rig):
+    from fm9 import recipes
+    assert recipes.firmware_note(tested,rig)
+
+
 def test_the_note_reaches_the_plan_and_the_browser():
     src = (ROOT / "server.py").read_text(encoding="utf-8")
     fn = src.split("def api_recipe_plan(")[1].split("\n@app")[0]

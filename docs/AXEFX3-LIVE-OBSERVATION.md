@@ -10,8 +10,11 @@ NAM selection, Store or controller writes, even through direct `outp.send()`.
 Physical III adapters acquire one shared nonblocking OS lease before opening
 MIDI. A second reader, even from another TC process/checkout, refuses before
 port open. The handoff is explicit: close the old owner normally, then open
-the new one. Both port closes must succeed before releasing the lease; uncertain
-close failures retain it until process exit. No forced closure or takeover.
+the new one. Closing an adapter attempts both port closes and releases its lease
+in a finally block even if an unplugged handle raises. That adapter stays closed;
+reconnection creates a fresh adapter rather than reusing dead ports. The lock
+lives in `~/.tonecommand/locks`, independent of process temporary directories.
+No forced closure or takeover.
 Injected test ports are trusted test/caller-owned IO, not a second physical
 open. External programs do not cooperate with TC's lock: Axe-Edit must still
 close normally before inspection, and the reader closes before editor comparison.
