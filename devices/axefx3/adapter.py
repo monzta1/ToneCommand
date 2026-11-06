@@ -128,16 +128,16 @@ class AxeFxIII:
     def close(self):
         if not self._closed:
             self._closed = True
-            input_closed = output_closed = False
             try:
                 self.inp.close()
-                input_closed = True
             finally:
                 try:
                     self.outp.close()
-                    output_closed = True
                 finally:
-                    if input_closed and output_closed and self._port_lease:
+                    # A dead/unplugged handle must not poison every future
+                    # connection. Both closes were attempted; the closed
+                    # adapter cannot be used again, even if a close raised.
+                    if self._port_lease:
                         self._port_lease.close()
 
     def _send(self, frame):

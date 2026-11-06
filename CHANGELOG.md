@@ -4,6 +4,10 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- Release III MIDI ownership after attempting both port closes, including
+  unplugged handles, and share a stable per-user lock across temporary roots.
+
 ### Added
 - Prepare an explicit, unregistered live Axe-Fx III observation reader with
   a separate literal-GET-only output gate and complete repeated observations.
