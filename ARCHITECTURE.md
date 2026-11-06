@@ -30,6 +30,12 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/scene_observation.py` explicitly recalls existing scenes under
+external mute, compares complete opaque observations and returns the original
+scene only on verified success. It is not app-registered, never rewrites scene
+assignments and stops/latches without rollback on uncertainty. The server is
+unchanged at 8,893 lines.
+
 `devices/axefx3/official_amp_writer.py` composes the complete read-only observer
 with the bounded existing Gain/Mid edit and one-use output permit. Its exact
 official identity is independent of old writers. It is not registered by the

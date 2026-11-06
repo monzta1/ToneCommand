@@ -11,6 +11,8 @@ Notable changes to ToneCommand. Dates are UTC.
   time, traffic and frame/total bytes before complete-observation buffering.
 
 ### Added
+- Prepare a separate externally muted eight-scene observation survey with
+  one-shot recalls and complete original-state preservation checks.
 - Prepare a separate exact official 33.01 MK2 Gain/Mid experiment using
   complete opaque observations; no app activation or prior writer promotion.
 - Prepare an explicit, unregistered live Axe-Fx III observation reader with
@@ -46,6 +48,10 @@ Notable changes to ToneCommand. Dates are UTC.
   No device execution, UI activation or write capability is added.
 
 ### Fixed
+- Latch uncertainty across the complete mutating scene survey, including
+  identity/capture preflights and final observation failures. Never auto-restore.
+- Require exclusive III MIDI ownership before physical open, and bound receive
+  time, traffic and frame/total bytes before complete-observation buffering.
 - Avoid a recipe warning for a stable release label and that same release's
   full build-date label. Distinct builds, beta labels and write pins stay strict.
 - Give every test its own pending-install cache, so a download left over by
