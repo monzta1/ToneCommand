@@ -30,6 +30,11 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+`devices/axefx3/official_amp_writer.py` composes the complete read-only observer
+with the bounded existing Gain/Mid edit and one-use output permit. Its exact
+official identity is independent of old writers. It is not registered by the
+app and preserves every unrelated observed word. `server.py` stays 8,893 lines.
+
 Physical III adapters acquire the same nonblocking OS lease before MIDI open.
 Closing attempts both ports and releases ownership even if a dead handle raises.
 The lock is per-user, independent of temporary roots. Injected test ports do

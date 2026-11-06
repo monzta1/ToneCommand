@@ -11,6 +11,8 @@ Notable changes to ToneCommand. Dates are UTC.
   time, traffic and frame/total bytes before complete-observation buffering.
 
 ### Added
+- Prepare a separate exact official 33.01 MK2 Gain/Mid experiment using
+  complete opaque observations; no app activation or prior writer promotion.
 - Prepare an explicit, unregistered live Axe-Fx III observation reader with
   a separate literal-GET-only output gate and complete repeated observations.
 - Correct the observation assembler's 0x75 prefix to the independently
