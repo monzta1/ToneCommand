@@ -252,7 +252,7 @@ MODEL_ALWAYS_OPTIONAL = True
 
 #: Said out loud in the UI, because "no model box" invites the question.
 BACKEND_NOTES = {
-    "codex": "Uses the existing signed-in Codex CLI. Model optional; blank keeps its configured default. Explicit selection only, no provider fallback.",
+    "codex": "Temporarily unavailable pending a verified tool-free planner. Saved choices are preserved; no Codex process or provider fallback is started.",
     "": "A configured endpoint is tried first, then the Claude CLI, then the "
         "Claude API. Leave the endpoint blank to use the CLI.",
     "cli": "Runs on your Claude subscription. Model optional; blank uses "
@@ -849,14 +849,14 @@ def available_backends() -> list[dict]:
     # picked to enter the key (@Triumph1701 on #25). Those are selectable and
     # say what they still need; save() refuses if it is still missing.
     usable = {
-        "codex": planner.find_codex_cli() is not None,
+        "codex": False,  # Saved choices remain readable; unsafe runner withdrawn.
         "openai": True,
         "cli": planner.find_claude_cli() is not None,
         "grok": planner.find_grok_cli() is not None,
         "api": True,
     }
     reasons = {
-        "codex": "the codex binary is not on this machine",
+        "codex": planner.CODEX_UNAVAILABLE,
         "cli": "the claude binary is not on this machine",
         "grok": "the grok binary is not on this machine",
     }

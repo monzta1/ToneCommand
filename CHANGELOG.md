@@ -4,6 +4,10 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Security
+- Withdraw the unqualified Codex CLI runner from this draft. Retain saved-choice
+  compatibility, report unavailable, and refuse without process or output IO.
+
 ### Added
 - Add an explicitly selected Codex CLI planner using an existing local login.
   No automatic selection or provider fallback, API-key forwarding, device

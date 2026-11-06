@@ -1,5 +1,25 @@
 # Explicit Codex CLI proposals
 
+## Current review status: runner withdrawn
+
+Do not merge or enable this backend as a runnable planner. The previous
+`exec --sandbox read-only` runner was removed: read-only execution can still
+use tools and inherits user configuration. Saved backend/model preferences
+remain readable, but requests fail explicitly before discovery, account reads,
+process creation or output allocation. No automatic provider fallback occurs.
+The settings picker reports this backend unavailable even if Codex is installed.
+
+No Codex subprocess exists to outlive a timeout, produce unbounded output or
+ignore STOP. This removes that exposure; it does not claim an implemented
+process-tree/cancellation/output-limiting transport. Pre-start STOP is tested.
+
+A replacement requires a documented and independently tested all-tools-off
+contract (including shell, MCP and configuration isolation), process-tree
+termination, cancellable calls and byte limits for both pipes and the final
+file. Until then, choose another existing backend explicitly. Existing API
+backends and device capabilities are unchanged. The historical design below
+is reference only, not current availability or security evidence.
+
 Optional shared planner backend, independent of the Axe-Fx III adapter.
 Select `codex` in AI settings only if an installed Codex CLI is already signed
 in. This does not install software, start a browser login, change accounts,

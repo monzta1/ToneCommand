@@ -30,6 +30,13 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+The Codex CLI proposal runner in this draft is withdrawn pending a verified
+tool-free contract. Saved choices stay readable but the picker reports
+unavailable and execution refuses before process/account/output IO. STOP
+before a stream starts cancels without a blocking fallback. This is a hold,
+not a completed safe Codex transport; older runner descriptions below are
+historical. Other providers and device gates are unchanged.
+
 The explicit `codex` planner uses the already installed CLI and local login.
 It asks for an ephemeral, read-only proposal, reads a UTF-8 final-message
 file, then removes that temporary file. Only Codex runtime configuration and

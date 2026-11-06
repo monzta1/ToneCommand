@@ -1325,47 +1325,19 @@ def _api_available() -> bool:
 def _plan_via_codex(prompt: str, device_state: str, param_reference: str,
                     system: str = "", shape: str = "",
                     schema: dict | None = None) -> tuple[dict, str]:
-    """Explicit-only CLI proposal backend. UTF-8 avoids Windows charmap errors.
+    """Retain saved choice compatibility, but do not ship the unsafe runner.
 
-    Read-only/ephemeral CLI flags are not an audio safety boundary. TC still
-    validates the returned design and requires its own separate send review.
+    Read-only exec does not prohibit tool use. No verified all-tools-off CLI
+    contract is available for this contribution. Refuse before discovery,
+    account/config reads, subprocess creation or output-file allocation.
+    This is a suspended backend, not an implemented safe CLI transport.
     """
-    binary = find_codex_cli()
-    if not binary:
-        raise BackendFailure("codex", "unavailable", "codex binary not found")
-    model = _env("CODEX_CLI_MODEL")
-    fd, name = tempfile.mkstemp(prefix="tonecommand-codex-", suffix=".txt")
-    os.close(fd)
-    output = Path(name)
-    try:
-        args = [binary, "exec", "--ephemeral", "--skip-git-repo-check",
-                "--sandbox", "read-only", "--color", "never",
-                "--output-last-message", str(output), "-"]
-        if model:
-            args[2:2] = ["--model", model]
-        try:
-            proc = subprocess.run(args, input=_full_prompt(
-                prompt, device_state, param_reference, system, shape),
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=timeout_s(), cwd=tempfile.gettempdir(), env=cli_env(CODEX_ENV_KEYS))
-        except subprocess.TimeoutExpired as exc:
-            raise BackendFailure("codex", "timeout", f"no reply within {timeout_s()}s",
-                                 target=binary, model=model or None) from exc
-        except OSError as exc:
-            raise BackendFailure("codex", "unavailable", str(exc)[:200], target=binary) from exc
-        if proc.returncode:
-            # CLI diagnostics can contain account/config details; keep them local.
-            raise BackendFailure("codex", "backend_error",
-                                 f"Codex exited with code {proc.returncode}", target=binary)
-        result = output.read_text(encoding="utf-8").strip()
-        if not result:
-            raise BackendFailure("codex", "empty_output", "Codex produced no final message", target=binary)
-        try:
-            return _extract_json(result), model or "Codex configured default"
-        except ValueError as exc:
-            raise BackendFailure("codex", "unreadable_output", str(exc)[:200], target=binary) from exc
-    finally:
-        output.unlink(missing_ok=True)
+    raise BackendFailure("codex", "unavailable", CODEX_UNAVAILABLE)
+
+
+CODEX_UNAVAILABLE = ("Codex CLI planning is temporarily unavailable pending a "
+    "verified tool-free runner. Select another backend explicitly; no fallback "
+    "or Codex process was started.")
 
 
 _RUNNERS = {
@@ -1505,6 +1477,8 @@ def plan_stream(prompt: str, device_state: str, param_reference: str,
 
     pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
+    if pinned == 'codex' and cancel is not None and cancel.is_set():
+        raise PlanCancelled('stopped before starting the planner')
     if not base or (pinned not in ("", "openai")):
         if pinned in ("", "cli") and _cli_can_stream():
             # Streaming beats fallthrough here: in auto order the CLI is the
@@ -1680,6 +1654,8 @@ def converse_stream(messages: list[dict], device_state: str,
     prompt = _chat_prompt(messages)
     pinned = _env("PLANNER_BACKEND").lower()
     base = _openai_base_url()
+    if pinned == 'codex' and cancel is not None and cancel.is_set():
+        raise PlanCancelled('stopped before starting the planner')
     if not base or (pinned not in ("", "openai")):
         if pinned in ("", "cli") and _cli_can_stream():
             try:
