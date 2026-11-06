@@ -935,6 +935,9 @@ def planning_line() -> dict:
         model = (s.model_for("api") or planner._env("CLAUDE_API_MODEL")
                  or planner.MODEL)
     problem = missing_setup(first, s)
+    if first == 'codex':
+        return {"backend": first, "service": service, "model": model,
+                "problem": planner.CODEX_UNAVAILABLE}
     return {"backend": first, "service": service, "model": model,
             "problem": f"{service} still needs {problem}" if problem else ""}
 

@@ -15,6 +15,7 @@ Notable changes to ToneCommand. Dates are UTC.
 ### Security
 - Withdraw the unqualified Codex CLI runner from this draft. Retain saved-choice
   compatibility, report unavailable, and refuse without process or output IO.
+  The planning status line also reports the hold instead of claiming readiness.
 
 
 ### Added

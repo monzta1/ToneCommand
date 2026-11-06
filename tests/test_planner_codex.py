@@ -115,6 +115,7 @@ def test_saved_codex_choice_and_optional_model(tmp_path,monkeypatch):
     saved=ai_settings.save({'backend':'codex','model':'chosen-model'})
     assert saved.backend=='codex' and planner.candidates()==['codex']
     assert ai_settings.planning_line()['service']=='ChatGPT via Codex CLI'
+    assert 'tool-free' in ai_settings.planning_line()['problem']
     assert ai_settings.list_models('codex')['models']==[]
     option=next(x for x in ai_settings.available_backends() if x['backend']=='codex')
     assert not option['available'] and not option['needsKey'] and not option['needsBaseUrl']
