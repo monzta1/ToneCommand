@@ -4,6 +4,18 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- Release III MIDI ownership after attempting both port closes, including
+  unplugged handles, and share a stable per-user lock across temporary roots.
+- Require exclusive III MIDI ownership before physical open, and bound receive
+  time, traffic and frame/total bytes before complete-observation buffering.
+
+### Added
+- Prepare an explicit, unregistered live Axe-Fx III observation reader with
+  a separate literal-GET-only output gate and complete repeated observations.
+- Correct the observation assembler's 0x75 prefix to the independently
+  measured chunk word count; reject mismatched, zero and oversized chunks.
+
 ## 1.6.3 (2026-11-05)
 
 ### Added

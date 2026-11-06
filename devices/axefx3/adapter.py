@@ -75,9 +75,19 @@ class AxeFxIII:
 
     def __init__(self, ports=None, *, chassis='mk1'):
         protocol.preset_count(chassis)  # Refuse before opening a MIDI port.
+        self._port_lease = None
         if ports is None:
             from fm9 import midi_transport
-            ports = midi_transport.open_ports("axe-fx")
+            from . import port_owner
+            lease = port_owner.acquire()
+            opened = False
+            try:
+                ports = midi_transport.open_ports("axe-fx")
+                opened = True
+                self._port_lease = lease
+            finally:
+                if not opened:
+                    lease.close()
         self.inp, outp = ports
         self.outp = self._output(outp, chassis)
         self._lock = threading.RLock()
@@ -121,7 +131,14 @@ class AxeFxIII:
             try:
                 self.inp.close()
             finally:
-                self.outp.close()
+                try:
+                    self.outp.close()
+                finally:
+                    # A dead/unplugged handle must not poison every future
+                    # connection. Both closes were attempted; the closed
+                    # adapter cannot be used again, even if a close raised.
+                    if self._port_lease:
+                        self._port_lease.close()
 
     def _send(self, frame):
         # Validate before mido can normalize, reject, or strip an argument.

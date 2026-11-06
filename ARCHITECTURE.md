@@ -30,6 +30,17 @@ invariant this codebase is organised around.
 
 ## Layers, in dependency order
 
+Physical III adapters acquire the same nonblocking OS lease before MIDI open.
+Closing attempts both ports and releases ownership even if a dead handle raises.
+The lock is per-user, independent of temporary roots. Injected test ports do
+not acquire physical ownership. No forced
+closure, takeover or second open is attempted.
+
+`devices/axefx3/live_observation.py` composes the receive-only observation
+foundation with a separate literal-GET-only output boundary. It is unregistered,
+does not change the ordinary adapter, and checks fresh identity/target before
+and after complete reads. No writer, scene recall or UI route is enabled.
+This slice leaves `server.py` unchanged at 8,893 lines.
 Recipe firmware warnings recognize one short stable-release label paired with
 the same release's valid full build-date label. This affects prose only, never
 an adapter identity or write gate. Different full dates and beta labels retain
