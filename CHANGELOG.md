@@ -10,10 +10,14 @@ Notable changes to ToneCommand. Dates are UTC.
   the withdrawn Codex contribution from this UI slice; use main's backends.
 - Require fresh target-bound survey consent after context changes, use the
   server REVIEW transition from the sidebar, and catalog existing-edit messages.
+- Recheck scalar expiry after recalls/preflights and at final output, and latch
+  failed mutating scans without retaining a usable context or automatic restore.
 - Release III MIDI ownership after attempting both port closes, including
   unplugged handles, and share a stable per-user lock across temporary roots.
 - Require exclusive III MIDI ownership before physical open, and bound receive
   time, traffic and frame/total bytes before complete-observation buffering.
+- Latch uncertainty across the complete mutating scene survey, including
+  identity/capture preflights and final observation failures. Never auto-restore.
 
 ### Added
 - Add a disabled-by-default existing-preset text workflow on the shared TC
@@ -58,10 +62,6 @@ Notable changes to ToneCommand. Dates are UTC.
   No device execution, UI activation or write capability is added.
 
 ### Fixed
-- Recheck scalar expiry after recalls/preflights and at final output, and latch
-  failed mutating scans without retaining a usable context or automatic restore.
-- Latch uncertainty across the complete mutating scene survey, including
-  identity/capture preflights and final observation failures. Never auto-restore.
 - Avoid a recipe warning for a stable release label and that same release's
   full build-date label. Distinct builds, beta labels and write pins stay strict.
 - Give every test its own pending-install cache, so a download left over by
