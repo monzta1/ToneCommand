@@ -23,6 +23,16 @@ os.environ.setdefault("TONECOMMAND_STORE_SLOTS", "133-148")
 
 
 @pytest.fixture(autouse=True)
+def fm9_editor_offset():
+    """#308: an FM3 handle sets the module-wide preset numbering to 0-based.
+    Put the FM9's back after every test so one FM3 test cannot renumber the
+    presets every later test reads."""
+    from fm9 import protocol
+    yield
+    protocol.set_editor_offset(protocol.FM9_EDITOR_OFFSET)
+
+
+@pytest.fixture(autouse=True)
 def isolated_env(tmp_path, monkeypatch):
     """Never read the developer's real .env, in ANY test module.
 

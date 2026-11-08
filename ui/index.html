@@ -4428,6 +4428,13 @@ let allSlots = [];
 let currentPresetNumber = null;
 let presetBusy = false;
 let popCursor = -1;          // keyboard highlight within the filtered list
+//: #308: the player has scrolled or clicked the list since it opened. Until
+//: then a repaint may centre the loaded preset; after, it keeps their place.
+//: The status poll repaints this list every few seconds on a read-only
+//: device, and centring each time threw a scrolling player back to the
+//: loaded preset mid-scroll, so their click landed on whatever row moved
+//: under the pointer (an FM3 tester's "presets past 128 land on 129 or 1").
+let plistTouched = false;
 
 function filteredSlots() {
   const q = $('psearch').value.trim().toLowerCase();
@@ -4435,7 +4442,7 @@ function filteredSlots() {
   return allSlots.filter(s =>
     s.name.toLowerCase().includes(q)
     || String(s.number) === q
-    || String(s.number + 1) === q);      // the number FM9-Edit shows
+    || String(s.editor) === q);          // the number the front panel shows (#308)
 }
 
 // A slot's name just changed on flash (an install, a rename). Patch every
@@ -4469,7 +4476,9 @@ function renderPresets(scrollToCurrent) {
   const hits = filteredSlots();
   $('pcount').textContent = hits.length === allSlots.length
     ? `${allSlots.length} slots` : `${hits.length} of ${allSlots.length}`;
-  $('plist').innerHTML = hits.map((s, i) =>
+  const plist = $('plist');
+  const keepTop = plist.scrollTop;
+  plist.innerHTML = hits.map((s, i) =>
     // Just the number the front panel and FM9-Edit show. Repeating
     // "(FM9-Edit n)" on all 512 rows is noise. The numbering is stated once in
     // the footer, and both numbers still appear wherever being wrong is
@@ -4484,11 +4493,11 @@ function renderPresets(scrollToCurrent) {
     // and the live counter says more than any estimate could.
     ? `reading slot names from the FM9... ${presetScan.read}/${presetScan.total}`
     : 'nothing matches'}</div>`;
-  if (scrollToCurrent) {
-    const on = $('plist').querySelector('.prow.on');
-    // centre it, so the neighbours above and below are both visible
-    if (on) on.scrollIntoView({block: 'center'});
-  }
+  const on = scrollToCurrent && !plistTouched && plist.querySelector('.prow.on');
+  // centre it, so the neighbours above and below are both visible
+  if (on) on.scrollIntoView({block: 'center'});
+  // Rewriting the rows must not move them under the player (#308).
+  else plist.scrollTop = keepTop;
 }
 
 function openPop() {
@@ -4496,6 +4505,7 @@ function openPop() {
   $('preset').classList.add('open');
   $('psearch').value = '';
   popCursor = -1;
+  plistTouched = false;
   renderPresets(true);
   $('psearch').focus();
 }
@@ -4687,6 +4697,9 @@ $('presetprev').addEventListener('click', () => {
 $('presetnext').addEventListener('click', () => {
   if (currentPresetNumber != null) gotoPreset(Math.min(511, currentPresetNumber + 1));
 });
+// Any way a person moves the list, the scrollbar drag included (pointerdown).
+for (const ev of ['wheel', 'touchstart', 'pointerdown'])
+  $('plist').addEventListener(ev, () => { plistTouched = true; }, {passive: true});
 $('plist').addEventListener('click', e => {
   const b = e.target.closest('.prow');
   if (b) gotoPreset(Number(b.dataset.preset));
@@ -8962,6 +8975,9 @@ async function openReport() {
                 >${esc(note || '')}</textarea>
       <div class="hint" style="margin-top:10px">What will be included</div>
       <pre class="reportbody">${esc(pkg.body)}</pre>
+      ${pkg.too_long ? `<p class="hint">This report is too long to fill in
+         the GitHub page by itself. OPEN GITHUB ISSUE copies it for you:
+         paste it into the new issue.</p>` : ''}
       <div class="reportacts">
         <button id="reportopen" class="reportgo">OPEN GITHUB ISSUE</button>
         <button id="reportcopy">COPY</button>
@@ -8983,7 +8999,24 @@ async function openReport() {
         nta.focus(); nta.setSelectionRange(pos, pos);
       }, 400);
     });
-    $('reportopen').addEventListener('click', () => window.open(pkg.url, '_blank', 'noopener'));
+    $('reportopen').addEventListener('click', () => {
+      // #308: a report too long for the link travels by clipboard instead.
+      // The copy starts while this page still has focus (a browser refuses
+      // it once the new tab takes focus), and the tab opens in the same
+      // click, so a popup blocker allows it.
+      let copy = null;
+      try {
+        copy = pkg.too_long && navigator.clipboard
+          ? navigator.clipboard.writeText(pkg.title + '\n\n' + pkg.body) : null;
+      } catch (e) { copy = Promise.reject(e); }
+      window.open(pkg.url, '_blank', 'noopener');
+      if (pkg.too_long) {
+        Promise.resolve(copy)
+          .then(() => { if (!copy) throw new Error('no clipboard'); })
+          .then(() => { $('reportopen').textContent = 'COPIED: PASTE IT ON GITHUB'; },
+                () => { $('reportopen').textContent = 'USE COPY, THEN PASTE ON GITHUB'; });
+      }
+    });
     $('reportcopy').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(pkg.title + '\n\n' + pkg.body);
