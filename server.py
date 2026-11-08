@@ -2044,7 +2044,9 @@ def snapshot(fm9: DeviceAdapter) -> dict:
         # rest are eight scene names and a status dump, each waiting out its
         # own timeout: finding out slowly would freeze the poll for ten
         # seconds an unplugged device does not deserve.
-        raise FM9NotFound("the FM9 stopped answering; is it still plugged in?")
+        label = getattr(fm9, "LABEL", None) or "FM9"
+        raise FM9NotFound(f"the {label} stopped answering; is it still plugged in "
+                          f"and switched on?")
     scene = fm9.scene_name()
     blocks = fm9.status_dump() or []
     # #253: a block counts only when a grid cell holds it. The status dump can
@@ -2638,6 +2640,40 @@ def _reconnect_device(kind: str, *, lock_held: bool = False) -> dict:
     return {"connected": True}
 
 
+def _fm3_auto_reconnect() -> None:
+    """#308: the FM3 comes back by itself, the way the FM9 always has.
+
+    The FM9 handle is rebuilt by get_fm9() on any poll that finds it gone.
+    The FM3 sits behind a USB MIDI interface in a device context, and once
+    its adapter was dropped (the interface unplugged, or the unit switched
+    off behind it) nothing tried again until the player clicked the offline
+    pill. The state poll now tries, no more often than RESCAN_EVERY. Caller
+    holds _lock, as api_state does."""
+    ctx = device_context()
+    if ctx.kind != "fm3" or ctx.adapter is not None:
+        return
+    now = time.monotonic()
+    if now - _last_rescan["at"] < RESCAN_EVERY:
+        return
+    _last_rescan["at"] = now
+    _reconnect_device("fm3", lock_held=True)
+
+
+def _drop_silent_fm3() -> None:
+    """#308: an FM3 that stops answering is dropped like an unplugged one.
+
+    Behind a MIDI interface the port stays present when the unit is switched
+    off, so the handle stays open and nothing marked it gone. Closing it
+    makes the page say offline, and the next poll's reconnect proves the
+    unit answers again before it is used. Caller holds _lock."""
+    ctx = device_context()
+    if ctx.kind != "fm3" or ctx.adapter is None:
+        return
+    with contextlib.suppress(Exception):    # a dead handle is being dropped anyway
+        ctx.adapter.close()
+    select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
+
+
 def _named_param_state(adapter, device: dict) -> dict:
     """The state block for a device whose surface is named parameters.
 
@@ -2689,6 +2725,7 @@ def api_state():
                 return JSONResponse({"connected": False, "error": str(e),
                                      "gig_mode": _gig_mode["on"],
                                      "device": device}, status_code=200)
+        _fm3_auto_reconnect()
         try:
             snap = snapshot(get_fm9())
             snap["device"] = device
@@ -2699,6 +2736,7 @@ def api_state():
         except FM9NotFound as e:
             note_connection(False, str(e))
             drop_fm9()
+            _drop_silent_fm3()
             # gig_mode rides along even unplugged, so the pill in the header
             # stays true while the rig is off.
             return {"connected": False, "gig_mode": _gig_mode["on"], "device": device}
@@ -7600,8 +7638,15 @@ def api_diagnostics_share_package(scope: str | None = None,
     way anything leaves the machine is the player opening that URL themselves
     from the settings drawer's second, separate button."""
     pkg = diagnostics.package_for_sharing(scope=scope, note=note or "")
-    return {"title": pkg["title"], "body": pkg["body"], "url": pkg["url"],
-            "entries": pkg["entry_count"]}
+    # #308: the button opened the pre-filled link whatever its length, and a
+    # report with ten diagnostics entries made one GitHub refuses. Same limit
+    # and fallback as /report (#282): a bare new-issue link, and the page
+    # copies the report for the player to paste.
+    url, too_long = pkg["url"], len(pkg["url"]) > _REPORT_URL_LIMIT
+    if too_long:
+        url = f"https://github.com/{diagnostics.REPO}/issues/new"
+    return {"title": pkg["title"], "body": pkg["body"], "url": url,
+            "too_long": too_long, "entries": pkg["entry_count"]}
 
 
 @app.post("/api/update")

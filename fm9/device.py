@@ -263,6 +263,8 @@ class FM9:
     #: same code, addressed with its own model byte (FM3 below).
     LABEL = "FM9"
     PORT_HINT = "fm9"
+    #: #308: what the front panel adds to a wire preset number. 1 on the FM9.
+    EDITOR_OFFSET = p.FM9_EDITOR_OFFSET
 
     #: #247: how long this handle waits for the unit to settle, as a
     #: fraction of each wait. 1 for every real device; a rehearsal twin
@@ -310,6 +312,9 @@ class FM9:
                 f"{self.LABEL} port opened but the device did not answer a preset-name "
                 "query. Either it is still booting, FM9-Edit is running, or a "
                 "zombie process is holding the MIDI port (ps aux | grep python).")
+        # #308: only once the unit answered, so a failed connect to one model
+        # cannot renumber the presets of another that is still in use.
+        p.set_editor_offset(self.EDITOR_OFFSET)
 
     # What the FM9 can actually answer. Every field here is backed by
     # hardware sessions, not by the manual: SysEx reads answer on the same
@@ -1668,6 +1673,8 @@ class FM3(FM9):
     LABEL = "FM3"
     PORT_HINT = "fm3"
     MODEL = p.MODEL_FM3
+    #: #308: the FM3's front panel shows wire 0 as 000 (fw 13.00).
+    EDITOR_OFFSET = 0
 
     CAPABILITIES = Capabilities(
         read_path=ReadPath.DEVICE,
@@ -1678,6 +1685,34 @@ class FM3(FM9):
 
     def _wrap_output(self, outp):
         return ReadOnlyOut(outp, self.MODEL)
+
+    #: #308: the FM3 is reached through a USB MIDI interface on its 5-pin
+    #: DIN (it has no MIDI over USB), sometimes a wireless one. A bank change
+    #: and a program change sent back to back give the interface no room, so
+    #: the program change waits this long behind the bank.
+    BANK_TO_PROGRAM_GAP = 0.03
+
+    def select_preset(self, preset: int) -> tuple[int, str] | None:
+        """Select by bank (CC0) then program change, read where the unit
+        landed, and send the pair once more if it landed elsewhere (#308).
+
+        A preset select only switches what is loaded, which the unit's own
+        knob does too; nothing here changes a stored preset, so a second
+        send is safe. The caller still compares the result with what it
+        asked for and reports a mismatch, so a select that misses twice is
+        said, not hidden."""
+        _check_preset_range(preset)
+        bank, pc = divmod(preset, 128)
+        got = None
+        for gap in (self.BANK_TO_PROGRAM_GAP, self.BANK_TO_PROGRAM_GAP * 4):
+            self.outp.send(mido.Message("control_change", control=0, value=bank))
+            _settle(self, gap)
+            self.outp.send(mido.Message("program_change", program=pc))
+            _settle(self, 0.4)
+            got = self.current_preset()
+            if got is not None and got[0] == preset:
+                return got
+        return got
 
     def capabilities(self) -> Capabilities:
         return self.CAPABILITIES

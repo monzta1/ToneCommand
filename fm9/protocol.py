@@ -526,12 +526,30 @@ EMPTY_SLOT_NAME = "<EMPTY>"     # the FM9's own marker for an unused slot
 # the same 512 slots 1..512, so anything a human reads needs +1. Verified on
 # hardware: wire 0 is '59 Bassguy', which FM9-Edit lists as 001, and a chain
 # built at wire 386 appears in FM9-Edit as 387.
+#
+# #308: the FM3 does not. Its front panel shows wire 0 as 000 (fw 13.00, a
+# tester's unit), so the offset belongs to the connected device. The device
+# handle sets it when it connects (FM9.EDITOR_OFFSET); 1 until then.
 PRESET_COUNT = 512
+FM9_EDITOR_OFFSET = 1
+_editor_offset = FM9_EDITOR_OFFSET
+
+
+def set_editor_offset(offset: int) -> None:
+    """What the connected unit adds to a wire number to show it (0 or 1)."""
+    global _editor_offset
+    if offset not in (0, 1):
+        raise ValueError(f"editor offset must be 0 or 1, not {offset!r}")
+    _editor_offset = offset
+
+
+def editor_offset() -> int:
+    return _editor_offset
 
 
 def editor_number(wire_preset: int) -> int:
-    """Wire preset number as FM9-Edit and the front panel show it."""
-    return wire_preset + 1
+    """Wire preset number as the connected unit's front panel shows it."""
+    return wire_preset + _editor_offset
 
 
 def slot_label(wire_preset: int) -> str:

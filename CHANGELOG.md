@@ -5,6 +5,13 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Fixed
+- FM3: preset numbers match the unit's own (000 first, where the FM9 starts
+  at 001), the preset list keeps its place while you scroll instead of
+  jumping back to the loaded preset, a preset select is read back and sent
+  once more if it landed elsewhere, and the FM3 reconnects by itself after
+  its MIDI interface is replugged or the unit is switched off and on (#308).
+- REPORT A PROBLEM: a report too long for a GitHub link now opens a blank
+  issue and copies the report for you to paste, as /report already did (#308).
 - Recheck scalar expiry after recalls/preflights and at final output, and latch
   failed mutating scans without retaining a usable context or automatic restore.
 - Release III MIDI ownership after attempting both port closes, including

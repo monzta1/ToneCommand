@@ -1,5 +1,6 @@
 """#221 REQ-002: binding API and port replacement over simulated MIDI only."""
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -278,3 +279,56 @@ def test_split_pair_with_a_missing_direction_is_refused(rig, body):
     response = rig.client.post("/api/fm3/port", json=body)
     assert response.status_code == 400
     assert rig.path.read_bytes() == before and not rig.events
+
+
+# -- #308: the FM3 comes back by itself ------------------------------------------
+
+def _poll_now(monkeypatch):
+    """The next state poll may try to reconnect (no throttle in the way)."""
+    monkeypatch.setattr(server, "_last_rescan", {"at": -1e9})
+
+
+def test_unplugged_interface_reconnects_on_the_next_poll(rig, monkeypatch):
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
+    assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    rig.ins.remove("Interface A")                      # the interface is unplugged
+    with server._lock:
+        assert server._reconnect_device("fm3", lock_held=True)["connected"] is False
+    assert server.device_context().adapter is None
+    _poll_now(monkeypatch)
+    assert rig.client.get("/api/state").json()["connected"] is False
+    rig.ins.insert(0, "Interface A")                   # and plugged back in
+    _poll_now(monkeypatch)
+    state = rig.client.get("/api/state").json()
+    assert state["connected"] is True, state
+    assert server.device_context().adapter is not None
+
+
+def test_reconnect_attempts_are_throttled(rig, monkeypatch):
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
+    assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    rig.ins.remove("Interface A")
+    with server._lock:
+        server._reconnect_device("fm3", lock_held=True)
+    calls = []
+    monkeypatch.setattr(server, "_reconnect_device",
+                        lambda kind, lock_held=False: calls.append(kind) or {"connected": False})
+    _poll_now(monkeypatch)
+    rig.client.get("/api/state")
+    rig.client.get("/api/state")                       # inside RESCAN_EVERY: no second try
+    assert calls == ["fm3"]
+
+
+def test_an_fm3_switched_off_behind_its_interface_reads_offline_then_returns(rig, monkeypatch):
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
+    assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    adapter = server.device_context().adapter
+    adapter.outp.port.core.model = 0x7E                # switched off: the port stays, nothing answers
+    monkeypatch.setattr(server, "_last_rescan", {"at": time.monotonic()})  # no retry this poll
+    state = rig.client.get("/api/state").json()
+    assert state["connected"] is False
+    assert server.device_context().adapter is None     # dropped, like an unplug
+    assert any(n and n[0] is False and "FM3 stopped answering" in n[1] for n in rig.notes), rig.notes
+    _poll_now(monkeypatch)                             # switched back on: a fresh open answers
+    state = rig.client.get("/api/state").json()
+    assert state["connected"] is True, state
