@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.4 (2026-11-08)
+
 ### Fixed
 - FM3: preset numbers match the unit's own (000 first, where the FM9 starts
   at 001), the preset list keeps its place while you scroll instead of
