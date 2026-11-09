@@ -714,9 +714,9 @@ def test_audit_counts_are_reported_honestly():
     blocks = _except_exception_blocks(ast.parse(SERVER.read_text(encoding="utf-8")))
     reraised = sum(1 for _h, before, _b in blocks.values()
                    if _handles_decline_first(before))
-    assert len(blocks) == 95          # #282: badge, /report and the startup line
-    assert reraised == 37
-    assert len(blocks) - reraised == 58
+    assert len(blocks) == 97          # #311: the send-time grid check
+    assert reraised == 38
+    assert len(blocks) - reraised == 59
 
 
 def test_capability_declined_is_its_own_type_and_the_handler_shapes_the_409(world):

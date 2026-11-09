@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- Building a tone into an empty preset: when the plan only set up the
+  starting blocks (no new block added), the starting chain was never laid,
+  so nothing was built while every change reported success. The chain is
+  now laid for any plan that touches a block, and a change aimed at a block
+  that is not in the preset now says so instead of reporting success (#311).
+
 ## 1.6.4 (2026-11-08)
 
 ### Fixed

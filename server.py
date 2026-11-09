@@ -8558,6 +8558,39 @@ def _set_param_spec(a: Action):
     return None
 
 
+def _blocks_on_grid(fm9, actions) -> set[int] | None:
+    """#311: the effect ids a grid cell holds, read once before the actions
+    run, or None when the grid cannot be read (a device without one, a
+    read-only device, a failed read), in which case nothing is refused on
+    its strength."""
+    if not any(a.block and a.kind != "add_block" for a in actions):
+        return None
+    try:
+        grid = fm9.read_grid()
+    except CapabilityDeclined:
+        return None
+    except Exception:          # noqa: BLE001  no grid read, no grid check
+        return None
+    if grid is None:
+        return None
+    return {c.effect_id for c in grid if not c.is_shunt}
+
+
+def _block_not_on_grid(a, on_grid: set[int] | None) -> str | None:
+    """Why `a` cannot change the sound, or None. Only block actions other
+    than add_block, and only when the grid was read."""
+    if on_grid is None or not a.block or a.kind == "add_block":
+        return None
+    try:
+        _fam, eid = reg.resolve_block(a.block, a.instance)
+    except Exception:          # noqa: BLE001  validation names an unknown block
+        return None
+    if eid in on_grid:
+        return None
+    return (f"{a.block} {a.instance or 1} is not on this preset's grid, so "
+            f"there is nothing to change; add the block first")
+
+
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
     _send_t0 = time.monotonic()
@@ -8659,7 +8692,13 @@ def _apply_for(body: ApplyBody, on_step=None):
             # (Moncy, 2026-09-02, "what the heck"). Runs BEFORE any action,
             # because the chain build re-selects the slot and would discard
             # renames a plan had already landed in the buffer.
-            if any(a.kind == "add_block" for a in body.actions):
+            # #311: an action on any block counts, not only add_block. On an
+            # empty slot the planner is told the template is already laid and
+            # to voice it rather than add it (starter_template.roster_text),
+            # so a plan that obeys has no add_block at all, and gating the lay
+            # on add_block sent its every action into an empty grid.
+            has_add = any(a.kind == "add_block" for a in body.actions)
+            if has_add or any(a.block for a in body.actions):
                 try:
                     grid = fm9.read_grid()
                     empty = grid == []
@@ -8670,7 +8709,8 @@ def _apply_for(body: ApplyBody, on_step=None):
                     # pass with no cell ever sliding. Edit buffer only, so
                     # reloading the preset brings the old one back, and the
                     # plan said so before it was confirmed.
-                    replace = (not empty) and getattr(body, "whole_rig", False)
+                    replace = ((not empty) and has_add
+                               and getattr(body, "whole_rig", False))
                     if empty or replace:
                         cur = fm9.current_preset()
                         # Lay the whole starter template at once (issue #47):
@@ -8730,11 +8770,25 @@ def _apply_for(body: ApplyBody, on_step=None):
                     log.warning("apply: starting-chain check failed: %s", exc)
 
             acts = body.actions
+            on_grid = _blocks_on_grid(fm9, acts)
             _act_t0 = time.monotonic()
             i = 0
             while i < len(acts):
                 a = acts[i]
                 _n0, _at0 = len(results), time.monotonic()
+
+                # #311: a write to a block that is not on the grid is not a
+                # change to the sound. The unit (and the simulator) accepts
+                # it and reads it back, so it used to be reported as done
+                # while the preset stayed empty.
+                missing = _block_not_on_grid(a, on_grid)
+                if missing:
+                    log.warning("apply: %s refused: %s", describe_action(a), missing)
+                    results.append({"action": a.model_dump(), "ok": False,
+                                    "detail": missing})
+                    step(False, a)
+                    i += 1
+                    continue
 
                 def _stamp(_n0=_n0, _at0=_at0):
                     """Cost of the action just processed, onto the rows it
@@ -8806,6 +8860,9 @@ def _apply_for(body: ApplyBody, on_step=None):
                 # over, which for a long plan is indistinguishable from a
                 # button that does nothing.
                 step(bool(res.get("ok")), a)
+                if res.get("ok") and a.kind == "add_block" and on_grid is not None:
+                    with contextlib.suppress(Exception):   # an unknown block stays unknown
+                        on_grid.add(reg.resolve_block(a.block or "", a.instance)[1])
                 if not res.get("ok") and a.kind == "add_block":
                     # later actions in the plan target the block that failed
                     # to land; running them would set params and bind pedals
