@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.5 (2026-11-09)
+
 ### Fixed
 - Building a tone into an empty preset: when the plan only set up the
   starting blocks (no new block added), the starting chain was never laid,
