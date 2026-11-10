@@ -65,6 +65,9 @@ The FM3 hardware pass fixes (#308: auto-reconnect, a silent FM3 dropped like
 an unplugged one, the long-report fallback) bring server.py to 8,938 lines.
 The empty-slot send fix (#311: the template laid for any block action, and a
 write to a block that is not on the grid refused) brings it to 8,995 lines.
+The FM3 second pass (#308: a driver error drops the FM3 so it reconnects, a
+missed preset select logged with its evidence, the report link title-only)
+brings it to 9,009 lines.
 
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition
@@ -139,7 +142,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 8,995 lines and 123 routes
+### 2. `server.py` is 9,009 lines and 123 routes
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

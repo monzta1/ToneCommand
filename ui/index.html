@@ -8975,9 +8975,8 @@ async function openReport() {
                 >${esc(note || '')}</textarea>
       <div class="hint" style="margin-top:10px">What will be included</div>
       <pre class="reportbody">${esc(pkg.body)}</pre>
-      ${pkg.too_long ? `<p class="hint">This report is too long to fill in
-         the GitHub page by itself. OPEN GITHUB ISSUE copies it for you:
-         paste it into the new issue.</p>` : ''}
+      <p class="hint">OPEN GITHUB ISSUE copies this report for you: paste
+         it into the new issue.</p>
       <div class="reportacts">
         <button id="reportopen" class="reportgo">OPEN GITHUB ISSUE</button>
         <button id="reportcopy">COPY</button>
@@ -9000,22 +8999,20 @@ async function openReport() {
       }, 400);
     });
     $('reportopen').addEventListener('click', () => {
-      // #308: a report too long for the link travels by clipboard instead.
-      // The copy starts while this page still has focus (a browser refuses
-      // it once the new tab takes focus), and the tab opens in the same
-      // click, so a popup blocker allows it.
+      // #308: the report travels by clipboard; the link carries only the
+      // title, since GitHub refuses a long pre-filled link. The copy starts
+      // while this page still has focus (a browser refuses it once the new
+      // tab takes focus), and the tab opens in the same click, so a popup
+      // blocker allows it.
       let copy = null;
       try {
-        copy = pkg.too_long && navigator.clipboard
-          ? navigator.clipboard.writeText(pkg.title + '\n\n' + pkg.body) : null;
+        copy = navigator.clipboard ? navigator.clipboard.writeText(pkg.body) : null;
       } catch (e) { copy = Promise.reject(e); }
       window.open(pkg.url, '_blank', 'noopener');
-      if (pkg.too_long) {
-        Promise.resolve(copy)
-          .then(() => { if (!copy) throw new Error('no clipboard'); })
-          .then(() => { $('reportopen').textContent = 'COPIED: PASTE IT ON GITHUB'; },
-                () => { $('reportopen').textContent = 'USE COPY, THEN PASTE ON GITHUB'; });
-      }
+      Promise.resolve(copy)
+        .then(() => { if (!copy) throw new Error('no clipboard'); })
+        .then(() => { $('reportopen').textContent = 'COPIED: PASTE IT ON GITHUB'; },
+              () => { $('reportopen').textContent = 'USE COPY, THEN PASTE ON GITHUB'; });
     });
     $('reportcopy').addEventListener('click', async () => {
       try {

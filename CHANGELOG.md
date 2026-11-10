@@ -4,6 +4,23 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.6 (2026-11-09)
+
+### Fixed
+- FM3 on Windows: replugging the MIDI interface now reconnects by itself.
+  Unplugging it raises the MIDI driver's own error rather than going quiet,
+  and that error left the old connection in place, so only a click on the
+  offline pill brought it back (#308).
+- REPORT A PROBLEM: GitHub refused a pre-filled report link of about 5,000
+  characters, under the old 7,000 limit. The link now carries only the
+  title, and the button copies the report for you to paste, at any
+  length (#308).
+
+### Added
+- FM3: a preset change that lands on the wrong preset is recorded in the
+  report, with the bank and program sent on each try and where the unit
+  landed, to find why presets 128 and up miss on some setups (#308).
+
 ## 1.6.5 (2026-11-09)
 
 ### Fixed

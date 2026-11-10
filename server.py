@@ -2460,10 +2460,20 @@ GitHub issue with it yourself, or copy it and paste it anywhere.</p>
 """
 
 
-#: #282: a GitHub "new issue" link longer than this is refused or cut off by
-#: browsers and GitHub alike, so the page offers copy-and-paste instead.
-_REPORT_URL_LIMIT = 7000
 _REPORT_NOTE_LIMIT = 2000
+
+
+def _report_link(title: str) -> str:
+    """#308: the report travels by clipboard, never in the link.
+
+    GitHub refused a pre-filled link of about 5,000 characters for a signed-in
+    tester (a "Whoops, something went wrong!" page, also in a private window),
+    well under the 7,000 this used to allow, and its real limit is not
+    published. So the link carries only the title and the player pastes the
+    body, which works at any length."""
+    from urllib.parse import quote
+    from fm9 import diagnostics
+    return f"https://github.com/{diagnostics.REPO}/issues/new?title={quote(title)}"
 
 
 @app.api_route("/report", methods=["GET", "POST"])
@@ -2489,15 +2499,12 @@ async def report_page(request: Request):
         pkg = await run_in_threadpool(diagnostics.package_for_sharing,
                                       note=note, query_device=False)
         text = pkg["title"] + "\n\n" + pkg["body"]
-        url = pkg["url"]
+        url = _report_link(pkg["title"])
     except Exception as e:      # noqa: BLE001  the report page must survive a broken install
         text = f"The report could not be built: {type(e).__name__}"
         url = f"https://github.com/{diagnostics.REPO}/issues/new"
-    hint = ""
-    if len(url) > _REPORT_URL_LIMIT:
-        url = f"https://github.com/{diagnostics.REPO}/issues/new"
-        hint = ("<p class=\"muted\">The report is too long for a link: copy it "
-                "from the box above and paste it into the new issue.</p>")
+    hint = ("<p class=\"muted\">Copy the report from the box above and paste "
+            "it into the new issue.</p>")
     page = _REPORT_PAGE.format(version=_html.escape(_badge_text() or "(version not read)"),
                                note=_html.escape(note), text=_html.escape(text),
                                url=_html.escape(url, quote=True), hint=hint)
@@ -2745,6 +2752,10 @@ def api_state():
         except Exception as e:
             note_connection(False, str(e))
             drop_fm9()
+            # #308: an unplugged interface on Windows raises the MIDI
+            # driver's own error, not FM9NotFound; the FM3 is dropped here
+            # too, or the next poll's auto-reconnect never runs.
+            _drop_silent_fm3()
             return JSONResponse({"connected": False, "error": str(e),
                                  "gig_mode": _gig_mode["on"], "device": device}, status_code=500)
 
@@ -6100,6 +6111,14 @@ def api_preset(body: PresetBody):
     # Report what the unit says it loaded, not what we asked for: a dropped
     # program change would otherwise look like success.
     if not got or got[0] != body.number:
+        # #308: the per-attempt evidence (bank, program, where it landed)
+        # goes into the diagnostics a player's report carries.
+        diagnostics.log_error(
+            "preset",
+            f"asked for {proto.slot_label(body.number)}, the unit reports "
+            f"{proto.slot_label(got[0]) if got else 'nothing'}",
+            device=device_context().kind,
+            attempts=getattr(fm9, "last_select", None))
         return JSONResponse(
             {"error": f"asked for {proto.slot_label(body.number)} but the unit "
                       f"reports {proto.slot_label(got[0]) if got else 'nothing'}"},
@@ -7638,15 +7657,10 @@ def api_diagnostics_share_package(scope: str | None = None,
     way anything leaves the machine is the player opening that URL themselves
     from the settings drawer's second, separate button."""
     pkg = diagnostics.package_for_sharing(scope=scope, note=note or "")
-    # #308: the button opened the pre-filled link whatever its length, and a
-    # report with ten diagnostics entries made one GitHub refuses. Same limit
-    # and fallback as /report (#282): a bare new-issue link, and the page
-    # copies the report for the player to paste.
-    url, too_long = pkg["url"], len(pkg["url"]) > _REPORT_URL_LIMIT
-    if too_long:
-        url = f"https://github.com/{diagnostics.REPO}/issues/new"
-    return {"title": pkg["title"], "body": pkg["body"], "url": url,
-            "too_long": too_long, "entries": pkg["entry_count"]}
+    # #308: the link carries the title only; the page copies the body for
+    # the player to paste (_report_link says why).
+    return {"title": pkg["title"], "body": pkg["body"],
+            "url": _report_link(pkg["title"]), "entries": pkg["entry_count"]}
 
 
 @app.post("/api/update")
