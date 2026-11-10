@@ -1704,12 +1704,18 @@ class FM3(FM9):
         _check_preset_range(preset)
         bank, pc = divmod(preset, 128)
         got = None
+        # #308: what was sent and where the unit landed, per attempt, so a
+        # miss can be reported with the evidence (the caller logs it).
+        self.last_select = []
         for gap in (self.BANK_TO_PROGRAM_GAP, self.BANK_TO_PROGRAM_GAP * 4):
             self.outp.send(mido.Message("control_change", control=0, value=bank))
             _settle(self, gap)
             self.outp.send(mido.Message("program_change", program=pc))
             _settle(self, 0.4)
             got = self.current_preset()
+            self.last_select.append({"cc0": bank, "program": pc,
+                                     "gap_ms": round(gap * 1000),
+                                     "landed": got[0] if got else None})
             if got is not None and got[0] == preset:
                 return got
         return got

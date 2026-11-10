@@ -218,7 +218,7 @@ def test_share_package_route_returns_scrubbed_package_without_any_network(
     r = client.get("/api/diagnostics/share-package")
     assert r.status_code == 200
     d = r.json()
-    assert set(d) == {"title", "body", "url", "too_long", "entries"}
+    assert set(d) == {"title", "body", "url", "entries"}
     assert d["entries"] == 1
     assert "auth failed with key" in d["body"]
     assert fake_key not in d["body"]

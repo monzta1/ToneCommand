@@ -160,9 +160,10 @@ def test_the_report_page_never_asks_the_device(monkeypatch, release):
     assert r.status_code == 200 and "Fractal Axe-Fx III (axefx3), handle open" in r.text
 
 
-def test_a_report_too_long_for_a_link_says_copy_and_paste(monkeypatch, release):
+def test_the_report_always_says_copy_and_paste(monkeypatch, release):
+    # #308: the link carries the title only, so the page always says paste.
     monkeypatch.setattr(diagnostics, "package_for_sharing", lambda **kw: {
         "title": "t", "body": "b", "url": "https://github.com/x?" + "a" * 9000})
     r = TestClient(server.app).get("/report")
-    assert 'href="https://github.com/monzta1/ToneCommand/issues/new"' in r.text
-    assert "too long for a link" in r.text
+    assert 'href="https://github.com/monzta1/ToneCommand/issues/new?title=t"' in r.text
+    assert "paste it into the new issue" in r.text

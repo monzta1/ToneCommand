@@ -109,6 +109,36 @@ def test_fm3_select_that_misses_twice_reports_where_it_landed():
     assert got == start      # the caller compares and reports the mismatch
 
 
+def test_a_missed_select_logs_what_was_sent_and_where_it_landed(monkeypatch):
+    """#308: presets 128 and up missed on a tester's FM3 behind a wireless
+    interface. The report must carry the evidence: the bank (CC0) and
+    program sent on each attempt, and where the unit landed."""
+    dev = SimFM3()
+    start = dev.current_preset()[0]
+    port = dev.outp.port
+    real = port.send
+    port.send = lambda msg: None if msg.type == "program_change" else real(msg)
+    logged = []
+    monkeypatch.setattr(server.diagnostics, "log_error",
+                        lambda scope, message, **ctx: logged.append((scope, message, ctx)))
+    monkeypatch.setattr(server, "_fm9", dev)
+    monkeypatch.setattr(server, "get_fm9", lambda: dev)
+    r = TestClient(server.app, base_url="http://127.0.0.1").post(
+        "/api/preset", json={"number": 200})
+    assert r.status_code == 409, r.text
+    scope, message, ctx = logged[-1]
+    assert scope == "preset" and "200" in message
+    assert [(a["cc0"], a["program"], a["landed"]) for a in ctx["attempts"]] == \
+        [(1, 72, start), (1, 72, start)]
+    assert [a["gap_ms"] for a in ctx["attempts"]] == [30, 120]
+
+
+def test_a_select_that_lands_records_one_attempt():
+    dev = SimFM3()
+    assert dev.select_preset(300)[0] == 300
+    assert dev.last_select == [{"cc0": 2, "program": 44, "gap_ms": 30, "landed": 300}]
+
+
 def test_fm3_select_still_refuses_out_of_range():
     import pytest
     dev = SimFM3()
@@ -118,22 +148,31 @@ def test_fm3_select_still_refuses_out_of_range():
 
 # -- report link ----------------------------------------------------------------
 
-def test_long_report_falls_back_to_a_bare_link(monkeypatch):
-    long_body = "x" * 9000
+def test_the_report_link_carries_the_title_only(monkeypatch):
+    """#308: GitHub refused a signed-in tester's pre-filled link of about
+    5,000 characters, under the old 7,000 limit. The body never rides in the
+    link now; the page copies it for pasting, whatever its length."""
+    from urllib.parse import parse_qs, urlsplit
+    for body in ("b", "x" * 9000):
+        monkeypatch.setattr(diagnostics, "package_for_sharing", lambda body=body, **k: {
+            "title": "Problem report: fm3 & presets", "body": body,
+            "url": "https://github.com/monzta1/ToneCommand/issues/new?body=" + body,
+            "entry_count": 10})
+        d = TestClient(server.app, base_url="http://127.0.0.1").get(
+            "/api/diagnostics/share-package").json()
+        parts = urlsplit(d["url"])
+        assert f"{parts.netloc}{parts.path}" == f"github.com/{diagnostics.REPO}/issues/new"
+        assert parse_qs(parts.query) == {"title": ["Problem report: fm3 & presets"]}
+        assert d["body"] == body            # the full report is there to copy
+        assert len(d["url"]) < 200
+
+
+def test_the_scriptless_report_page_links_the_title_only(monkeypatch):
     monkeypatch.setattr(diagnostics, "package_for_sharing", lambda **k: {
-        "title": "Problem report", "body": long_body,
-        "url": "https://github.com/monzta1/ToneCommand/issues/new?body=" + long_body,
+        "title": "Problem report", "body": "x" * 9000,
+        "url": "https://github.com/monzta1/ToneCommand/issues/new?body=" + "x" * 9000,
         "entry_count": 10})
-    r = TestClient(server.app).get("/api/diagnostics/share-package")
-    d = r.json()
-    assert d["too_long"] is True
-    assert d["url"] == f"https://github.com/{diagnostics.REPO}/issues/new"
-    assert d["body"] == long_body          # the full report is still there to copy
-
-
-def test_short_report_keeps_the_prefilled_link(monkeypatch):
-    url = "https://github.com/monzta1/ToneCommand/issues/new?title=t&body=b"
-    monkeypatch.setattr(diagnostics, "package_for_sharing", lambda **k: {
-        "title": "t", "body": "b", "url": url, "entry_count": 1})
-    d = TestClient(server.app).get("/api/diagnostics/share-package").json()
-    assert d["too_long"] is False and d["url"] == url
+    page = TestClient(server.app, base_url="http://127.0.0.1").get("/report").text
+    assert f"github.com/{diagnostics.REPO}/issues/new?title=Problem%20report\"" in page
+    assert "body=" not in page
+    assert "paste" in page

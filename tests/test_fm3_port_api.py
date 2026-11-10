@@ -332,3 +332,25 @@ def test_an_fm3_switched_off_behind_its_interface_reads_offline_then_returns(rig
     _poll_now(monkeypatch)                             # switched back on: a fresh open answers
     state = rig.client.get("/api/state").json()
     assert state["connected"] is True, state
+
+
+def test_an_unplugged_interface_that_raises_a_driver_error_still_comes_back(rig, monkeypatch):
+    """#308, from the tester's Windows run: unplugging the interface makes the
+    MIDI driver raise its own error rather than going quiet, so the state
+    poll reached the generic error branch, which left the dead adapter in
+    place and the auto-reconnect never ran. It must drop it like a timeout."""
+    rig.path.write_text(json.dumps({"port": "Interface A"}), encoding="utf-8")
+    assert rig.client.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    port = server.device_context().adapter.outp.port
+
+    def unplugged(msg):
+        raise RuntimeError("MidiOutWinMM::sendMessage: error sending MIDI message.")
+    monkeypatch.setattr(port, "send", unplugged)
+    rig.ins.remove("Interface A")
+    monkeypatch.setattr(server, "_last_rescan", {"at": time.monotonic()})  # no retry this poll
+    assert rig.client.get("/api/state").json()["connected"] is False
+    assert server.device_context().adapter is None
+    rig.ins.insert(0, "Interface A")                   # plugged back in
+    _poll_now(monkeypatch)
+    state = rig.client.get("/api/state").json()
+    assert state["connected"] is True, state
