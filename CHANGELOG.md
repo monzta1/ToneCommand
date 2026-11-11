@@ -4,6 +4,13 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- `tools/fm3_first_edit.py`, the first FM3 write test (#40): flips one effect
+  block's bypass in the edit buffer with Fractal's documented command, reads
+  it back, flips it back and reloads the preset, so nothing is stored or left
+  changed. Only that one frame for that one block passes the FM3's read-only
+  output, and only during the test; the app's FM3 stays read-only.
+
 ### Fixed
 - A preset change that lands on the wrong preset now says to check PC
   Mapping on the unit's MIDI/Remote page: with it ON the unit loads what its
