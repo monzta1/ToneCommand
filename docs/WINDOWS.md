@@ -171,6 +171,14 @@ FM3, check the MIDI interface instead: both 5-pin cables are connected the
 right way round, and the FM3 card on the Devices page names that interface's
 port.
 
+**Picking a preset loads a different one**
+Check **PC Mapping** on the unit's MIDI/Remote page. With it ON, the unit does
+not load the preset ToneCommand asks for: it looks the number up in its own
+mapping table and loads whatever that names. Set it OFF. On an FM3 with PC
+Mapping ON, presets 000 to 127 loaded but every preset above 127 landed on 000
+or 128; with it OFF all of them loaded (#308). If you use PC Mapping for a foot
+controller, note the setting so you can switch it back.
+
 **"Preparing metadata (pyproject.toml) did not run successfully"**, with
 **python-rtmidi** and **"Unknown compiler(s)"** in the red text, or
 **"requires a different Python"**

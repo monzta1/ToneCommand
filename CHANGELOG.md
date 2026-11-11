@@ -4,6 +4,12 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Fixed
+- A preset change that lands on the wrong preset now says to check PC
+  Mapping on the unit's MIDI/Remote page: with it ON the unit loads what its
+  own mapping table names, which is what sent an FM3's presets above 127 to
+  000 or 128. The Windows guide has the same note (#308).
+
 ## 1.6.6 (2026-11-09)
 
 ### Fixed
