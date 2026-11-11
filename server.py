@@ -6119,9 +6119,15 @@ def api_preset(body: PresetBody):
             f"{proto.slot_label(got[0]) if got else 'nothing'}",
             device=device_context().kind,
             attempts=getattr(fm9, "last_select", None))
+        # #308: on a tester's FM3 every miss came from PC Mapping ON, where
+        # the unit loads what its own mapping table names for a program
+        # change. Turning it off fixed every select; the player is told.
         return JSONResponse(
             {"error": f"asked for {proto.slot_label(body.number)} but the unit "
-                      f"reports {proto.slot_label(got[0]) if got else 'nothing'}"},
+                      f"reports {proto.slot_label(got[0]) if got else 'nothing'}. "
+                      f"If PC Mapping is ON on the unit's MIDI/Remote page, it "
+                      f"loads the preset its own mapping table names: set it "
+                      f"OFF and try again."},
             status_code=409)
     return {"preset": {"number": got[0], "editor": proto.editor_number(got[0]),
                        "label": proto.slot_label(got[0]), "name": got[1]}}

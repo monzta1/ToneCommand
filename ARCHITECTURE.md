@@ -68,6 +68,7 @@ write to a block that is not on the grid refused) brings it to 8,995 lines.
 The FM3 second pass (#308: a driver error drops the FM3 so it reconnects, a
 missed preset select logged with its evidence, the report link title-only)
 brings it to 9,009 lines.
+Naming PC Mapping in a missed preset select (#308) brings it to 9,015 lines.
 
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition
@@ -142,7 +143,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 9,009 lines and 123 routes
+### 2. `server.py` is 9,015 lines and 123 routes
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

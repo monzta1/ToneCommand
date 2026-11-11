@@ -126,6 +126,8 @@ def test_a_missed_select_logs_what_was_sent_and_where_it_landed(monkeypatch):
     r = TestClient(server.app, base_url="http://127.0.0.1").post(
         "/api/preset", json={"number": 200})
     assert r.status_code == 409, r.text
+    # the cause found on the tester's FM3 is named for the player (#308)
+    assert "PC Mapping" in r.json()["error"]
     scope, message, ctx = logged[-1]
     assert scope == "preset" and "200" in message
     assert [(a["cc0"], a["program"], a["landed"]) for a in ctx["attempts"]] == \
