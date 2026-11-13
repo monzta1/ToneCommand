@@ -5,6 +5,10 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- `tools/fm3_first_edit.py --test channel`: the second FM3 write test (#40)
+  moves one effect block to another channel (A to D) with Fractal's
+  documented command, reads it back, moves it back and reloads the preset.
+  The bypass test passed on a real FM3 (fw 13.00).
 - `tools/fm3_first_edit.py`, the first FM3 write test (#40): flips one effect
   block's bypass in the edit buffer with Fractal's documented command, reads
   it back, flips it back and reloads the preset, so nothing is stored or left
