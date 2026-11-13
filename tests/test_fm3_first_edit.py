@@ -31,7 +31,7 @@ def test_the_test_flips_reads_back_and_leaves_the_unit_as_it_was():
     before = dev.get_bypass(eid)
     lines = fe.run(dev, reg)
     assert lines[-1] == "result: PASS", lines
-    assert any(line.startswith("flip:") and line.endswith("PASS") for line in lines)
+    assert any(line.startswith("change:") and line.endswith("PASS") for line in lines)
     assert any(line.startswith("restore:") and line.endswith("PASS") for line in lines)
     assert dev.get_bypass(eid) == before
     assert isinstance(dev.outp, fe.ReadOnlyOut)     # the plain gate is back
@@ -77,3 +77,49 @@ def test_the_app_keeps_the_fm3_read_only():
     with pytest.raises(ReadOnly):
         dev.set_bypass(66, True)
     assert FM3.set_bypass is FM3._refuse
+
+
+def test_the_channel_test_moves_a_block_and_puts_it_back():
+    reg = Registry()
+    dev = SimFM3(reg)
+    eid = reg.resolve_block("reverb", 1)[1]
+    before = dev.get_channel(eid)
+    lines = fe.run(dev, reg, test="channel")
+    assert lines[-1] == "result: PASS", lines
+    assert any(line.startswith("change:") and line.endswith("PASS") for line in lines)
+    assert dev.get_channel(eid) == before
+    assert isinstance(dev.outp, fe.ReadOnlyOut)
+
+
+def test_a_channel_opening_lets_only_that_blocks_channel_through():
+    reg = Registry()
+    dev = SimFM3(reg)
+    reverb = reg.resolve_block("reverb", 1)[1]
+    delay = reg.resolve_block("delay", 1)[1]
+    with fe.one_write_open(dev, reverb, p.FN_CHANNEL):
+        dev.outp.send(_sysex(p.build_set_channel(reverb, 1)))         # the one form
+        with pytest.raises(ReadOnly):
+            dev.outp.send(_sysex(p.build_set_channel(delay, 1)))      # another block
+        with pytest.raises(ReadOnly):
+            dev.outp.send(_sysex(p.build_set_bypass(reverb, True)))   # another write
+    with pytest.raises(ReadOnly):
+        dev.outp.send(_sysex(p.build_set_channel(reverb, 0)))         # closed again
+
+
+def test_only_the_documented_writes_can_be_opened():
+    dev = SimFM3(Registry())
+    with pytest.raises(ValueError):
+        with fe.one_write_open(dev, 66, p.FN_STATUS_DUMP):
+            pass
+    assert isinstance(dev.outp, fe.ReadOnlyOut)
+
+
+def test_the_channel_test_skips_single_channel_blocks():
+    reg = Registry()
+    dev = SimFM3(reg)
+    blocks = dev.status_dump() or []
+    for b in blocks:
+        b.channels_supported = 1
+    with pytest.raises(SystemExit):
+        fe.choose(reg, blocks, "reverb", need_channels=True)
+    assert fe.choose(reg, blocks, None, need_channels=True) is None
