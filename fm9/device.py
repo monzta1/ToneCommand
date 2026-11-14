@@ -1618,8 +1618,9 @@ class ReadOnly(RuntimeError):
     """A write was asked of a device ToneCommand only reads for now."""
 
 
-FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now: it can show the "
-                 "preset and scenes and switch them, but not change your sound. "
+FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now, apart from "
+                 "switching presets and scenes, turning blocks on and off and "
+                 "switching their channels: it cannot change other settings. "
                  "Full support is tracked in #40.")
 
 
@@ -1660,12 +1661,14 @@ class ReadOnlyOut:
 
 
 class FM3(FM9):
-    """A Fractal FM3 through the FM9 module, read-only (#212).
+    """A Fractal FM3 through the FM9 module, read-only except block bypass
+    and channel (#212, #40).
 
     The FM3 speaks the same gen-3 family protocol, so the official queries
     (names, scenes, status dump, bypass and channel queries, firmware) and
     preset/scene switching work through the FM9 code addressed with the FM3's
-    model byte. Everything that changes the sound is refused: the block and
+    model byte. Block bypass and channel switching are allowed, proven on a
+    real FM3. Everything else that changes the sound is refused: the block and
     parameter map, grid and cable encodings were proven on the FM9 only, and
     each needs write-plus-read-back on a real FM3 before it is trusted (#40).
     """
@@ -1733,8 +1736,12 @@ class FM3(FM9):
 
     # Every method that changes the unit, refused before a frame is built.
     # The port would refuse each of them anyway; this says so sooner.
+    # Block bypass and channel are NOT refused: both were proven on a real
+    # FM3 (fw 13.00) by write and read-back with tools/fm3_first_edit.py
+    # (#40), and protocol.fm3_allowed lets exactly those frames through.
+    # Edit buffer only, like every write here; nothing is stored.
     set_param_display = set_param_wire = set_param_ordinal = set_params_batch = _refuse
-    set_bypass = set_channel = set_tempo = _refuse
+    set_tempo = _refuse
     rename_preset = rename_scene = store_preset = send_preset_file = _refuse
     load_preset_buffer = install_preset = _refuse
     install_user_cab = install_user_cab_slot = install_user_cab_at = _refuse

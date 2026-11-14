@@ -696,9 +696,10 @@ def parse_status_dump(data: list[int]) -> list[BlockStatus] | None:
     return out
 
 
-# --- #212: what may reach an FM3 while it is read-only ----------------------
+# --- #212: what may reach an FM3 ------------------------------------------
 #
-# Exact forms only, all from the official Rev 1.4 spec except the firmware
+# Exact forms only: the reads, plus the two writes proven on a real FM3
+# (#40: block bypass and channel, edit buffer only). Exact forms only, all from the official Rev 1.4 spec except the firmware
 # query (community, Axe-Fx II heritage, a read). Nothing from the editor
 # protocol (fn 0x01): the FM9's own "get parameter" is a typed SET of 0.0,
 # which on an FM3, whose parameter map differs (#40), could write.
@@ -708,7 +709,7 @@ def _scene_arg(v: int) -> bool:
 
 
 def fm3_allowed(frame: list[int]) -> bool:
-    """True when `frame` (F0 ... F7) is one of the read-only forms."""
+    """True when `frame` (F0 ... F7) is one of the forms an FM3 may receive."""
     if len(frame) < 8 or frame[0] != 0xF0 or frame[-1] != 0xF7:
         return False
     if tuple(frame[1:4]) != MFR or frame[4] not in (MODEL_FM9, MODEL_FM3):
@@ -721,8 +722,14 @@ def fm3_allowed(frame: list[int]) -> bool:
         return len(payload) == 2
     if fn in (FN_SCENE_NAME, FN_SCENE):
         return len(payload) == 1 and _scene_arg(payload[0])
-    if fn in (FN_BYPASS, FN_CHANNEL):
-        return len(payload) == 3 and payload[2] == 0x7F
+    if fn == FN_BYPASS:
+        # 0x7F queries; 0 engage / 1 bypass is the documented write, proven
+        # on an FM3 (fw 13.00) by write and read-back on two blocks (#40).
+        return len(payload) == 3 and payload[2] in (0, 1, 0x7F)
+    if fn == FN_CHANNEL:
+        # 0x7F queries; 0-3 (A-D) is the documented write, proven the same
+        # way (#40).
+        return len(payload) == 3 and payload[2] in (0, 1, 2, 3, 0x7F)
     if fn in (FN_STATUS_DUMP, FN_FIRMWARE):
         return payload == []
     if fn == FN_TEMPO_BPM:

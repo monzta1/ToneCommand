@@ -77,6 +77,10 @@ ALLOWED = {
     "status dump": p.build_status_dump(),
     "firmware": p.build_get_firmware(),
     "tempo query": p.build_get_tempo(),
+    # #40: the two writes proven on a real FM3 (fw 13.00), every value
+    "set bypass, bypass": p.build_set_bypass(46, True),
+    "set bypass, engage": p.build_set_bypass(46, False),
+    **{f"set channel {'ABCD'[c]}": p.build_set_channel(46, c) for c in range(4)},
 }
 
 
@@ -98,8 +102,9 @@ REFUSED = {
     "type name read (fn 0x01)": p.build_get_type_name(46, 0),
     "grid layout read (fn 0x01)": p.build_request_grid_layout(),
     "bulk read": p.build_bulk_read_poll(46),
-    "set bypass": p.build_set_bypass(46, True),
-    "set channel": p.build_set_channel(46, 1),
+    "set bypass, value 2": p.envelope(p.FN_BYPASS, [46, 0, 2]),
+    "set channel E": p.envelope(p.FN_CHANNEL, [46, 0, 4]),
+    "set bypass extended": p.envelope(p.FN_BYPASS, [46, 0, 1, 0]),
     "set tempo": p.build_set_tempo(120),
     "store": p.build_store_preset(5),
     "rename": p.build_rename_preset("x"),
@@ -149,7 +154,7 @@ def test_refuse_every_write_method_in_plain_words():
     dev = SimFM3()
     sent = _wire(dev)
     for name in ("set_param_display", "set_param_wire", "set_param_ordinal", "set_params_batch",
-                 "set_bypass", "set_channel", "set_tempo", "rename_preset", "rename_scene",
+                 "set_tempo", "rename_preset", "rename_scene",
                  "store_preset", "install_preset", "install_user_cab", "place_block",
                  "connect_cells", "bind_modifier", "clear_modifier"):
         with pytest.raises(ReadOnly) as e:
@@ -234,3 +239,52 @@ def test_page_names_the_fm3_and_offers_no_sound_controls():
     # the refusal reaches the player as written, never as "give it another go"
     assert "if (/is read-only in tonecommand/.test(m)) return String(msg);" in page
     assert "  fm3: [],\n" in page                                 # no request it would refuse
+
+
+# -- #40: block bypass and channel, the two proven FM3 writes ------------------
+
+def test_the_fm3_switches_a_block_and_its_channel_and_reads_them_back():
+    dev = SimFM3()
+    sent = _wire(dev)
+    assert dev.set_bypass(66, True) is True
+    assert dev.set_channel(66, 2) == 2
+    frames = _sysex(sent)
+    assert frames and {f[4] for f in frames} == {p.MODEL_FM3}
+    import time
+    time.sleep(0.2)                                  # the sim's settle window
+    assert dev.get_bypass(66) is True and dev.get_channel(66) == 2
+
+
+def test_state_offers_block_switching_on_the_fm3_only(client):
+    s = client.get("/api/state").json()
+    assert s["block_switching"] is True and s["read_only"] is True
+
+
+def test_bypass_and_channel_through_apply_land_and_read_back(client):
+    import time
+    # one action per send, as the page's block chips post them
+    for act in ({"kind": "set_bypass", "block": "reverb", "instance": 1, "bypassed": True},
+                {"kind": "set_channel", "block": "reverb", "instance": 1, "value": 1}):
+        r = client.post("/api/apply", json={"actions": [act]})
+        assert r.status_code == 200, r.text
+        results = r.json()["results"]
+        assert [x["action"]["kind"] for x in results] == [act["kind"]], results
+        assert results[0]["ok"], results
+    time.sleep(0.2)
+    reverb = [b for b in client.get("/api/state").json()["blocks"] if b["effect_id"] == 66][0]
+    assert reverb["bypassed"] is True and reverb["channel"] == "B"
+
+
+def test_other_writes_through_apply_are_still_refused(client):
+    r = client.post("/api/apply", json={"actions": [
+        {"kind": "set_param", "block": "reverb", "instance": 1, "param": "mix", "value": 50}]})
+    results = [x for x in r.json().get("results", []) if x.get("action")]
+    assert results and not any(x["ok"] for x in results), r.text
+
+
+def test_page_switches_fm3_blocks_but_never_input_or_output():
+    from pathlib import Path
+    page = (Path(server.__file__).resolve().parent / "ui" / "index.html").read_text(encoding="utf-8")
+    assert "const RO_FIXED = new Set(['INPUT', 'OUTPUT']);" in page
+    assert "if (s.block_switching) {" in page
+    assert "const sw = e.target.closest('.rosw');" in page
