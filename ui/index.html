@@ -3048,6 +3048,16 @@
   .robk { border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px;
           color: var(--text); font-size: var(--fs-label); flex-shrink: 0; }
   .robk.off { opacity: 0.55; border-style: dashed; }
+  /* #40: FM3 block chips that switch bypass and channel */
+  /* switching chips wrap: every block must be reachable, not clipped */
+  .ropanel.rowrap { flex-wrap: wrap; white-space: normal; row-gap: 4px; }
+  .ropanel.rowrap .ronote { flex-basis: 100%; }
+  button.robk { background: transparent; cursor: pointer; font-family: inherit; }
+  button.robk:hover { border-color: var(--cyan); }
+  button.robk.busy { opacity: 0.4; }
+  .robk .rocyc { margin-left: 4px; padding: 0 5px; border: 1px solid var(--line);
+                 border-radius: 4px; color: var(--cyan); }
+  .robk .rocyc:hover { border-color: var(--cyan); }
   /* What a named-parameter device does not have, after a send as well as
      before it: no audition path, no preset to store to, no edit buffer to
      be "unsaved", and no undo. These offered all four on an IR-2. */
@@ -6757,6 +6767,22 @@ async function blockAction(action, btn, what) {
 // Bypass and channel switching move into the enlarged view, where the target
 // is twice the size and you can read what you are about to switch off.
 $('blocks').addEventListener('click', e => {
+  // #40: an FM3 block chip switches that block, and nothing else happens.
+  const sw = e.target.closest('.rosw');
+  if (sw) {
+    const fam = sw.dataset.fam;
+    const inst = Number(sw.dataset.inst || 1);
+    if (e.target.closest('[data-rocyc]')) {
+      const n = Math.max(1, Number(sw.dataset.chn || 1));
+      const next = (Number(sw.dataset.chi || 0) + 1) % n;
+      blockAction({kind: 'set_channel', block: fam, instance: inst, value: next}, sw);
+    } else {
+      blockAction({kind: 'set_bypass', block: fam, instance: inst,
+                   bypassed: !sw.classList.contains('off')}, sw);
+    }
+    return;
+  }
+  if (lastState?.block_switching && e.target.closest('.ropanel')) return;   // the note and its link
   const cell = e.target.closest('.cell');
   if (cell && cell.dataset.fam) { selectBlock(cell.dataset.fam); return; }
   openGrid();
@@ -7059,6 +7085,8 @@ async function runPlugCard(dev, io) {
   }
   paint({pct: 100, done: true, text: dev.kind === 'axefx3'
     ? 'Connected, read-only: change presets and scenes on the unit; refresh to read them.'
+    : dev.kind === 'fm3'
+    ? 'Connected: presets and scenes switch, and blocks switch on, off and channel; other settings stay on the unit for now.'
     : dev.read_only
     ? 'Connected, read-only for now: presets and scenes switch; nothing changes your sound.'
     : 'Ready. Ask for a tone.'});
@@ -7232,7 +7260,38 @@ let lastCab = {bank: null, ordinal: -1};
 // parameter map were never verified, so instead of a signal chain drawn from
 // FM9 geometry it gets the blocks the status dump reports, by name, with
 // their state, and one line saying what works and where the rest is tracked.
+//
+// #40: on the FM3, block bypass and channel are proven by write and read-back
+// on a real unit, so with s.block_switching each chip is a button: tap it to
+// switch the block on or off, tap its channel letter to step through the
+// channels it has. Input and output are never offered: switching either off
+// silences the rig.
+const RO_FIXED = new Set(['INPUT', 'OUTPUT']);
+function roSwitchChip(b) {
+  const fam = String(b.family || '');
+  if (RO_FIXED.has(fam)) {
+    return `<span class="robk">${esc(b.label)}</span>`;
+  }
+  const n = Number(b.channels || 1);
+  const cyc = n > 1
+    ? `<span class="rocyc" data-rocyc title="switch channel (${n} channels)">${esc(b.channel)}</span>`
+    : '';
+  return `<button class="robk rosw${b.bypassed ? ' off' : ''}" data-fam="${esc(fam.toLowerCase())}" `
+    + `data-inst="${Number(b.instance || 1)}" data-chi="${Number(b.channel_index || 0)}" data-chn="${n}" `
+    + `title="${b.bypassed ? 'off: tap to switch on' : 'on: tap to switch off'}">`
+    + `${esc(b.label)}${b.bypassed ? ' · off' : ''}${cyc}</button>`;
+}
+
 function renderReadOnlyBlocks(s) {
+  if (s.block_switching) {
+    const short = esc(deviceShort(deviceState));
+    $('blocks').innerHTML = `<div class="ropanel rowrap"><span class="ronote">Tap a block: on/off. `
+      + `Tap its letter: channel. Store on the ${short} to keep. `
+      + `<a href="https://github.com/monzta1/ToneCommand/issues/40" target="_blank" rel="noopener">More `
+      + `${short} support</a> later.</span>`
+      + `${(s.blocks || []).map(roSwitchChip).join('') || '<span class="hint">no blocks reported</span>'}</div>`;
+    return;
+  }
   const chips = (s.blocks || []).map(b =>
     `<span class="robk${b.bypassed ? ' off' : ''}">${esc(b.label)} · ${esc(b.channel)}${b.bypassed ? ' · off' : ''}</span>`).join('');
   // One row: on a laptop-height window a second row pushed the request

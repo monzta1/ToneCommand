@@ -5,6 +5,13 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
+  The block chips in the FM3 view are now buttons: tap one to switch it on
+  or off, tap its channel letter to step through its channels. Both writes
+  were proven on a real FM3 (fw 13.00) by write and read-back, and only
+  those two pass the FM3's output; every other setting stays read-only.
+  Changes stay in the edit buffer until you store on the unit. Input and
+  output are never offered.
 - `tools/fm3_first_edit.py --test channel`: the second FM3 write test (#40)
   moves one effect block to another channel (A to D) with Fractal's
   documented command, reads it back, moves it back and reloads the preset.

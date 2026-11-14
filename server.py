@@ -2738,6 +2738,9 @@ def api_state():
             snap["device"] = device
             # #212: the page offers no sound-changing control for this device.
             snap["read_only"] = device_context().kind in ("fm3", "axefx3")
+            # #40: on the FM3, block bypass and channel are proven writes, so
+            # the page offers those two (and only those) on its block chips.
+            snap["block_switching"] = device_context().kind == "fm3"
             note_connection(True)
             return snap
         except FM9NotFound as e:
@@ -8652,6 +8655,11 @@ def _apply_for(body: ApplyBody, on_step=None):
                                   f"\"{current[1] if current else ''}\"). "
                                   f"Re-run the prompt against the current preset."},
                         status_code=409)
+            # #40: the FM3 takes block bypass and channel only. The undo
+            # snapshot, the starter-chain check and the health scan below are
+            # FM9-shaped reads it refuses, and a scan cut short could leave
+            # the scene it swept to; reloading the preset is its undo.
+            fm3_writes = device_context().kind == "fm3"
             # Snapshot before anything is written, so undo is always there
             # rather than something you had to remember to arm. It is silent
             # and costs about a quarter second, which is the whole reason it
@@ -8661,7 +8669,8 @@ def _apply_for(body: ApplyBody, on_step=None):
             # Only for actions that actually write. A scene change is the
             # rig's own control surface and undoing it means pressing the
             # other scene, and storing is guarded by its own confirmation.
-            if any(a.kind not in ("set_scene", "store") for a in body.actions):
+            if (not fm3_writes
+                    and any(a.kind not in ("set_scene", "store") for a in body.actions)):
                 try:
                     _take("undo")
                 except CapabilityDeclined:
@@ -8718,7 +8727,7 @@ def _apply_for(body: ApplyBody, on_step=None):
             # so a plan that obeys has no add_block at all, and gating the lay
             # on add_block sent its every action into an empty grid.
             has_add = any(a.kind == "add_block" for a in body.actions)
-            if has_add or any(a.block for a in body.actions):
+            if not fm3_writes and (has_add or any(a.block for a in body.actions)):
                 try:
                     grid = fm9.read_grid()
                     empty = grid == []
@@ -8910,7 +8919,7 @@ def _apply_for(body: ApplyBody, on_step=None):
             # touched structure, never on a plain param tweak.
             _STRUCTURAL = {"add_block", "set_channel", "set_bypass",
                            "rename_scene", "reorder", "set_type"}
-            if (any(a.kind in _STRUCTURAL for a in body.actions)
+            if (not fm3_writes and any(a.kind in _STRUCTURAL for a in body.actions)
                     and any(r.get("ok") for r in results)):
                 try:
                     scan = health.scan(fm9, reg, read_levels=False)
