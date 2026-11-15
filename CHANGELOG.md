@@ -4,6 +4,11 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Qualification components
+- Add a separate opt-in Axe-Fx III33.02 Gain/Mid writer using the existing
+  complete-preservation review contract and a separate full-response pin.
+  Amp1/A/model0 only; not registered in the app and no broader write promotion.
+
 ### Added
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
   The block chips in the FM3 view are now buttons: tap one to switch it on
