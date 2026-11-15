@@ -7,15 +7,18 @@ from devices.axefx3 import observed_firmware as identity, protocol
 from devices.axefx3.adapter import AxeFxIII
 from devices.axefx3.amp_writer import AmpEdit, AmpWriter
 from devices.axefx3.beta5_amp_writer import Beta5AmpWriter
+from devices.axefx3.official_amp_writer import OfficialAmpWriter
 from fm9 import protocol as shared
 from fm9.device import ReadOnly
 from tests.axefx3_beta5_identity import BETA5
 from tests.axefx3_official_identity import RELEASE3300, RELEASE3301
+from tests.axefx3_3302_identity import RELEASE3302
 from tests.test_axefx3_amp_writer import AmpPorts
 
 
 BUILDS = [(BETA5, '33.00-beta5.20261026'),
-          (RELEASE3300, '33.00.20261030'), (RELEASE3301, '33.01.20261031')]
+          (RELEASE3300, '33.00.20261030'), (RELEASE3301, '33.01.20261031'),
+          (RELEASE3302, '33.02.20261113')]
 
 
 @pytest.fixture(autouse=True)
@@ -80,6 +83,19 @@ def test_extended_packet_is_unknown_not_the_captured_official_build():
 def test_official_labels_never_promote_either_existing_writer(writer, reply):
     ports = AmpPorts()
     ports.identity, ports.amp[0] = reply, 0
+    dev = writer((ports.inp, ports.outp))
+    try:
+        with pytest.raises(ReadOnly):
+            dev.review_amp(AmpEdit(320, 'gain', 3.3))
+        assert not ports.writes
+    finally:
+        dev.close()
+
+
+@pytest.mark.parametrize('writer', [AmpWriter, Beta5AmpWriter, OfficialAmpWriter])
+def test_3302_recognition_does_not_promote_any_existing_writer(writer):
+    ports = AmpPorts()
+    ports.identity, ports.amp[0] = RELEASE3302, 0
     dev = writer((ports.inp, ports.outp))
     try:
         with pytest.raises(ReadOnly):
