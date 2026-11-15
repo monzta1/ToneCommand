@@ -202,7 +202,8 @@ HeadRush, and the ToneX (read-only by design).
 Hardware: developed and regression-tested on an FM9 Mk II Turbo. Other
 FM9 variants share the model byte and should behave identically, but are
 untested. The FM3 has no MIDI over USB and needs a USB MIDI interface on its
-5-pin MIDI ports (see DEVICES.md, #221); the Axe-Fx III uses a different
+5-pin MIDI ports (see DEVICES.md, #221), and PC Mapping OFF on its
+MIDI/Remote page, or presets above 127 load the wrong preset (#308); the Axe-Fx III uses a different
 model byte and is not supported. Firmware outside 11.x / 12.00 is untested; the editor
 protocol is unofficial and firmware-sensitive, and the hardware
 regression suite passing is the green light after any update. The

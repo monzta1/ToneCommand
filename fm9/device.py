@@ -263,6 +263,8 @@ class FM9:
     #: same code, addressed with its own model byte (FM3 below).
     LABEL = "FM9"
     PORT_HINT = "fm9"
+    #: #308: what the front panel adds to a wire preset number. 1 on the FM9.
+    EDITOR_OFFSET = p.FM9_EDITOR_OFFSET
 
     #: #247: how long this handle waits for the unit to settle, as a
     #: fraction of each wait. 1 for every real device; a rehearsal twin
@@ -310,6 +312,9 @@ class FM9:
                 f"{self.LABEL} port opened but the device did not answer a preset-name "
                 "query. Either it is still booting, FM9-Edit is running, or a "
                 "zombie process is holding the MIDI port (ps aux | grep python).")
+        # #308: only once the unit answered, so a failed connect to one model
+        # cannot renumber the presets of another that is still in use.
+        p.set_editor_offset(self.EDITOR_OFFSET)
 
     # What the FM9 can actually answer. Every field here is backed by
     # hardware sessions, not by the manual: SysEx reads answer on the same
@@ -1613,8 +1618,9 @@ class ReadOnly(RuntimeError):
     """A write was asked of a device ToneCommand only reads for now."""
 
 
-FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now: it can show the "
-                 "preset and scenes and switch them, but not change your sound. "
+FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now, apart from "
+                 "switching presets and scenes, turning blocks on and off and "
+                 "switching their channels: it cannot change other settings. "
                  "Full support is tracked in #40.")
 
 
@@ -1655,12 +1661,14 @@ class ReadOnlyOut:
 
 
 class FM3(FM9):
-    """A Fractal FM3 through the FM9 module, read-only (#212).
+    """A Fractal FM3 through the FM9 module, read-only except block bypass
+    and channel (#212, #40).
 
     The FM3 speaks the same gen-3 family protocol, so the official queries
     (names, scenes, status dump, bypass and channel queries, firmware) and
     preset/scene switching work through the FM9 code addressed with the FM3's
-    model byte. Everything that changes the sound is refused: the block and
+    model byte. Block bypass and channel switching are allowed, proven on a
+    real FM3. Everything else that changes the sound is refused: the block and
     parameter map, grid and cable encodings were proven on the FM9 only, and
     each needs write-plus-read-back on a real FM3 before it is trusted (#40).
     """
@@ -1668,6 +1676,8 @@ class FM3(FM9):
     LABEL = "FM3"
     PORT_HINT = "fm3"
     MODEL = p.MODEL_FM3
+    #: #308: the FM3's front panel shows wire 0 as 000 (fw 13.00).
+    EDITOR_OFFSET = 0
 
     CAPABILITIES = Capabilities(
         read_path=ReadPath.DEVICE,
@@ -1678,6 +1688,40 @@ class FM3(FM9):
 
     def _wrap_output(self, outp):
         return ReadOnlyOut(outp, self.MODEL)
+
+    #: #308: the FM3 is reached through a USB MIDI interface on its 5-pin
+    #: DIN (it has no MIDI over USB), sometimes a wireless one. A bank change
+    #: and a program change sent back to back give the interface no room, so
+    #: the program change waits this long behind the bank.
+    BANK_TO_PROGRAM_GAP = 0.03
+
+    def select_preset(self, preset: int) -> tuple[int, str] | None:
+        """Select by bank (CC0) then program change, read where the unit
+        landed, and send the pair once more if it landed elsewhere (#308).
+
+        A preset select only switches what is loaded, which the unit's own
+        knob does too; nothing here changes a stored preset, so a second
+        send is safe. The caller still compares the result with what it
+        asked for and reports a mismatch, so a select that misses twice is
+        said, not hidden."""
+        _check_preset_range(preset)
+        bank, pc = divmod(preset, 128)
+        got = None
+        # #308: what was sent and where the unit landed, per attempt, so a
+        # miss can be reported with the evidence (the caller logs it).
+        self.last_select = []
+        for gap in (self.BANK_TO_PROGRAM_GAP, self.BANK_TO_PROGRAM_GAP * 4):
+            self.outp.send(mido.Message("control_change", control=0, value=bank))
+            _settle(self, gap)
+            self.outp.send(mido.Message("program_change", program=pc))
+            _settle(self, 0.4)
+            got = self.current_preset()
+            self.last_select.append({"cc0": bank, "program": pc,
+                                     "gap_ms": round(gap * 1000),
+                                     "landed": got[0] if got else None})
+            if got is not None and got[0] == preset:
+                return got
+        return got
 
     def capabilities(self) -> Capabilities:
         return self.CAPABILITIES
@@ -1692,8 +1736,12 @@ class FM3(FM9):
 
     # Every method that changes the unit, refused before a frame is built.
     # The port would refuse each of them anyway; this says so sooner.
+    # Block bypass and channel are NOT refused: both were proven on a real
+    # FM3 (fw 13.00) by write and read-back with tools/fm3_first_edit.py
+    # (#40), and protocol.fm3_allowed lets exactly those frames through.
+    # Edit buffer only, like every write here; nothing is stored.
     set_param_display = set_param_wire = set_param_ordinal = set_params_batch = _refuse
-    set_bypass = set_channel = set_tempo = _refuse
+    set_tempo = _refuse
     rename_preset = rename_scene = store_preset = send_preset_file = _refuse
     load_preset_buffer = install_preset = _refuse
     install_user_cab = install_user_cab_slot = install_user_cab_at = _refuse

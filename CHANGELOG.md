@@ -4,12 +4,74 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- Add a disabled-by-default existing-preset text workflow on the shared TC
+  Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,
+  selected-provider scope questions and one-use bounded scalar execution.
+- FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
+  The block chips in the FM3 view are now buttons: tap one to switch it on
+  or off, tap its channel letter to step through its channels. Both writes
+  were proven on a real FM3 (fw 13.00) by write and read-back, and only
+  those two pass the FM3's output; every other setting stays read-only.
+  Changes stay in the edit buffer until you store on the unit. Input and
+  output are never offered.
+- `tools/fm3_first_edit.py --test channel`: the second FM3 write test (#40)
+  moves one effect block to another channel (A to D) with Fractal's
+  documented command, reads it back, moves it back and reloads the preset.
+  The bypass test passed on a real FM3 (fw 13.00).
+- `tools/fm3_first_edit.py`, the first FM3 write test (#40): flips one effect
+  block's bypass in the edit buffer with Fractal's documented command, reads
+  it back, flips it back and reloads the preset, so nothing is stored or left
+  changed. Only that one frame for that one block passes the FM3's read-only
+  output, and only during the test; the app's FM3 stays read-only.
+
 ### Fixed
 - Bind survey consent to the actual metadata preset/scene, reject disagreeing
   device reads, and recheck consent immediately before posting SCAN. Remove
   the withdrawn Codex contribution from this UI slice; use main's backends.
 - Require fresh target-bound survey consent after context changes, use the
   server REVIEW transition from the sidebar, and catalog existing-edit messages.
+- A preset change that lands on the wrong preset now says to check PC
+  Mapping on the unit's MIDI/Remote page: with it ON the unit loads what its
+  own mapping table names, which is what sent an FM3's presets above 127 to
+  000 or 128. The Windows guide has the same note (#308).
+
+## 1.6.6 (2026-11-09)
+
+### Fixed
+- FM3 on Windows: replugging the MIDI interface now reconnects by itself.
+  Unplugging it raises the MIDI driver's own error rather than going quiet,
+  and that error left the old connection in place, so only a click on the
+  offline pill brought it back (#308).
+- REPORT A PROBLEM: GitHub refused a pre-filled report link of about 5,000
+  characters, under the old 7,000 limit. The link now carries only the
+  title, and the button copies the report for you to paste, at any
+  length (#308).
+
+### Added
+- FM3: a preset change that lands on the wrong preset is recorded in the
+  report, with the bank and program sent on each try and where the unit
+  landed, to find why presets 128 and up miss on some setups (#308).
+
+## 1.6.5 (2026-11-09)
+
+### Fixed
+- Building a tone into an empty preset: when the plan only set up the
+  starting blocks (no new block added), the starting chain was never laid,
+  so nothing was built while every change reported success. The chain is
+  now laid for any plan that touches a block, and a change aimed at a block
+  that is not in the preset now says so instead of reporting success (#311).
+
+## 1.6.4 (2026-11-08)
+
+### Fixed
+- FM3: preset numbers match the unit's own (000 first, where the FM9 starts
+  at 001), the preset list keeps its place while you scroll instead of
+  jumping back to the loaded preset, a preset select is read back and sent
+  once more if it landed elsewhere, and the FM3 reconnects by itself after
+  its MIDI interface is replugged or the unit is switched off and on (#308).
+- REPORT A PROBLEM: a report too long for a GitHub link now opens a blank
+  issue and copies the report for you to paste, as /report already did (#308).
 - Recheck scalar expiry after recalls/preflights and at final output, and latch
   failed mutating scans without retaining a usable context or automatic restore.
 - Release III MIDI ownership after attempting both port closes, including
@@ -20,9 +82,6 @@ Notable changes to ToneCommand. Dates are UTC.
   identity/capture preflights and final observation failures. Never auto-restore.
 
 ### Added
-- Add a disabled-by-default existing-preset text workflow on the shared TC
-  Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,
-  selected-provider scope questions and one-use bounded scalar execution.
 - Prepare connection-owned existing-preset scalar deltas using eight actual
   scene maps, the pure proposal contract and full opaque-state verification.
 - Prepare a separate externally muted eight-scene observation survey with

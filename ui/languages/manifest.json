@@ -2,7 +2,7 @@
   "schema": 1,
   "catalog_version": "1.5.16-lang.2",
   "catalog_sha256": "1d0075e263ba670c224966f73d0183832e6bc677c8b60725f2d8e89c2872a842",
-  "app_version": "1.6.3",
+  "app_version": "1.6.6",
   "base_language": "en",
   "available": [
     "en",

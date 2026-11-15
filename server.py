@@ -2044,7 +2044,9 @@ def snapshot(fm9: DeviceAdapter) -> dict:
         # rest are eight scene names and a status dump, each waiting out its
         # own timeout: finding out slowly would freeze the poll for ten
         # seconds an unplugged device does not deserve.
-        raise FM9NotFound("the FM9 stopped answering; is it still plugged in?")
+        label = getattr(fm9, "LABEL", None) or "FM9"
+        raise FM9NotFound(f"the {label} stopped answering; is it still plugged in "
+                          f"and switched on?")
     scene = fm9.scene_name()
     blocks = fm9.status_dump() or []
     # #253: a block counts only when a grid cell holds it. The status dump can
@@ -2458,10 +2460,20 @@ GitHub issue with it yourself, or copy it and paste it anywhere.</p>
 """
 
 
-#: #282: a GitHub "new issue" link longer than this is refused or cut off by
-#: browsers and GitHub alike, so the page offers copy-and-paste instead.
-_REPORT_URL_LIMIT = 7000
 _REPORT_NOTE_LIMIT = 2000
+
+
+def _report_link(title: str) -> str:
+    """#308: the report travels by clipboard, never in the link.
+
+    GitHub refused a pre-filled link of about 5,000 characters for a signed-in
+    tester (a "Whoops, something went wrong!" page, also in a private window),
+    well under the 7,000 this used to allow, and its real limit is not
+    published. So the link carries only the title and the player pastes the
+    body, which works at any length."""
+    from urllib.parse import quote
+    from fm9 import diagnostics
+    return f"https://github.com/{diagnostics.REPO}/issues/new?title={quote(title)}"
 
 
 @app.api_route("/report", methods=["GET", "POST"])
@@ -2487,15 +2499,12 @@ async def report_page(request: Request):
         pkg = await run_in_threadpool(diagnostics.package_for_sharing,
                                       note=note, query_device=False)
         text = pkg["title"] + "\n\n" + pkg["body"]
-        url = pkg["url"]
+        url = _report_link(pkg["title"])
     except Exception as e:      # noqa: BLE001  the report page must survive a broken install
         text = f"The report could not be built: {type(e).__name__}"
         url = f"https://github.com/{diagnostics.REPO}/issues/new"
-    hint = ""
-    if len(url) > _REPORT_URL_LIMIT:
-        url = f"https://github.com/{diagnostics.REPO}/issues/new"
-        hint = ("<p class=\"muted\">The report is too long for a link: copy it "
-                "from the box above and paste it into the new issue.</p>")
+    hint = ("<p class=\"muted\">Copy the report from the box above and paste "
+            "it into the new issue.</p>")
     page = _REPORT_PAGE.format(version=_html.escape(_badge_text() or "(version not read)"),
                                note=_html.escape(note), text=_html.escape(text),
                                url=_html.escape(url, quote=True), hint=hint)
@@ -2638,6 +2647,40 @@ def _reconnect_device(kind: str, *, lock_held: bool = False) -> dict:
     return {"connected": True}
 
 
+def _fm3_auto_reconnect() -> None:
+    """#308: the FM3 comes back by itself, the way the FM9 always has.
+
+    The FM9 handle is rebuilt by get_fm9() on any poll that finds it gone.
+    The FM3 sits behind a USB MIDI interface in a device context, and once
+    its adapter was dropped (the interface unplugged, or the unit switched
+    off behind it) nothing tried again until the player clicked the offline
+    pill. The state poll now tries, no more often than RESCAN_EVERY. Caller
+    holds _lock, as api_state does."""
+    ctx = device_context()
+    if ctx.kind != "fm3" or ctx.adapter is not None:
+        return
+    now = time.monotonic()
+    if now - _last_rescan["at"] < RESCAN_EVERY:
+        return
+    _last_rescan["at"] = now
+    _reconnect_device("fm3", lock_held=True)
+
+
+def _drop_silent_fm3() -> None:
+    """#308: an FM3 that stops answering is dropped like an unplugged one.
+
+    Behind a MIDI interface the port stays present when the unit is switched
+    off, so the handle stays open and nothing marked it gone. Closing it
+    makes the page say offline, and the next poll's reconnect proves the
+    unit answers again before it is used. Caller holds _lock."""
+    ctx = device_context()
+    if ctx.kind != "fm3" or ctx.adapter is None:
+        return
+    with contextlib.suppress(Exception):    # a dead handle is being dropped anyway
+        ctx.adapter.close()
+    select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
+
+
 def _named_param_state(adapter, device: dict) -> dict:
     """The state block for a device whose surface is named parameters.
 
@@ -2689,16 +2732,21 @@ def api_state():
                 return JSONResponse({"connected": False, "error": str(e),
                                      "gig_mode": _gig_mode["on"],
                                      "device": device}, status_code=200)
+        _fm3_auto_reconnect()
         try:
             snap = snapshot(get_fm9())
             snap["device"] = device
             # #212: the page offers no sound-changing control for this device.
             snap["read_only"] = device_context().kind in ("fm3", "axefx3")
+            # #40: on the FM3, block bypass and channel are proven writes, so
+            # the page offers those two (and only those) on its block chips.
+            snap["block_switching"] = device_context().kind == "fm3"
             note_connection(True)
             return snap
         except FM9NotFound as e:
             note_connection(False, str(e))
             drop_fm9()
+            _drop_silent_fm3()
             # gig_mode rides along even unplugged, so the pill in the header
             # stays true while the rig is off.
             return {"connected": False, "gig_mode": _gig_mode["on"], "device": device}
@@ -2707,6 +2755,10 @@ def api_state():
         except Exception as e:
             note_connection(False, str(e))
             drop_fm9()
+            # #308: an unplugged interface on Windows raises the MIDI
+            # driver's own error, not FM9NotFound; the FM3 is dropped here
+            # too, or the next poll's auto-reconnect never runs.
+            _drop_silent_fm3()
             return JSONResponse({"connected": False, "error": str(e),
                                  "gig_mode": _gig_mode["on"], "device": device}, status_code=500)
 
@@ -6062,9 +6114,23 @@ def api_preset(body: PresetBody):
     # Report what the unit says it loaded, not what we asked for: a dropped
     # program change would otherwise look like success.
     if not got or got[0] != body.number:
+        # #308: the per-attempt evidence (bank, program, where it landed)
+        # goes into the diagnostics a player's report carries.
+        diagnostics.log_error(
+            "preset",
+            f"asked for {proto.slot_label(body.number)}, the unit reports "
+            f"{proto.slot_label(got[0]) if got else 'nothing'}",
+            device=device_context().kind,
+            attempts=getattr(fm9, "last_select", None))
+        # #308: on a tester's FM3 every miss came from PC Mapping ON, where
+        # the unit loads what its own mapping table names for a program
+        # change. Turning it off fixed every select; the player is told.
         return JSONResponse(
             {"error": f"asked for {proto.slot_label(body.number)} but the unit "
-                      f"reports {proto.slot_label(got[0]) if got else 'nothing'}"},
+                      f"reports {proto.slot_label(got[0]) if got else 'nothing'}. "
+                      f"If PC Mapping is ON on the unit's MIDI/Remote page, it "
+                      f"loads the preset its own mapping table names: set it "
+                      f"OFF and try again."},
             status_code=409)
     return {"preset": {"number": got[0], "editor": proto.editor_number(got[0]),
                        "label": proto.slot_label(got[0]), "name": got[1]}}
@@ -7600,8 +7666,10 @@ def api_diagnostics_share_package(scope: str | None = None,
     way anything leaves the machine is the player opening that URL themselves
     from the settings drawer's second, separate button."""
     pkg = diagnostics.package_for_sharing(scope=scope, note=note or "")
-    return {"title": pkg["title"], "body": pkg["body"], "url": pkg["url"],
-            "entries": pkg["entry_count"]}
+    # #308: the link carries the title only; the page copies the body for
+    # the player to paste (_report_link says why).
+    return {"title": pkg["title"], "body": pkg["body"],
+            "url": _report_link(pkg["title"]), "entries": pkg["entry_count"]}
 
 
 @app.post("/api/update")
@@ -8513,6 +8581,39 @@ def _set_param_spec(a: Action):
     return None
 
 
+def _blocks_on_grid(fm9, actions) -> set[int] | None:
+    """#311: the effect ids a grid cell holds, read once before the actions
+    run, or None when the grid cannot be read (a device without one, a
+    read-only device, a failed read), in which case nothing is refused on
+    its strength."""
+    if not any(a.block and a.kind != "add_block" for a in actions):
+        return None
+    try:
+        grid = fm9.read_grid()
+    except CapabilityDeclined:
+        return None
+    except Exception:          # noqa: BLE001  no grid read, no grid check
+        return None
+    if grid is None:
+        return None
+    return {c.effect_id for c in grid if not c.is_shunt}
+
+
+def _block_not_on_grid(a, on_grid: set[int] | None) -> str | None:
+    """Why `a` cannot change the sound, or None. Only block actions other
+    than add_block, and only when the grid was read."""
+    if on_grid is None or not a.block or a.kind == "add_block":
+        return None
+    try:
+        _fam, eid = reg.resolve_block(a.block, a.instance)
+    except Exception:          # noqa: BLE001  validation names an unknown block
+        return None
+    if eid in on_grid:
+        return None
+    return (f"{a.block} {a.instance or 1} is not on this preset's grid, so "
+            f"there is nothing to change; add the block first")
+
+
 def _apply_for(body: ApplyBody, on_step=None):
     results = []
     _send_t0 = time.monotonic()
@@ -8554,6 +8655,11 @@ def _apply_for(body: ApplyBody, on_step=None):
                                   f"\"{current[1] if current else ''}\"). "
                                   f"Re-run the prompt against the current preset."},
                         status_code=409)
+            # #40: the FM3 takes block bypass and channel only. The undo
+            # snapshot, the starter-chain check and the health scan below are
+            # FM9-shaped reads it refuses, and a scan cut short could leave
+            # the scene it swept to; reloading the preset is its undo.
+            fm3_writes = device_context().kind == "fm3"
             # Snapshot before anything is written, so undo is always there
             # rather than something you had to remember to arm. It is silent
             # and costs about a quarter second, which is the whole reason it
@@ -8563,7 +8669,8 @@ def _apply_for(body: ApplyBody, on_step=None):
             # Only for actions that actually write. A scene change is the
             # rig's own control surface and undoing it means pressing the
             # other scene, and storing is guarded by its own confirmation.
-            if any(a.kind not in ("set_scene", "store") for a in body.actions):
+            if (not fm3_writes
+                    and any(a.kind not in ("set_scene", "store") for a in body.actions)):
                 try:
                     _take("undo")
                 except CapabilityDeclined:
@@ -8614,7 +8721,13 @@ def _apply_for(body: ApplyBody, on_step=None):
             # (Moncy, 2026-09-02, "what the heck"). Runs BEFORE any action,
             # because the chain build re-selects the slot and would discard
             # renames a plan had already landed in the buffer.
-            if any(a.kind == "add_block" for a in body.actions):
+            # #311: an action on any block counts, not only add_block. On an
+            # empty slot the planner is told the template is already laid and
+            # to voice it rather than add it (starter_template.roster_text),
+            # so a plan that obeys has no add_block at all, and gating the lay
+            # on add_block sent its every action into an empty grid.
+            has_add = any(a.kind == "add_block" for a in body.actions)
+            if not fm3_writes and (has_add or any(a.block for a in body.actions)):
                 try:
                     grid = fm9.read_grid()
                     empty = grid == []
@@ -8625,7 +8738,8 @@ def _apply_for(body: ApplyBody, on_step=None):
                     # pass with no cell ever sliding. Edit buffer only, so
                     # reloading the preset brings the old one back, and the
                     # plan said so before it was confirmed.
-                    replace = (not empty) and getattr(body, "whole_rig", False)
+                    replace = ((not empty) and has_add
+                               and getattr(body, "whole_rig", False))
                     if empty or replace:
                         cur = fm9.current_preset()
                         # Lay the whole starter template at once (issue #47):
@@ -8685,11 +8799,25 @@ def _apply_for(body: ApplyBody, on_step=None):
                     log.warning("apply: starting-chain check failed: %s", exc)
 
             acts = body.actions
+            on_grid = _blocks_on_grid(fm9, acts)
             _act_t0 = time.monotonic()
             i = 0
             while i < len(acts):
                 a = acts[i]
                 _n0, _at0 = len(results), time.monotonic()
+
+                # #311: a write to a block that is not on the grid is not a
+                # change to the sound. The unit (and the simulator) accepts
+                # it and reads it back, so it used to be reported as done
+                # while the preset stayed empty.
+                missing = _block_not_on_grid(a, on_grid)
+                if missing:
+                    log.warning("apply: %s refused: %s", describe_action(a), missing)
+                    results.append({"action": a.model_dump(), "ok": False,
+                                    "detail": missing})
+                    step(False, a)
+                    i += 1
+                    continue
 
                 def _stamp(_n0=_n0, _at0=_at0):
                     """Cost of the action just processed, onto the rows it
@@ -8761,6 +8889,9 @@ def _apply_for(body: ApplyBody, on_step=None):
                 # over, which for a long plan is indistinguishable from a
                 # button that does nothing.
                 step(bool(res.get("ok")), a)
+                if res.get("ok") and a.kind == "add_block" and on_grid is not None:
+                    with contextlib.suppress(Exception):   # an unknown block stays unknown
+                        on_grid.add(reg.resolve_block(a.block or "", a.instance)[1])
                 if not res.get("ok") and a.kind == "add_block":
                     # later actions in the plan target the block that failed
                     # to land; running them would set params and bind pedals
@@ -8788,7 +8919,7 @@ def _apply_for(body: ApplyBody, on_step=None):
             # touched structure, never on a plain param tweak.
             _STRUCTURAL = {"add_block", "set_channel", "set_bypass",
                            "rename_scene", "reorder", "set_type"}
-            if (any(a.kind in _STRUCTURAL for a in body.actions)
+            if (not fm3_writes and any(a.kind in _STRUCTURAL for a in body.actions)
                     and any(r.get("ok") for r in results)):
                 try:
                     scan = health.scan(fm9, reg, read_levels=False)

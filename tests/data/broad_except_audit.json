@@ -483,6 +483,16 @@
    "function": "main",
    "ordinal": 1,
    "disposition": "unreachable: reads the version for the startup line (#282) before the server starts; no device handle in the try body"
+  },
+  {
+   "function": "_blocks_on_grid",
+   "ordinal": 1,
+   "disposition": "converted: CapabilityDeclined is caught first and means the device has no grid to check against, so the off-grid check is skipped and the plan runs exactly as before (#311); any other read failure does the same"
+  },
+  {
+   "function": "_block_not_on_grid",
+   "ordinal": 1,
+   "disposition": "unreachable: wraps reg.resolve_block only, a registry lookup with no device handle in the try body (#311)"
   }
  ]
 }
