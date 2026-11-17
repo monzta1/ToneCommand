@@ -11,10 +11,6 @@ parameter changes that a human confirms before anything is transmitted.
 
 ## The shape
 
-The33.02 display fingerprint records an observed full reply, not write
-compatibility or chassis detection. All existing writer pins remain unchanged.
-This metadata-only increment leaves `server.py` unchanged at9,024 lines.
-
 ```
   browser (ui/)                    server.py                  fm9/
   ────────────                     ─────────                  ────
