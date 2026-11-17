@@ -4,6 +4,11 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Firmware observation
+- Recognize one independently observed Axe-Fx III33.02 Mark II build for
+  display only. The full reply fingerprint does not grant preset, parameter,
+  controller, NAM or storage writes, and does not identify the chassis.
+
 ### Added
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
   The block chips in the FM3 view are now buttons: tap one to switch it on
