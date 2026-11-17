@@ -4,10 +4,16 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Firmware observation
+- Recognize one independently observed Axe-Fx III 33.02 Mark II build for
+  display only. The full reply fingerprint does not grant preset, parameter,
+  controller, NAM or storage writes, and does not identify the chassis.
+
 ### Qualification components
-- Add a separate opt-in Axe-Fx III33.02 Gain/Mid writer using the existing
+- Add a separate opt-in Axe-Fx III 33.02 Gain/Mid writer using the existing
   complete-preservation review contract and a separate full-response pin.
-  Amp1/A/model0 only; not registered in the app and no broader write promotion.
+  Amp 1, channel A, model 0 only; not registered in the app and no broader
+  write promotion.
 
 ### Added
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).

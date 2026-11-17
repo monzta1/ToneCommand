@@ -11,11 +11,6 @@ parameter changes that a human confirms before anything is transmitted.
 
 ## The shape
 
-The33.02 Gain/Mid component reuses the complete observation and one-use review
-contract with an independent firmware pin. It is not app-registered; model,
-scene, level, controller, route and storage gates remain unchanged. This
-increment leaves `server.py` unchanged at9,024 lines.
-
 ```
   browser (ui/)                    server.py                  fm9/
   ────────────                     ─────────                  ────
