@@ -22,6 +22,20 @@ def test_catalog_and_manifest_are_current():
     assert catalog['protected_keys']
 
 
+def test_existing_addon_marked_messages_are_in_english_catalog():
+    catalog=json.loads((ROOT/'ui/languages/en.json').read_text(encoding='utf-8'))
+    for message in ('READ ALL 8 SCENES','Adjust this existing preset',
+                    'I confirm the current preset is the one to adjust.',
+                    'Prepare a fresh proposal first.'):
+        assert message in catalog['translations']
+
+
+def test_scanner_collects_both_static_quote_styles_not_dynamic_data(tmp_path):
+    script=tmp_path/'ui/axefx3-existing-edit.js';script.parent.mkdir()
+    script.write_text('t("Double");t(\'Single\');t(row.reason);t(`live ${name}`);',encoding='utf-8')
+    assert packs.source_keys(tmp_path)=={'Double','Single'}
+
+
 @pytest.mark.parametrize('asset', list(ASSETS))
 def test_assets_are_local_reads_that_never_get_a_device(monkeypatch, asset):
     monkeypatch.setattr(server, 'get_fm9', lambda: pytest.fail('language asset reached MIDI'))

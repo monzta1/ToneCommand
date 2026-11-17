@@ -1,11 +1,12 @@
 {
   "schema": 1,
   "catalog_version": "1.5.16-lang.2",
-  "catalog_sha256": "20ffc2d3e90076a3179eb9df156748302c9e58a54a6c2eecc15c4f1984220156",
+  "catalog_sha256": "1d0075e263ba670c224966f73d0183832e6bc677c8b60725f2d8e89c2872a842",
   "locale": "de",
   "name": "Deutsch",
   "coverage": "Core request, Settings and navigation labels; untranslated and protected text stays English.",
   "translations": {
+    "Device readings disagree. Refresh the device state and confirm the target again.": "Die Geräteabfragen stimmen nicht überein. Aktualisiere den Gerätestatus und bestätige das Ziel erneut.",
     "Control": "Regler",
     "Gain": "Gain",
     "Mid": "Mitten",

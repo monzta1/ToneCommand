@@ -16,6 +16,9 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- Add a disabled-by-default existing-preset text workflow on the shared TC
+  Request/Plan/Review/Confirm/Send screens, with explicit scene-scan consent,
+  selected-provider scope questions and one-use bounded scalar execution.
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
   The block chips in the FM3 view are now buttons: tap one to switch it on
   or off, tap its channel letter to step through its channels. Both writes
@@ -34,6 +37,11 @@ Notable changes to ToneCommand. Dates are UTC.
   output, and only during the test; the app's FM3 stays read-only.
 
 ### Fixed
+- Bind survey consent to the actual metadata preset/scene, reject disagreeing
+  device reads, and recheck consent immediately before posting SCAN. Remove
+  the withdrawn Codex contribution from this UI slice; use main's backends.
+- Require fresh target-bound survey consent after context changes, use the
+  server REVIEW transition from the sidebar, and catalog existing-edit messages.
 - A preset change that lands on the wrong preset now says to check PC
   Mapping on the unit's MIDI/Remote page: with it ON the unit loads what its
   own mapping table names, which is what sent an FM3's presets above 127 to
