@@ -16,6 +16,11 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- `tools/fm3_param_read.py`, a read-only FM3 test (#40): reads the amp,
+  reverb, delay and chorus settings with the FM9's block read and map, so a
+  player can compare them with the FM3's screen. Only that read, for one
+  block at a time, passes the FM3's output during the test; the preset and
+  every block's on/off and channel are checked unchanged afterwards.
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
   The block chips in the FM3 view are now buttons: tap one to switch it on
   or off, tap its channel letter to step through its channels. Both writes
