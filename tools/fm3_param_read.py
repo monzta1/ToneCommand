@@ -113,24 +113,30 @@ def _state(dev):
 
 
 #: How long to listen after the block read. A 5-pin MIDI cable carries about
-#: 3 KB a second, so a big block's reply can take seconds; the first run
-#: (1.5 s, the FM9's USB timeout) heard nothing at all.
+#: 3 KB a second, so a big block's reply can take seconds.
 LISTEN = 6.0
 #: After the end frame, keep listening this long for anything late.
 TAIL = 0.5
+#: Every frame heard, in full, as hex lines: saved to RAW_FILE for the
+#: maintainer, because the result block shows only each frame's start.
+RAW: list[str] = []
+RAW_FILE = "fm3_param_read_raw.txt"
 
 
 def capture_read(dev, effect_id: int, listen: float | None = None):
     """Send the block read once and record every SysEx frame heard.
 
-    Returns (values, heard): the decoded values (empty if none) and a list
-    of (fn, length, first bytes) for every frame, whatever it was, so a
-    refusal, a slow reply or a reply in another shape all show up."""
+    Returns (values, burst, heard). The reply is the Gen-3 burst: a 0x74
+    head (block id, word count), 0x75 chunks (each opens with its own word
+    count, then three bytes per word) and a 0x76 end. On the tester's FM3
+    (fw 13.00, 2026-11-20) every head and chunk arrived a few bytes short,
+    so nothing here requires a complete frame: a chunk's words are decoded
+    as far as its bytes go and the shortfall is reported, not hidden."""
     dev._drain()
     dev._send(p.build_bulk_read_poll(effect_id))
     start = time.time()
     deadline = start + (LISTEN if listen is None else listen)
-    head = None
+    burst = None
     values: list[int] = []
     heard: list[tuple[int, int, list[int], float]] = []
     while time.time() < deadline:
@@ -139,23 +145,47 @@ def capture_read(dev, effect_id: int, listen: float | None = None):
                 continue
             data = list(msg.data)
             fn = data[4] if len(data) > 4 else -1
-            heard.append((fn, len(data), data[:12], round(time.time() - start, 2)))
-            h = p.parse_bcast_head(data)
-            if h is not None:
-                if h[0] == effect_id:
-                    head = h
+            heard.append((fn, len(data), data, round(time.time() - start, 2)))
+            if p.is_fractal(data, p.FN_BCAST_HEAD) and len(data) >= 7:
+                if p.decode14(data[5], data[6]) == effect_id:
+                    count = p.decode14(data[7], data[8]) if len(data) >= 10 else None
+                    burst = {"head_len": len(data), "count": count, "chunks": []}
                 continue
-            body = p.parse_bcast_body(data)
-            if body is not None and head is not None:
-                values.extend(body)
+            if burst is not None and p.is_fractal(data, p.FN_BCAST_BODY) and len(data) >= 8:
+                declared = p.decode14(data[5], data[6])
+                if declared == 0:
+                    # A zero count is the FM9 reading (two "reserved" bytes,
+                    # never checked on an FM9): take every whole word.
+                    declared = (len(data) - 8) // 3
+                want_len = 8 + 3 * declared
+                raw = data[7:-1] if len(data) == want_len else data[7:]
+                words = min(declared, len(raw) // 3)
+                values.extend(p.unpack_value16(raw[i], raw[i + 1], raw[i + 2])
+                              for i in range(0, 3 * words, 3))
+                burst["chunks"].append((declared, words, len(data) - want_len))
                 continue
             if p.is_fractal(data, p.FN_BCAST_END):
                 deadline = min(deadline, time.time() + TAIL)
         time.sleep(0.002)
-    return values, head, heard
+    return values, burst, heard
 
 
-def describe_heard(heard, head) -> list[str]:
+def describe_burst(burst) -> list[str]:
+    if burst is None:
+        return []
+    head = ("head complete" if burst["head_len"] == 10
+            else f"head {burst['head_len']} bytes of 10")
+    declared = sum(c[0] for c in burst["chunks"])
+    got = sum(c[1] for c in burst["chunks"])
+    short = [c[2] for c in burst["chunks"] if c[2]]
+    line = (f"  reply: {head}; {len(burst['chunks'])} chunks declare {declared} "
+            f"words, {got} decoded")
+    if short:
+        line += f"; chunk bytes off by {', '.join(str(s) for s in short)}"
+    return [line]
+
+
+def describe_heard(heard) -> list[str]:
     if not heard:
         return ["  heard: nothing at all in "
                 f"{LISTEN:g} s (the FM3 ignored the request)"]
@@ -164,15 +194,13 @@ def describe_heard(heard, head) -> list[str]:
         counts[fn] = counts.get(fn, 0) + 1
     out = ["  heard: " + ", ".join(f"fn 0x{fn:02X} x{c}" for fn, c in counts.items())
            + f" (first at {heard[0][3]} s, last at {heard[-1][3]} s)"]
-    if head is not None:
-        out.append(f"  reply head says {head[1]} values")
     for fn, n, data, t in heard[:6]:
         nack = p.parse_multipurpose(data)
         note = ""
         if nack is not None:
             note = f"  <- refusal/ack: for fn 0x{nack[0]:02X}, code {nack[1]}"
         out.append(f"    {t:>5} s fn 0x{fn:02X} len {n}: "
-                   + " ".join(f"{b:02X}" for b in data) + note)
+                   + " ".join(f"{b:02X}" for b in data[:12]) + note)
     return out
 
 
@@ -180,16 +208,22 @@ def read_block(dev, reg: Registry, block) -> list[str]:
     fam = (reg.family_of_effect_id(block.effect_id) or ("", 1))
     fname, inst = fam[0], fam[1]
     with one_read_open(dev, block.effect_id):
-        vals, rhead, heard = capture_read(dev, block.effect_id)
+        vals, burst, heard = capture_read(dev, block.effect_id)
     chans = max(1, block.channels_supported)
     head = (f"{name_of(reg, block.effect_id)} (effect id {block.effect_id}), "
             f"channel {'ABCD'[block.channel]} of {chans}")
+    RAW.append(head)
+    RAW.extend(f"  {t} s: " + " ".join(f"{b:02X}" for b in d) for _f, _n, d, t in heard)
     if not vals:
-        return [f"{head}: no values in the reply", *describe_heard(heard, rhead)]
-    stride = len(vals) // chans if chans > 1 else len(vals)
+        return [f"{head}: no values in the reply", *describe_burst(burst),
+                *describe_heard(heard)]
+    # The stride comes from what the chunks DECLARE, so a short chunk does
+    # not shift where channel B starts; values past a gap may still be off.
+    total = sum(c[0] for c in burst["chunks"]) or len(vals)
+    stride = total // chans if chans > 1 else total
     base = min(block.channel, chans - 1) * stride
-    out = [f"{head}: {len(vals)} values ({stride} per channel)",
-           *describe_heard(heard, rhead)[:2]]
+    out = [f"{head}: {len(vals)} values ({stride} per channel)", *describe_burst(burst),
+           *describe_heard(heard)[:1]]
     if fname in TYPES:
         pid, roster_attr = TYPES[fname]
         if base + pid < len(vals):
@@ -207,12 +241,13 @@ def read_block(dev, reg: Registry, block) -> list[str]:
             out.append(f"  {label}: raw {vals[idx]}")
             continue
         shown = round(p.normalized_to_display(vals[idx] / 65534, s.dmin, s.dmax, s.scale), 2)
-        out.append(f"  {label}: {shown}{UNITS.get(s.unit or '', '')}")
+        out.append(f"  {label}: {shown}{UNITS.get(s.unit or '', '')}  (raw {vals[idx]})")
     return out
 
 
 def run(dev, reg: Registry) -> list[str]:
     out = ["FM3 settings read (#40)"]
+    RAW.clear()
     before = _state(dev)
     if before[0] is None:
         raise SystemExit("The FM3 did not answer. Is ToneCommand stopped, and the "
@@ -273,6 +308,9 @@ def main(argv=None) -> int:
     with contextlib.suppress(OSError):
         Path("fm3_param_read_result.txt").write_text(text + "\n", encoding="utf-8")
         print("Also saved to fm3_param_read_result.txt")
+    with contextlib.suppress(OSError):
+        Path(RAW_FILE).write_text("\n".join(RAW) + "\n", encoding="utf-8")
+        print(f"Every byte heard is in {RAW_FILE}: please send that file too.")
     return {"result: READ": 0, "result: NO REPLY": 3}.get(lines[-1], 2)
 
 
