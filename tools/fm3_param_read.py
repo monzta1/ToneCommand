@@ -12,6 +12,10 @@ decodes them with the FM9's map, and prints what it found: the amp model,
 Gain, Bass, Mid, Treble and so on. You compare those with the FM3's own
 screen. Where they match, the FM9's map holds for that block on the FM3.
 
+For each block it also lists every message the FM3 sent back in the
+next few seconds (a refusal, a slow reply, or nothing at all), because the
+first run on a real FM3 (fw 13.00) heard no values for any block.
+
 Nothing is sent but that read, one block at a time, and only during this
 test; the app's FM3 still refuses it. As a check, the preset and every
 block's on/off and channel are read before and after and must be the same.
@@ -27,6 +31,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,7 +40,7 @@ sys.path.insert(0, str(ROOT))
 import mido  # noqa: E402
 
 from fm9 import protocol as p  # noqa: E402
-from fm9.device import FM9, ReadOnly, ReadOnlyOut  # noqa: E402
+from fm9.device import ReadOnly, ReadOnlyOut  # noqa: E402
 from fm9.registry import Registry  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "tools"))
@@ -107,19 +112,84 @@ def _state(dev):
     return preset, blocks
 
 
+#: How long to listen after the block read. A 5-pin MIDI cable carries about
+#: 3 KB a second, so a big block's reply can take seconds; the first run
+#: (1.5 s, the FM9's USB timeout) heard nothing at all.
+LISTEN = 6.0
+#: After the end frame, keep listening this long for anything late.
+TAIL = 0.5
+
+
+def capture_read(dev, effect_id: int, listen: float | None = None):
+    """Send the block read once and record every SysEx frame heard.
+
+    Returns (values, heard): the decoded values (empty if none) and a list
+    of (fn, length, first bytes) for every frame, whatever it was, so a
+    refusal, a slow reply or a reply in another shape all show up."""
+    dev._drain()
+    dev._send(p.build_bulk_read_poll(effect_id))
+    start = time.time()
+    deadline = start + (LISTEN if listen is None else listen)
+    head = None
+    values: list[int] = []
+    heard: list[tuple[int, int, list[int], float]] = []
+    while time.time() < deadline:
+        for msg in dev.inp.iter_pending():
+            if msg.type != "sysex":
+                continue
+            data = list(msg.data)
+            fn = data[4] if len(data) > 4 else -1
+            heard.append((fn, len(data), data[:12], round(time.time() - start, 2)))
+            h = p.parse_bcast_head(data)
+            if h is not None:
+                if h[0] == effect_id:
+                    head = h
+                continue
+            body = p.parse_bcast_body(data)
+            if body is not None and head is not None:
+                values.extend(body)
+                continue
+            if p.is_fractal(data, p.FN_BCAST_END):
+                deadline = min(deadline, time.time() + TAIL)
+        time.sleep(0.002)
+    return values, head, heard
+
+
+def describe_heard(heard, head) -> list[str]:
+    if not heard:
+        return ["  heard: nothing at all in "
+                f"{LISTEN:g} s (the FM3 ignored the request)"]
+    counts: dict[int, int] = {}
+    for fn, _n, _d, _t in heard:
+        counts[fn] = counts.get(fn, 0) + 1
+    out = ["  heard: " + ", ".join(f"fn 0x{fn:02X} x{c}" for fn, c in counts.items())
+           + f" (first at {heard[0][3]} s, last at {heard[-1][3]} s)"]
+    if head is not None:
+        out.append(f"  reply head says {head[1]} values")
+    for fn, n, data, t in heard[:6]:
+        nack = p.parse_multipurpose(data)
+        note = ""
+        if nack is not None:
+            note = f"  <- refusal/ack: for fn 0x{nack[0]:02X}, code {nack[1]}"
+        out.append(f"    {t:>5} s fn 0x{fn:02X} len {n}: "
+                   + " ".join(f"{b:02X}" for b in data) + note)
+    return out
+
+
 def read_block(dev, reg: Registry, block) -> list[str]:
     fam = (reg.family_of_effect_id(block.effect_id) or ("", 1))
     fname, inst = fam[0], fam[1]
     with one_read_open(dev, block.effect_id):
-        vals = FM9.bulk_read(dev, block.effect_id)
+        vals, rhead, heard = capture_read(dev, block.effect_id)
     chans = max(1, block.channels_supported)
     head = (f"{name_of(reg, block.effect_id)} (effect id {block.effect_id}), "
             f"channel {'ABCD'[block.channel]} of {chans}")
     if not vals:
-        return [f"{head}: no answer to the block read"]
+        return [f"{head}: no values in the reply", *describe_heard(heard, rhead)]
     stride = len(vals) // chans if chans > 1 else len(vals)
     base = min(block.channel, chans - 1) * stride
-    out = [f"{head}: {len(vals)} values ({stride} per channel)"]
+    out = [f"{head}: {len(vals)} values ({stride} per channel)",
+           *describe_heard(heard, rhead)[:2]]
     if fname in TYPES:
         pid, roster_attr = TYPES[fname]
         if base + pid < len(vals):
@@ -163,12 +233,19 @@ def run(dev, reg: Registry) -> list[str]:
     if not chosen:
         raise SystemExit("This preset has no amp, reverb, delay or chorus. Load a "
                          "preset that has an amp and run this again.")
+    answered = 0
     for b in chosen:
-        out.extend(read_block(dev, reg, b))
+        lines = read_block(dev, reg, b)
+        answered += "no values in the reply" not in lines[0]
+        out.extend(lines)
     after = _state(dev)
     same = after == before
     out.append(f"unit unchanged (preset, on/off, channels): {'yes' if same else 'NO'}")
-    out.append(f"result: {'READ' if same else 'CHANGED'}")
+    out.append(f"blocks that answered: {answered} of {len(chosen)}")
+    if not same:
+        out.append("result: CHANGED")
+    else:
+        out.append(f"result: {'READ' if answered else 'NO REPLY'}")
     return out
 
 
@@ -196,7 +273,7 @@ def main(argv=None) -> int:
     with contextlib.suppress(OSError):
         Path("fm3_param_read_result.txt").write_text(text + "\n", encoding="utf-8")
         print("Also saved to fm3_param_read_result.txt")
-    return 0 if lines[-1] == "result: READ" else 2
+    return {"result: READ": 0, "result: NO REPLY": 3}.get(lines[-1], 2)
 
 
 if __name__ == "__main__":
