@@ -24,7 +24,12 @@ Notable changes to ToneCommand. Dates are UTC.
   The first run on a real FM3 (fw 13.00) heard no values for any block, so
   the test now listens for six seconds per block and lists every message
   the FM3 sends back (a refusal, a slow reply or nothing), and reports
-  `result: NO REPLY` instead of `READ` when no block answered.
+  `result: NO REPLY` instead of `READ` when no block answered. The second
+  run showed the FM3 does answer, in the Axe-Fx III's reply layout, but
+  every head and chunk reached the tester's PC a few bytes short, which
+  the old decoder dropped whole. The test now decodes each chunk as far
+  as its bytes go, reports the shortfall, and saves every byte heard to
+  `fm3_param_read_raw.txt`.
 - FM3: blocks switch on and off, and switch channel, from ToneCommand (#40).
   The block chips in the FM3 view are now buttons: tap one to switch it on
   or off, tap its channel letter to step through its channels. Both writes
