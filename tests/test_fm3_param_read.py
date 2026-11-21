@@ -70,3 +70,35 @@ def test_the_tool_reads_what_the_app_shows():
         assert server.INTEREST[fam] == pids, fam
     for fam, where in pr.TYPES.items():
         assert server.TYPE_PARAMS[fam] == where, fam
+
+
+def test_silence_is_reported_as_no_reply_not_read(monkeypatch):
+    reg = Registry()
+    dev = SimFM3(reg)
+    monkeypatch.setattr(pr, "LISTEN", 0.1)
+    real_send = dev._send
+
+    def drop_block_reads(frame):
+        if frame[5] == p.FN_BULK_READ:
+            return                       # the FM3's answer on fw 13.00: nothing
+        real_send(frame)
+    monkeypatch.setattr(dev, "_send", drop_block_reads)
+    lines = pr.run(dev, reg)
+    assert lines[-1] == "result: NO REPLY", lines
+    assert any("heard: nothing at all" in line for line in lines)
+    assert any(line.startswith("blocks that answered: 0 of") for line in lines)
+
+
+def test_a_refusal_is_shown_with_its_code():
+    nack = p.envelope(p.FN_MULTIPURPOSE, [0x1F, 0x08, 0x00])[1:-1]
+    lines = pr.describe_heard([(nack[4], len(nack), nack[:12], 0.05)], None)
+    assert "fn 0x64 x1" in lines[0]
+    assert any("refusal/ack: for fn 0x1F, code 8" in line for line in lines)
+
+
+def test_a_reply_lists_what_was_heard():
+    reg = Registry()
+    dev = SimFM3(reg)
+    lines = pr.run(dev, reg)
+    assert any("heard: fn 0x74 x1" in line for line in lines), lines
+    assert any("reply head says" in line for line in lines)
