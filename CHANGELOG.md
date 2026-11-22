@@ -16,6 +16,12 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- `tools/fm3_param_write.py`, the first FM3 settings write (#40). It sends one
+  knob write to the reverb's (or delay's) Mix, addressed by the FM3's own word
+  number from the knob maps, reads the whole block back to show which value
+  moved, puts the old value back, and reloads the preset so nothing is kept.
+  Only the block read and that one write, for that one block and setting, can
+  reach the FM3, and a value of 0 (a read on the FM9) is never sent.
 - `tools/fm3_knob_map.py`, an FM3 mapping test (#40). The FM3 answers the
   FM9's block read but orders a block's values its own way: on the
   tester's FM3 (fw 13.00) the amp's model and Gain sit four places earlier
