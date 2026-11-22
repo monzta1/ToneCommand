@@ -16,6 +16,14 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- `tools/fm3_knob_map.py`, an FM3 mapping test (#40). The FM3 answers the
+  FM9's block read but orders a block's values its own way: on the
+  tester's FM3 (fw 13.00) the amp's model and Gain sit four places earlier
+  than on the FM9 and the reverb's type and Time ten places earlier, while
+  the delay's Mix is in the same place. The player turns one knob at a
+  time on the unit; the tool reads the block before and after, shows which
+  value moved, and records the knob's name and screen value. It sends
+  only the block read, for that one block.
 - `tools/fm3_param_read.py`, a read-only FM3 test (#40): reads the amp,
   reverb, delay and chorus settings with the FM9's block read and map, so a
   player can compare them with the FM3's screen. Only that read, for one
