@@ -87,8 +87,55 @@ def test_a_planned_setting_sends_and_reads_back(client, monkeypatch):
 
 
 def test_the_fm9_is_validated_as_before(monkeypatch):
-    """The FM3 limits apply only with the FM3 selected."""
+    """The FM3 limits apply only with the FM3 selected: on the FM9 an add
+    is fine, a type change is fine, and its own ranges still refuse."""
     monkeypatch.setattr(server, "_context", server._default_context)
-    errs, _ = server.validate_action(server.Action(kind="set_param", block="REVERB", instance=1,
-                                                   param="REVERB_SIZE", value=50))
-    assert not any("FM3" in e for e in errs)
+    A = server.Action
+    assert server.validate_action(A(kind="add_block", block="CHORUS", instance=1, position="post"))[0] == []
+    assert server.validate_action(A(kind="set_param", block="DELAY", instance=2, param="DELAY_MIX", value=20))[0] == []
+    errs, _ = server.validate_action(A(kind="set_param", block="DISTORT", instance=1, param="DISTORT_DRIVE", value=15))
+    assert errs and "FM3" not in errs[0]                  # the FM9 reference: 0..10
+
+
+# -- the review's gaps ------------------------------------------------------------------
+
+@pytest.mark.parametrize("param", ["Gain", "DISTORT_DRIVE"])
+def test_a_second_amp_is_refused_however_the_setting_is_named(client, monkeypatch, param):
+    plan, _ = _plan(client, monkeypatch, [
+        {"kind": "set_param", "block": "DISTORT", "instance": 2, "param": param, "value": 5}])
+    errs = plan["actions"][0]["validation_errors"]
+    assert errs and "only the first of each block is measured" in errs[0], errs
+
+
+def test_a_label_resolves_to_the_instance_asked_for():
+    """On any device: "Gain" on amp 2 is amp 2's Gain, never amp 1's."""
+    one = server.reg.find_param("DISTORT", "Gain", 1)
+    two = server.reg.find_param("DISTORT", "Gain", 2)
+    assert one.param_id == two.param_id and one.effect_id != two.effect_id
+    assert two.effect_id == server.reg.effect_id("DISTORT", 2)
+
+
+def test_switching_a_block_the_preset_does_not_have_is_refused(client, monkeypatch):
+    plan, _ = _plan(client, monkeypatch, [
+        {"kind": "set_bypass", "block": "DELAY", "instance": 3, "bypassed": True},
+        {"kind": "set_channel", "block": "REVERB", "instance": 1, "value": 2}])
+    a3, rev = plan["actions"]
+    assert a3["validation_errors"] and "not in the preset" in a3["validation_errors"][0]
+    assert rev["validation_errors"] == []
+
+
+def test_a_build_from_a_loaded_profile_is_told_the_fm3s_limits(client, monkeypatch):
+    monkeypatch.setitem(server._profile, "loaded", {"preset_name": "Someone's rig", "blocks": []})
+    _, ctx = _plan(client, monkeypatch, [])
+    assert "DEVICE LIMITS (Fractal FM3)" in ctx
+
+
+def test_an_unplugged_fm3_is_not_planned_against_a_remembered_reading(client, monkeypatch):
+    def gone():
+        raise server.FM9NotFound("the FM3 stopped answering")
+    monkeypatch.setattr(server, "get_fm9", gone)
+    monkeypatch.setattr(server, "drop_fm9", lambda: None)
+    monkeypatch.setitem(server._last_snapshot, "state", {"preset": {"number": 1}, "blocks": [], "values": {}})
+    monkeypatch.setattr(server.planner, "plan", lambda *a, **k: pytest.fail("planned offline"))
+    r = client.post("/api/plan", json={"prompt": "more gain"})
+    assert "stopped answering" in r.text

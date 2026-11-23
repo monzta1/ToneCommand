@@ -3679,6 +3679,9 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                 _off_anchor = current_anchor(None, profile=prof)
                 _off_ctx = rigprofile.as_state_text(prof)
                 _off_ctx += ir_context(body.prompt, _off_anchor)
+                if kind == "fm3":
+                    # #40: the plan runs on the FM3, whoever's rig it imitates
+                    _off_ctx += "\n\n" + fm3_plan_note()
                 _t_off = time.monotonic()
                 result = _plan_counting(body.prompt, _off_ctx, on_count, cancel)
                 if isinstance(result, dict):
@@ -3734,8 +3737,12 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     with _lock:
         try:
             snap = snapshot(get_fm9())
-        except FM9NotFound:
+        except FM9NotFound as e:
             drop_fm9()
+            if kind == "fm3":
+                # #40: the remembered reading may be another device's (it is
+                # one global), so an FM3 plan needs the FM3 answering.
+                return {"error": str(e)}
             # The device is the only hardware dependency in this whole path:
             # the planner, validation and the grounding catalogs are all local.
             # So with a real reading of a preset to stand on, planning works
@@ -3987,14 +3994,26 @@ def _fm3_validate(a: Action) -> tuple[list[str], list[str]] | None:
         if fam in FM3_FIXED_BLOCKS:
             return [f"{fam} cannot be switched from ToneCommand: switching it "
                     f"off silences the rig"], []
+        # The block has to be one the FM3 reported in this preset, so an
+        # "amp 2" the unit does not have is refused here, not on the wire.
+        held = ((_last_snapshot.get("state") or {}).get("blocks")) or []
+        if held and not any(b.get("family") == fam and b.get("instance") == a.instance
+                            for b in held):
+            return [f"{fam} {a.instance} is not in the preset loaded on the FM3"], []
         return None
+    # Only instance 1 of each block was measured. Checked before the name is
+    # resolved: a label like "Gain" resolves to instance 1 whatever was asked.
+    if (a.instance or 1) != 1:
+        return [FM3_NOT_MAPPED.format(what=f"{a.param or 'That setting'} on "
+                                      f"{fam} {a.instance} (only the first of "
+                                      f"each block is measured)")], []
     spec = None
     for (f, pid), pdata in reg.params.items():
         if f == fam and pdata.get("name") == a.param:
             spec = reg.spec(f, pid, a.instance)
             break
     if spec is None and a.param:
-        spec = reg.find_param(fam, a.param)
+        spec = reg.find_param(fam, a.param, a.instance)
     m = fm3_map.lookup(spec.family, spec.param_id, spec.instance) if spec else None
     if m is None:
         return [FM3_NOT_MAPPED.format(what=(spec.label or spec.name) if spec
@@ -4115,7 +4134,7 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
             except (KeyError, ValueError) as e:
                 errors.append(f"reorder ref block: {e}")
     elif a.kind in ("bind_pedal", "unbind_pedal"):
-        spec = reg.find_param(fam, a.param or "")
+        spec = reg.find_param(fam, a.param or "", a.instance)
         if spec is None:
             for (f, pid), pdata in reg.params.items():
                 if f == fam and pdata.get("name") == a.param:
@@ -4166,7 +4185,7 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
                 spec = reg.spec(f, pid, a.instance)
                 break
         if spec is None and a.param:
-            spec = reg.find_param(fam, a.param)
+            spec = reg.find_param(fam, a.param, a.instance)
         if spec is None:
             errors.append(f"unknown parameter {a.param!r} on block {a.block}")
         elif a.value is None or not isinstance(a.value, (int, float)):
@@ -4538,7 +4557,7 @@ def _resolve_param(fam: str, name: str, instance: int):
     for (f, pid), pdata in reg.params.items():
         if f == fam and pdata.get("name") == name:
             return reg.spec(f, pid, instance)
-    return reg.find_param(fam, name) if name else None
+    return reg.find_param(fam, name, instance) if name else None
 
 
 #: The two onboard expression pedals, as modifier source ordinals (both decoded
@@ -4857,7 +4876,7 @@ def run_action(fm9: DeviceAdapter, a: Action) -> dict:
                 spec = reg.spec(f, pid, a.instance)
                 break
         if spec is None and a.param:
-            spec = reg.find_param(fam, a.param)
+            spec = reg.find_param(fam, a.param, a.instance)
         if spec is None:
             return {"ok": False, "detail": f"unknown param {a.param} on {fam}"}
         r = fm9.set_param_display(spec, float(a.value))
@@ -8702,7 +8721,7 @@ def _set_param_spec(a: Action):
         if f == fam and pdata.get("name") == a.param:
             return reg.spec(f, pid, a.instance)
     if a.param:
-        return reg.find_param(fam, a.param)
+        return reg.find_param(fam, a.param, a.instance)
     return None
 
 

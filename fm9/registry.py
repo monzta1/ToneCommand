@@ -283,8 +283,9 @@ class Registry:
             enum_count=r.get("enumCount"),
         )
 
-    def find_param(self, family: str, needle: str) -> ParamSpec | None:
-        """Look up a param in a family by symbolic name or display label."""
+    def find_param(self, family: str, needle: str, instance: int = 1) -> ParamSpec | None:
+        """Look up a param in a family by symbolic name or display label,
+        addressed to `instance` (a label must not quietly mean instance 1)."""
         needle_l = needle.strip().lower().replace(" ", "")
         for (fam, pid), p in self.params.items():
             if fam != family:
@@ -292,5 +293,5 @@ class Registry:
             name = (p.get("name") or "").lower()
             label = (p.get("displayLabel") or "").lower().replace(" ", "")
             if needle_l == label or name.endswith("_" + needle_l) or name == needle_l:
-                return self.spec(fam, pid)
+                return self.spec(fam, pid, instance)
         return None

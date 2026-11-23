@@ -22,6 +22,11 @@ Notable changes to ToneCommand. Dates are UTC.
   type or amp model picker is offered on the FM3. A level at 0 dB now reads
   0.0, not -0.0.
 
+### Fixed
+- A setting named by its label in a plan or an edit ("Gain", "Mix") on a
+  second block (amp 2, delay 2) now changes that block; it used to change
+  the first one.
+
 ## 1.6.7 (2026-11-22)
 
 ### Firmware observation
