@@ -223,14 +223,17 @@ def test_select_preset_and_scene_through_the_existing_routes(client):
     assert client.get("/api/state").json()["scene"]["number"] == 5
 
 
-def test_plan_is_refused_in_words_before_any_model(client, monkeypatch):
-    def boom(*a, **k):
-        raise AssertionError("the planner was asked")
-    monkeypatch.setattr(server.planner, "plan", boom)
+def test_plan_reaches_the_planner_with_the_fm3s_limits(client, monkeypatch):
+    # #40: planned for since the measured settings; tests/test_fm3_planner.py
+    seen = {}
+
+    def fake(prompt, context, *a, **k):
+        seen["context"] = context
+        return {"summary": "ok", "clarification": None, "actions": []}
+    monkeypatch.setattr(server.planner, "plan", fake)
     r = client.post("/api/plan", json={"prompt": "more gain"})
-    assert r.status_code == 409 and r.json() == {"error": FM3_READ_ONLY, "read_only": True}
-    r = client.post("/api/plan/stream", json={"prompt": "more gain"})
-    assert FM3_READ_ONLY in r.text
+    assert r.status_code == 200, r.text
+    assert "DEVICE LIMITS (Fractal FM3)" in seen["context"]
 
 
 def test_catalog_hands_the_fm3_to_the_fm9_module_read_only():
@@ -250,7 +253,7 @@ def test_page_names_the_fm3_and_offers_no_sound_controls():
     assert "'Connected, read-only for now: presets and scenes switch; nothing changes your sound.'" in page
     # the refusal reaches the player as written, never as "give it another go"
     assert "if (/is read-only in tonecommand/.test(m)) return String(msg);" in page
-    assert "  fm3: [],\n" in page                                 # no request it would refuse
+    assert "'Slapback',       'a short slapback delay, one repeat'" in page   # #40: FM3-doable asks
 
 
 # -- #40: block bypass and channel, the two proven FM3 writes ------------------

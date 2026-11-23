@@ -7091,7 +7091,7 @@ async function runPlugCard(dev, io) {
   paint({pct: 100, done: true, text: dev.kind === 'axefx3'
     ? 'Connected, read-only: change presets and scenes on the unit; refresh to read them.'
     : dev.kind === 'fm3'
-    ? 'Connected: presets and scenes switch, and blocks switch on, off and channel; other settings stay on the unit for now.'
+    ? 'Connected: ask for a tone. The amp, reverb and delay settings, block on/off and channel change from here; models and new blocks stay on the unit for now.'
     : dev.read_only
     ? 'Connected, read-only for now: presets and scenes switch; nothing changes your sound.'
     : 'Ready. Ask for a tone.'});
@@ -7974,8 +7974,14 @@ const DEVICE_EXAMPLES = {
     ['More gain',      'more gain and back the bass off a little'],
     ['What is it on?', 'what is it set to right now?'],
   ],
-  // #212: read-only, so no request it would only refuse is suggested.
-  fm3: [],
+  // #40: only requests the FM3 can do: its measured amp, reverb and delay
+  // settings, block on/off and channel. No model or block changes.
+  fm3: [
+    ['More gain',      'more gain, tighten the bass a little'],
+    ['Less reverb',    'less reverb, shorter tail'],
+    ['Slapback',       'a short slapback delay, one repeat'],
+    ['Brighter',       'brighter amp, more presence'],
+  ],
   axefx3: [],
 };
 
