@@ -139,3 +139,24 @@ def test_an_unplugged_fm3_is_not_planned_against_a_remembered_reading(client, mo
     monkeypatch.setattr(server.planner, "plan", lambda *a, **k: pytest.fail("planned offline"))
     r = client.post("/api/plan", json={"prompt": "more gain"})
     assert "stopped answering" in r.text
+
+
+def test_an_fm3_plan_has_no_cab_row(client, monkeypatch):
+    """Tester 2026-11-23: an FM3 reverb plan showed 'CAB / IR the IR library
+    is not connected'. The FM3's cab is not read or written, so a cab
+    listening set says nothing true about it; the row is left out."""
+    plan, _ = _plan(client, monkeypatch, [
+        {"kind": "set_param", "block": "REVERB", "instance": 1, "param": "REVERB_MIX", "value": 12}])
+    assert plan.get("cab_selection") is None
+
+
+def test_the_send_page_names_the_connected_unit():
+    """Tester 2026-11-23: the FM3's send page said 'FM9 · Preset 506' and
+    'changes the FM9'. The scenes path names the selected unit."""
+    from pathlib import Path
+    html = (Path(server.__file__).parent / "ui" / "index.html").read_text()
+    start = html.index("function renderConfirmStage()")
+    body = html[start:html.index("\nfunction ", start + 10)]
+    scenes_path = body[body.index("const unit = deviceShort(deviceState);"):]
+    for stale in ("'FM9 · NOT SAVED'", "changes the FM9.'", "'SEND TO FM9'", "`FM9 · Preset"):
+        assert stale not in scenes_path, stale

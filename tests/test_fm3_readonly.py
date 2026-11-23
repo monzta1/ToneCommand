@@ -290,6 +290,26 @@ def test_bypass_and_channel_through_apply_land_and_read_back(client):
     assert reverb["bypassed"] is True and reverb["channel"] == "B"
 
 
+def test_a_chip_tap_shows_on_the_very_next_read(client):
+    """#40, tester 2026-11-23: tapping the Delay chip 'did not appear to do
+    anything'. The FM3 echoes a switch before its status dump shows it, and
+    the page re-reads straight after the tap, so the chip kept its old state
+    (and a second tap asked for the same thing again). The switch now
+    settles and reads back before it answers; no sleep here, on purpose."""
+    for bypassed in (True, False, True):
+        r = client.post("/api/apply", json={"actions": [
+            {"kind": "set_bypass", "block": "delay", "instance": 1, "bypassed": bypassed}]})
+        assert r.json()["results"][0]["ok"], r.text
+        delay = [b for b in client.get("/api/state").json()["blocks"] if b["effect_id"] == 70][0]
+        assert delay["bypassed"] is bypassed
+    for ch, letter in ((1, "B"), (0, "A")):
+        r = client.post("/api/apply", json={"actions": [
+            {"kind": "set_channel", "block": "delay", "instance": 1, "value": ch}]})
+        assert r.json()["results"][0]["ok"], r.text
+        delay = [b for b in client.get("/api/state").json()["blocks"] if b["effect_id"] == 70][0]
+        assert delay["channel"] == letter
+
+
 def test_a_measured_setting_through_apply_lands(client):
     """#40: reverb Mix is one of the settings measured on a real FM3."""
     r = client.post("/api/apply", json={"actions": [
