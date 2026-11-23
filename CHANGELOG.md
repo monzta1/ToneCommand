@@ -4,6 +4,16 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Added
+- The FM3's measured settings now show as knobs on the page (#40): the amp's
+  Gain, Bass, Mid, Treble, Master, Presence, Level and Balance, and the
+  reverb's and delay's settings, read from the unit at the FM3's own places
+  on the FM3's own scales (delay Time runs to 16000 ms). Turning a knob
+  changes the setting on the unit and reads it back. Each block is read once
+  per refresh; a value lost on the link is left off rather than guessed. No
+  type or amp model picker is offered on the FM3. A level at 0 dB now reads
+  0.0, not -0.0.
+
 ## 1.6.7 (2026-11-22)
 
 ### Firmware observation

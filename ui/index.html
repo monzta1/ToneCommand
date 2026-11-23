@@ -3037,6 +3037,10 @@
   body.readonly-device #auditionbtn,
   body.readonly-device #storeafter,
   body.readonly-device #dirty { display: none; }
+  /* #40: the FM3 takes no undo copy; reloading the preset is what restores */
+  .rohint { display: none; }
+  body.readonly-device .rohint { display: block; }
+  body.readonly-device .fm9hint { display: none; }
   body.readonly-device #context .gridnote { display: none; }
   body.readonly-device #context .pathzone { display: flex; height: auto; }
   body.readonly-navigation #preset,
@@ -3864,7 +3868,8 @@
         <div class="console needs-rig" data-label="AMP &amp; CAB" id="amppanel">
           <div id="picks"></div>
           <div class="knobs" id="knobs-amp"><span class="hint">awaiting link...</span></div>
-          <div class="hint">Not saved yet. UNDO puts it back.</div>
+          <div class="hint fm9hint">Not saved yet. UNDO puts it back.</div>
+          <div class="hint rohint">Not saved yet. Load the preset again to put it back.</div>
         </div>
         <div class="console needs-rig" data-label="GRAPHIC EQ" id="geqpanel" style="display:none">
           <div class="geqbar">
@@ -7205,7 +7210,9 @@ async function refresh() {
     if (window.AFX3ReviewedEdit) void AFX3ReviewedEdit.poll(s);
     if (s.read_only) {
       renderReadOnlyBlocks(s);
-      renderParams(s);          // no values were read: this clears the panels
+      // #40: on the FM3 this draws the measured settings' knobs; on a
+      // device with none it clears the panels. Not while a knob is held.
+      if (!dragging) renderParams(s);
       loadPresets(false);
       return {connected: true, active: s.device && s.device.active, fresh: freshDevice};
     }
@@ -7413,7 +7420,8 @@ function renderParams(s) {
     // A picker for blocks whose type has real names. The amp and cab have
     // their own row above; this puts the rest beside their own parameters,
     // which is where you are already looking when you want to change one.
-    const pick = TYPE_PICKERS[fam];
+    // Not on a read-only device: the FM3 cannot change a block's type yet.
+    const pick = !s.read_only && TYPE_PICKERS[fam];
     if (pick && fam !== 'DISTORT') {
       const cur = s.values[`${fam}_TYPE_NAME`] || 'choose a type';
       head += `<div class="typepick"><span class="aud">
@@ -7667,6 +7675,9 @@ function inheritsHtml(plan) {
 // one question, drifting apart.
 function pedalable(key, m) {
   if (lastMods[key]) return false;
+  // #40: the FM3 changes its measured settings, but binding a pedal (a
+  // modifier write) is not one of them, so the button is not offered there.
+  if (lastState && lastState.read_only) return false;
   if (m.unit === 'enum' || m.unit === 'unverified') return false;
   return (m.max - m.min) > 0;
 }
