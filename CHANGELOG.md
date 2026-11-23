@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.7 (2026-11-22)
+
 ### Firmware observation
 - Recognize one independently observed Axe-Fx III 33.02 Mark II build for
   display only. The full reply fingerprint does not grant preset, parameter,
