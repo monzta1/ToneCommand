@@ -734,7 +734,31 @@ def fm3_allowed(frame: list[int]) -> bool:
         return payload == []
     if fn == FN_TEMPO_BPM:
         return payload == [0x7F, 0x7F]
+    if fn == FN_BULK_READ:
+        # #40: the whole-block read, a read only; the FM3 answers it in its
+        # own parameter order (fm9/fm3_map.py).
+        return len(payload) == 2
+    if fn == FN_PARAM:
+        return _fm3_knob_write(payload)
     return False
+
+
+def _fm3_knob_write(payload: list[int]) -> bool:
+    """#40: the knob write (sub 0x52, a value 0..1) for one of the FM3
+    settings measured on a real unit, at the FM3's own parameter id. Proven
+    by write, read-back and restore on a real FM3 (tools/fm3_param_write.py,
+    2026-11-22). Every other sub, block or setting stays refused."""
+    from fm9 import fm3_map
+    if len(payload) != 15 or tuple(payload[0:2]) != SUB_SET_CONTINUOUS:
+        return False
+    if any(payload[11:15]) or payload[10] > 0x0F:
+        # the fifth septet carries only the float's top four bits
+        return False
+    words = fm3_map.WRITABLE_WORDS.get(decode14(payload[2], payload[3]))
+    if not words or decode14(payload[4], payload[5]) not in words:
+        return False
+    value = decode_f32_septets(payload[6:11])
+    return 0.0 <= value <= 1.0
 
 
 def readdress(frame: list[int], model: int) -> list[int]:

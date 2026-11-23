@@ -13,7 +13,7 @@ header and a build is refused until you say which device it is for.
 |---|---|---|---|
 | **Fractal FM9** | Full | From the unit | The reference implementation. Blocks, scenes, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full, all 7 parameters, plus IR install | From the unit | Amp voicing, tone stack, ambience. Announces its own knob moves. Load your own cab IRs |
-| **Fractal FM3** | Read-only, through a USB MIDI interface (unreleased after 1.5.9) | From the unit | No MIDI over USB: choose the interface on its 5-pin MIDI ports in the Devices FM3 card (#221). Unverified on a real FM3 |
+| **Fractal FM3** | Presets, scenes, block on/off and channel, and the measured amp, reverb and delay settings (below), through a USB MIDI interface | From the unit | No MIDI over USB: choose the interface on its 5-pin MIDI ports in the Devices FM3 card (#221). Proven on a tester's FM3, fw 13.00 (#40) |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **Fractal Axe-Fx III** | Read-only (new in 1.6.0) | From the unit | Presets, scenes, firmware, block bypass and channels. Mark I, Mark II and Turbo. Verified on a Mark II against Axe-Edit |
 | **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
@@ -38,7 +38,7 @@ Other FM9 variants share the model byte and should behave identically but are
 untested. The FM3 is a different case (below); the Axe-Fx III uses a different
 model byte and has its own read-only adapter (below).
 
-## Fractal FM3 (through a MIDI interface, read-only)
+## Fractal FM3 (through a MIDI interface, partly read-only)
 
 **The FM3 does not do MIDI over USB.** Its USB port carries only Fractal's own
 channel (COM over USB) for FM3-Edit, Fractal-Bot and Cab-Lab; it never appears
@@ -65,14 +65,28 @@ setting to choose a different port.
 
 Once connected, ToneCommand addresses the FM3 through the FM9's own code with
 the FM3's model byte: it shows the loaded preset, the eight scenes and which
-blocks are on, and switches presets and scenes. Read-only is enforced at the
-FM3's MIDI port (only Fractal's documented queries plus preset and scene
-switching), because the FM3's block and parameter map has only been proven on
-an FM9.
+blocks are on, switches presets and scenes, turns blocks on and off and
+switches their channels. All of that was proven on a tester's FM3 (fw 13.00)
+by writing and reading back.
 
-**Not yet verified on a real FM3.** The interface route and the model byte
-(taken from preset files) still need a hardware check by an FM3 owner;
-simulator checks do not establish hardware support. Full support is #40.
+**Settings.** The FM3 keeps a block's settings in its own order, not the
+FM9's: the amp's Gain is the FM9's parameter 11 and the FM3's 7, and the
+reverb's Mix the FM9's 0 and the FM3's 13. ToneCommand reads and changes only
+the settings measured on a real FM3, one knob at a time, each with the
+screen's reading to fix its scale (`fm9/fm3_map.py`):
+
+| Block (instance 1) | Settings |
+|---|---|
+| Amp | Level, Balance, Gain, Bass, Mid, Treble, Master, Presence |
+| Reverb | Mix, Level, Balance, Time, High Cut, Predelay |
+| Delay | Mix, Level, Balance, Time, Feedback |
+
+Every change goes to the edit buffer and is read back from the unit before
+it counts. Anything else (amp and effect models, cabs, other settings, second
+instances, the grid, names, storing) stays refused at the FM3's MIDI port,
+and a request for one says which settings the FM3 can change. The map was
+measured on one amp model; a delay synced to tempo plays its tempo time, not
+the Time setting. Full support is #40.
 
 ## BOSS IR-2
 

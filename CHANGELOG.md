@@ -16,6 +16,14 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- The FM3 now changes its main settings (#40): amp Level, Balance, Gain, Bass,
+  Mid, Treble, Master and Presence; reverb and delay Mix, Level and Balance;
+  reverb Time, High Cut and Predelay; delay Time and Feedback. Each was
+  measured on a real FM3 (fw 13.00), which keeps a block's settings in its own
+  order rather than the FM9's, so `fm9/fm3_map.py` addresses them the FM3's
+  way and on the scale its screen shows. Every change lands in the edit buffer
+  and is read back before it counts. Everything else stays refused at the
+  FM3's MIDI port, and asking for it says which settings the FM3 can change.
 - `tools/fm3_param_write.py`, the first FM3 settings write (#40). It sends one
   knob write to the reverb's (or delay's) Mix, addressed by the FM3's own word
   number from the knob maps, reads the whole block back to show which value

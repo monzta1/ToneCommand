@@ -96,8 +96,9 @@ def test_the_window_refuses_every_other_form(frame):
     dev = SimFM3(Registry())
     with pw.one_param_open(dev, 66, 13):
         assert not dev.outp.allows(frame)
-        with pytest.raises(ReadOnly):
-            dev.outp.send(mido.Message("sysex", data=frame[1:-1]))
+        if not p.fm3_allowed(frame):      # since #40 the port itself passes some of these
+            with pytest.raises(ReadOnly):
+                dev.outp.send(mido.Message("sysex", data=frame[1:-1]))
 
 
 def test_the_window_itself_does_not_carry_bypass():
@@ -111,8 +112,9 @@ def test_the_window_closes_after_use():
     dev = SimFM3(Registry())
     with pw.one_param_open(dev, 66, 13):
         assert dev.outp.allows(p.build_set_param_continuous(66, 13, 0.5))
+    assert not isinstance(dev.outp, pw.OneParamOut)
     with pytest.raises(ReadOnly):
-        dev.outp.send(mido.Message("sysex", data=p.build_set_param_continuous(66, 13, 0.5)[1:-1]))
+        dev.outp.send(mido.Message("sysex", data=p.build_set_param_continuous(66, 3, 0.5)[1:-1]))
 
 
 def test_a_block_that_is_not_allowed_is_refused():

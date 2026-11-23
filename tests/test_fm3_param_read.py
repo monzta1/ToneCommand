@@ -40,13 +40,13 @@ def test_only_that_blocks_read_gets_through_and_only_inside():
     amp = reg.resolve_block("amp", 1)[1]
     reverb = reg.resolve_block("reverb", 1)[1]
     with pr.one_read_open(dev, amp):
-        dev.outp.send(_sysex(p.build_bulk_read_poll(amp)))               # the one form
+        assert dev.outp.allows(p.build_bulk_read_poll(amp))              # the one form
+        assert not dev.outp.allows(p.build_bulk_read_poll(reverb))       # not the window's
         with pytest.raises(ReadOnly):
-            dev.outp.send(_sysex(p.build_bulk_read_poll(reverb)))        # another block
-        with pytest.raises(ReadOnly):
-            dev.outp.send(_sysex(p.build_set_param_continuous(amp, 1, 0.5)))
-    with pytest.raises(ReadOnly):
-        dev.outp.send(_sysex(p.build_bulk_read_poll(amp)))               # closed again
+            dev.outp.send(_sysex(p.build_set_param_continuous(amp, 6, 0.5)))  # amp model place
+    assert not isinstance(dev.outp, pr.OneReadOut)                       # closed again
+    # Since #40 the FM3's own port passes any block read (a read only).
+    dev.outp.send(_sysex(p.build_bulk_read_poll(reverb)))
 
 
 def test_the_gate_closes_even_when_the_read_fails():
@@ -58,10 +58,12 @@ def test_the_gate_closes_even_when_the_read_fails():
     assert isinstance(dev.outp, pr.ReadOnlyOut)
 
 
-def test_the_app_still_does_not_read_fm3_settings():
+def test_the_app_reads_fm3_settings_only_through_the_fm3_map():
+    """#40: the FM9-shaped bulk read stays a no-send on the FM3; measured
+    settings are read through fm9/fm3_map.py instead (test_fm3_settings)."""
     dev = SimFM3(Registry())
     assert dev.bulk_read(58) is None
-    assert not p.fm3_allowed(p.build_bulk_read_poll(58))
+    assert p.fm3_allowed(p.build_bulk_read_poll(58))
 
 
 def test_the_tool_reads_what_the_app_shows():

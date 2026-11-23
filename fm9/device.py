@@ -1619,9 +1619,17 @@ class ReadOnly(RuntimeError):
 
 
 FM3_READ_ONLY = ("The FM3 is read-only in ToneCommand for now, apart from "
-                 "switching presets and scenes, turning blocks on and off and "
-                 "switching their channels: it cannot change other settings. "
-                 "Full support is tracked in #40.")
+                 "switching presets and scenes, turning blocks on and off, "
+                 "switching their channels and changing the amp, reverb and "
+                 "delay settings measured on a real FM3. Full support is "
+                 "tracked in #40.")
+
+#: #40: said when a setting has not been measured on an FM3 yet.
+FM3_NOT_MAPPED = ("{what} is not one of the FM3 settings ToneCommand has measured "
+                  "yet, so it is not changed. The FM3 can change: amp Level, "
+                  "Balance, Gain, Bass, Mid, Treble, Master and Presence; reverb "
+                  "and delay Mix, Level and Balance; reverb Time, High Cut and "
+                  "Predelay; delay Time and Feedback (#40).")
 
 
 class ReadOnlyOut:
@@ -1661,8 +1669,8 @@ class ReadOnlyOut:
 
 
 class FM3(FM9):
-    """A Fractal FM3 through the FM9 module, read-only except block bypass
-    and channel (#212, #40).
+    """A Fractal FM3 through the FM9 module, read-only except block bypass,
+    channel and the settings in fm9/fm3_map.py (#212, #40).
 
     The FM3 speaks the same gen-3 family protocol, so the official queries
     (names, scenes, status dump, bypass and channel queries, firmware) and
@@ -1740,7 +1748,144 @@ class FM3(FM9):
     # FM3 (fw 13.00) by write and read-back with tools/fm3_first_edit.py
     # (#40), and protocol.fm3_allowed lets exactly those frames through.
     # Edit buffer only, like every write here; nothing is stored.
-    set_param_display = set_param_wire = set_param_ordinal = set_params_batch = _refuse
+    # #40: settings are NOT refused wholesale any more. The ones measured on
+    # a real FM3 (fm9/fm3_map.py) are read and written at the FM3's own
+    # parameter id, below, and protocol.fm3_allowed lets exactly those knob
+    # writes through. Exact-wire and model (ordinal) writes stay refused.
+    set_param_wire = set_param_ordinal = _refuse
+
+    #: How long to wait for a block read. A 5-pin MIDI link carries about
+    #: 3 KB a second; the biggest measured block (the amp, 576 values) came
+    #: back in under 0.6 s on the tester's FM3.
+    FM3_READ_TIMEOUT = 2.5
+    #: After the end frame, listen this much longer for anything late.
+    FM3_READ_TAIL = 0.05
+
+    def _fm3_spec(self, spec: ParamSpec) -> ParamSpec | None:
+        """The same setting addressed the FM3's way, on the scale measured
+        on an FM3; None when it has not been measured."""
+        from dataclasses import replace
+        from . import fm3_map
+        m = fm3_map.lookup(spec.family, spec.param_id, spec.instance)
+        if m is None or spec.effect_id != fm3_map.EFFECT_IDS.get(spec.family):
+            return None
+        return replace(spec, param_id=m.word, kind="float",
+                       dmin=m.dmin, dmax=m.dmax, scale=m.scale)
+
+    def _fm3_read_block(self, effect_id: int) -> tuple[list[int | None], int] | None:
+        """The block read, decoded as the FM3 sends it: (values, total).
+
+        The reply is the Gen-3 burst (0x74 head, 0x75 chunks that each open
+        with their own word count, 0x76 end). On the tester's FM3 behind a
+        wireless MIDI link every head and chunk arrived a few bytes short
+        (2026-11-21), losing only the tail of each chunk, so a chunk is
+        decoded as far as its bytes go, and `total` is the count the chunks
+        declare: the per-channel stride comes from it, not from what
+        arrived."""
+        self._drain()
+        self._send(p.build_bulk_read_poll(effect_id))
+        deadline = time.time() + self.FM3_READ_TIMEOUT
+        head = False
+        values: list[int | None] = []
+        total = 0
+        while time.time() < deadline:
+            for msg in self.inp.iter_pending():
+                if msg.type != "sysex":
+                    continue
+                data = list(msg.data)
+                if p.is_fractal(data, p.FN_BCAST_HEAD) and len(data) >= 7:
+                    if p.decode14(data[5], data[6]) == effect_id:
+                        head, values, total = True, [], 0
+                    continue
+                if head and p.is_fractal(data, p.FN_BCAST_BODY) and len(data) >= 8:
+                    declared = p.decode14(data[5], data[6])
+                    if declared == 0:
+                        declared = (len(data) - 8) // 3
+                    raw = data[7:-1] if len(data) == 8 + 3 * declared else data[7:]
+                    words = min(declared, len(raw) // 3)
+                    values.extend(p.unpack_value16(raw[i], raw[i + 1], raw[i + 2])
+                                  for i in range(0, 3 * words, 3))
+                    # Words lost from this chunk's tail keep their places as
+                    # None, so every later value stays at its own index.
+                    values.extend([None] * (declared - words))
+                    total += declared
+                    continue
+                if head and p.is_fractal(data, p.FN_BCAST_END):
+                    deadline = min(deadline, time.time() + self.FM3_READ_TAIL)
+            _settle(self, 0.002)
+        return (values, total) if any(v is not None for v in values) else None
+
+    def _fm3_wire(self, s: ParamSpec, channel: int | None = None) -> int | None:
+        """One value of an FM3-addressed spec (from _fm3_spec)."""
+        got = self._fm3_read_block(s.effect_id)
+        if got is None:
+            return None
+        values, total = got
+        if s.effect_id not in self._channels:
+            self.status_dump()
+        chans = max(1, self._channels.get(s.effect_id, 1))
+        stride = total // chans if chans > 1 else total
+        if channel is None:
+            live = self.get_channel(s.effect_id)
+            if live is not None:
+                self._current_channel[s.effect_id] = live
+            channel = self._current_channel.get(s.effect_id, 0)
+        idx = min(channel, chans - 1) * stride + s.param_id
+        return values[idx] if idx < len(values) else None
+
+    @staticmethod
+    def _fm3_display(s: ParamSpec, wire: int | None):
+        if wire is None:
+            return None
+        return round(p.normalized_to_display(wire / 65534, s.dmin, s.dmax, s.scale), 2)
+
+    def get_param_wire(self, spec: ParamSpec, channel: int | None = None) -> int | None:
+        """A measured setting's value (#40); None for one not measured,
+        which is never read through the FM9's map."""
+        s = self._fm3_spec(spec)
+        return None if s is None else self._fm3_wire(s, channel)
+
+    def get_param_display(self, spec: ParamSpec) -> float | str | None:
+        s = self._fm3_spec(spec)
+        return None if s is None else self._fm3_display(s, self._fm3_wire(s))
+
+    def set_param_display(self, spec: ParamSpec, display_value: float) -> SetResult:
+        """Set a measured setting and read it back (#40). One that has not
+        been measured on an FM3 is refused before anything is sent."""
+        s = self._fm3_spec(spec)
+        if s is None:
+            raise ReadOnly(FM3_NOT_MAPPED.format(what=spec.label or spec.name))
+        before = self._fm3_display(s, self._fm3_wire(s))
+        normalized = p.display_to_normalized(display_value, s.dmin, s.dmax, s.scale)
+        frame = p.build_set_param_continuous(s.effect_id, s.param_id, normalized)
+        self._param_echo(frame, s.effect_id, s.param_id, timeout=0.3)
+        target = min(s.dmax, max(s.dmin, display_value))
+        if s.scale == "log10":
+            # one wire step near the top of a log scale is wider than near
+            # the bottom; allow two steps where the target sits
+            step = s.dmax * (1 - (s.dmin / s.dmax) ** (2 / 65534))
+        else:
+            step = (s.dmax - s.dmin) / 65534 * 2
+        tol = max(step + 1e-6, 0.02)
+        after = None
+        for _ in range(4):
+            _settle(self, 0.15)
+            after = self._fm3_display(s, self._fm3_wire(s))
+            if isinstance(after, (int, float)) and abs(after - target) <= tol:
+                return SetResult(True, "read back on the unit", before, after)
+        return SetResult(False, f"read-back mismatch: {after}", before, after)
+
+    def set_params_batch(self, items: list) -> list:
+        """One write and read-back per setting (#40). A setting not measured
+        on an FM3 gets a failed result in words; the others still go."""
+        out = []
+        for spec, value in items:
+            if self._fm3_spec(spec) is None:
+                out.append(SetResult(False, FM3_NOT_MAPPED.format(
+                    what=spec.label or spec.name), None, None))
+            else:
+                out.append(self.set_param_display(spec, value))
+        return out
     set_tempo = _refuse
     rename_preset = rename_scene = store_preset = send_preset_file = _refuse
     load_preset_buffer = install_preset = _refuse
