@@ -84,7 +84,7 @@ def test_a_knob_write_lands_and_the_next_poll_shows_it(client):
 
 
 def test_one_block_read_per_measured_block_per_poll(client, monkeypatch):
-    dev = server.get_fm9()
+    dev = server.device_context().adapter        # the FM3 itself, not the gated wrapper
     reads = []
     real = dev._fm3_read_block
     monkeypatch.setattr(dev, "_fm3_read_block", lambda eid: (reads.append(eid), real(eid))[1])
@@ -93,7 +93,7 @@ def test_one_block_read_per_measured_block_per_poll(client, monkeypatch):
 
 
 def test_a_value_lost_on_the_link_is_left_off_not_guessed(client, monkeypatch):
-    dev = server.get_fm9()
+    dev = server.device_context().adapter        # the FM3 itself, not the gated wrapper
     real = dev._fm3_read_block
 
     def lossy(eid):
@@ -116,7 +116,7 @@ def test_channel_b_shows_channel_bs_values(client):
 
 
 def test_a_silent_block_read_backs_off_instead_of_stalling_every_poll(client, monkeypatch):
-    dev = server.get_fm9()
+    dev = server.device_context().adapter        # the FM3 itself, not the gated wrapper
     reads = []
     monkeypatch.setattr(dev, "_fm3_read_block", lambda eid: reads.append(eid))   # no answer
     s = client.get("/api/state").json()
