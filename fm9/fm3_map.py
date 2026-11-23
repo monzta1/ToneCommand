@@ -63,6 +63,14 @@ PARAMS: dict[tuple[str, int], Fm3Param] = {
     ("DELAY", 14): Fm3Param(10, "Feedback", -100, 100),       # 58784 = 79.4%, 39320 = 20.0
 }
 
+#: The order the page draws each block's knobs in: the tone first, then
+#: level and balance, the way the FM9 panels read.
+PAGE_ORDER: dict[str, tuple[int, ...]] = {
+    "DISTORT": (11, 12, 13, 14, 15, 30, 1, 2),
+    "REVERB": (0, 11, 19, 12, 1, 2),
+    "DELAY": (0, 12, 14, 1, 2),
+}
+
 #: effect id -> the FM3 words that may be written there. protocol.fm3_allowed
 #: lets a knob write through only for one of these.
 WRITABLE_WORDS: dict[int, frozenset[int]] = {

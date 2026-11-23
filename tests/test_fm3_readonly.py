@@ -201,13 +201,17 @@ def client(monkeypatch):
     return c
 
 
-def test_state_reads_the_fm3_without_parameter_values(client):
+def test_state_reads_the_fm3_with_only_its_measured_values(client):
     s = client.get("/api/state").json()
     assert s["connected"] is True and s["read_only"] is True
     assert s["device"]["active"] == "fm3" and s["device"]["label"] == "Fractal FM3"
     assert s["preset"]["name"] == "Sim Preset 0"
     assert len(s["scenes"]) == 8 and s["blocks"]
-    assert s["values"] == {} and s["params"] == {}               # nothing read through the FM9 map
+    # #40: only the settings measured on an FM3 (fm9/fm3_map.py), nothing
+    # read through the FM9 map: no amp model, no cab, no type names
+    from fm9 import fm3_map
+    measured = {server.reg.spec(f, pid, 1).name for (f, pid) in fm3_map.PARAMS}
+    assert set(s["values"]) <= measured and set(s["params"]) == set(s["values"])
 
 
 def test_select_preset_and_scene_through_the_existing_routes(client):

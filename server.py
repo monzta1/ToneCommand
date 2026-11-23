@@ -2028,6 +2028,52 @@ def scene_names(fm9: DeviceAdapter) -> list[dict]:
     return out
 
 
+def _fm3_knob_values(fm3, blocks, values: dict, meta: dict) -> None:
+    """#40: the FM3's measured settings, for the page's knobs.
+
+    The FM9 loop above reads nothing on an FM3 (its block read is the FM9's
+    layout, so the FM3 handle answers it with nothing). This reads each
+    measured block once, at the FM3's own places, and describes each
+    setting on the scale measured on an FM3, so a knob's range is the
+    unit's (delay Time runs to 16000 ms there). The knobs write through
+    /api/apply set_param, which the FM3 handle already maps and reads back."""
+    from fm9 import fm3_map
+    # A block read that gets no answer waits out its whole timeout, under
+    # the lock every write also needs. After one miss this poll reads no
+    # further blocks, and the next few polls skip the knobs, so a lossy link
+    # costs one timeout now and then rather than several on every poll.
+    if _fm3_knob_backoff["skip"] > 0:
+        _fm3_knob_backoff["skip"] -= 1
+        return
+    for b in blocks:
+        fam = reg.family_of_effect_id(b.effect_id)
+        if not fam or fam[1] != 1 or fm3_map.EFFECT_IDS.get(fam[0]) != b.effect_id:
+            continue
+        fname = fam[0]
+        got = fm3.fm3_settings(fname, b.channel, max(1, b.channels_supported))
+        if not got:
+            _fm3_knob_backoff["skip"] = _FM3_KNOB_SKIP
+            return
+        for pid in fm3_map.PAGE_ORDER[fname]:
+            if pid not in got:
+                continue
+            s, m = reg.spec(fname, pid, 1), fm3_map.lookup(fname, pid)
+            values[s.name] = got[pid]
+            meta[s.name] = {"family": fname, "instance": 1, "param": s.name,
+                            "min": m.dmin, "max": m.dmax, "scale": m.scale,
+                            "unit": _FM3_UNITS.get(s.name, s.unit or ""),
+                            "label": m.label}
+
+
+#: Polls to skip the FM3's knob reads after a block read went unanswered.
+_FM3_KNOB_SKIP = 3
+_fm3_knob_backoff = {"skip": 0}
+
+#: The registry calls these two plain numbers; on the FM3 screen (and the
+#: FM9's) they read in dB and %, so the knobs say so.
+_FM3_UNITS = {"REVERB_LEVEL": "db", "DELAY_FEED": "percent"}
+
+
 def snapshot(fm9: DeviceAdapter) -> dict:
     if device_context().kind == "axefx3":
         from devices.axefx3.adapter import snapshot as readonly_snapshot
@@ -2134,6 +2180,8 @@ def snapshot(fm9: DeviceAdapter) -> dict:
                             # like the unit rather than like our variable names
                             "label": (s.label or s.name.split("_", 1)[-1]),
                         }
+    if device_context().kind == "fm3":
+        _fm3_knob_values(fm9, blocks, values, meta)
     out_state = {
         "connected": True,
         # label, not just number: the wire numbers presets 0-511 and every

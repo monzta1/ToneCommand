@@ -70,6 +70,7 @@ missed preset select logged with its evidence, the report link title-only)
 brings it to 9,009 lines.
 Naming PC Mapping in a missed preset select (#308) brings it to 9,015 lines.
 Offering FM3 block bypass and channel (#40) brings it to 9,024 lines.
+The FM3's measured settings on the page's knobs (#40) bring it to 9,072 lines.
 
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition
@@ -144,7 +145,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 9,024 lines and 123 routes
+### 2. `server.py` is 9,072 lines and 123 routes
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

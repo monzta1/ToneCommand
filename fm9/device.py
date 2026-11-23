@@ -1837,7 +1837,32 @@ class FM3(FM9):
     def _fm3_display(s: ParamSpec, wire: int | None):
         if wire is None:
             return None
-        return round(p.normalized_to_display(wire / 65534, s.dmin, s.dmax, s.scale), 2)
+        # + 0.0 turns -0.0 (a level at exactly 0 dB) into 0.0
+        return round(p.normalized_to_display(wire / 65534, s.dmin, s.dmax, s.scale), 2) + 0.0
+
+    def fm3_settings(self, family: str, channel: int, channels: int) -> dict[int, float]:
+        """Every measured setting of one block, from ONE block read (#40):
+        {FM9 registry param id: screen value}. The page polls this, so it
+        must not cost a read per setting. `channel`/`channels` come from
+        the status dump the caller already has. A value lost on the link
+        is left out rather than guessed."""
+        from . import fm3_map
+        eid = fm3_map.EFFECT_IDS.get(family)
+        got = self._fm3_read_block(eid) if eid is not None else None
+        if not got:
+            return {}
+        values, total = got
+        chans = max(1, channels)
+        stride = total // chans if chans > 1 else total
+        base = min(channel, chans - 1) * stride
+        out: dict[int, float] = {}
+        for (fam, pid), m in fm3_map.PARAMS.items():
+            i = base + m.word
+            if fam != family or i >= len(values) or values[i] is None:
+                continue
+            out[pid] = round(p.normalized_to_display(
+                values[i] / 65534, m.dmin, m.dmax, m.scale), 2) + 0.0
+        return out
 
     def get_param_wire(self, spec: ParamSpec, channel: int | None = None) -> int | None:
         """A measured setting's value (#40); None for one not measured,
