@@ -3615,6 +3615,10 @@ def _will_lay_template(body) -> bool:
                               a decline absorbed here would silently switch
                               the build to the splice path.
     """
+    if device_context().kind == "fm3":
+        # #40: no template is ever laid on an FM3 (its grid read is refused
+        # at the port, and add_block is not among what it may plan)
+        return False
     try:
         with _lock:
             grid = get_fm9().read_grid()
@@ -3642,12 +3646,10 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         return {"error": "say which device this build is for: "
                          + ", ".join(d["label"] for d in avail),
                 "ambiguous_device": [d["kind"] for d in avail]}
-    # #212: the FM3 is read-only; every action the planner writes is
-    # FM9-shaped, so nothing is planned for it, in words, before any model
-    # is asked.
-    if kind == "fm3":
-        from fm9.device import FM3_READ_ONLY
-        return {"error": FM3_READ_ONLY, "read_only": True}
+    # #40: the FM3 is planned for, but only with what it takes: its measured
+    # settings, block on/off, channel and scene. The planner is told so in
+    # its context (FM3_PLAN_NOTE) and validate_action refuses anything else
+    # before Review, in words.
     if kind == "axefx3":
         from devices.axefx3.adapter import READ_ONLY
         return {"error": READ_ONLY, "read_only": True}
@@ -3677,6 +3679,9 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                 _off_anchor = current_anchor(None, profile=prof)
                 _off_ctx = rigprofile.as_state_text(prof)
                 _off_ctx += ir_context(body.prompt, _off_anchor)
+                if kind == "fm3":
+                    # #40: the plan runs on the FM3, whoever's rig it imitates
+                    _off_ctx += "\n\n" + fm3_plan_note()
                 _t_off = time.monotonic()
                 result = _plan_counting(body.prompt, _off_ctx, on_count, cancel)
                 if isinstance(result, dict):
@@ -3732,8 +3737,12 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     with _lock:
         try:
             snap = snapshot(get_fm9())
-        except FM9NotFound:
+        except FM9NotFound as e:
             drop_fm9()
+            if kind == "fm3":
+                # #40: the remembered reading may be another device's (it is
+                # one global), so an FM3 plan needs the FM3 answering.
+                return {"error": str(e)}
             # The device is the only hardware dependency in this whole path:
             # the planner, validation and the grounding catalogs are all local.
             # So with a real reading of a preset to stand on, planning works
@@ -3749,6 +3758,8 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     # so it is told exactly what it has rather than being handed an
     # empty-looking state and left to assume.
     context = state_text(snap) if snap else rigprofile.as_blank_text()
+    if kind == "fm3":
+        context += "\n\n" + fm3_plan_note()
     # Tell the planner the starter template will be there. This roster has
     # existed and been tested since #47 and was never wired to anything, so on
     # an empty slot the planner saw a bare grid, emitted add_block for all
@@ -3855,7 +3866,8 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
         # gets confirmed, and consent to "add a block" is not consent to
         # rearrange the row.
         adds = [a for a in result.get("actions", []) if a.get("kind") == "add_block"]
-        if adds:
+        # #40: on an FM3 add_block is already refused, and its grid is not read
+        if adds and kind != "fm3":
             with _lock:
                 try:
                     fm9 = get_fm9()
@@ -3934,6 +3946,86 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
 TEMPO_RANGE = (30, 250)   # Fractal tempo limits
 
 
+#: #40: what a plan may do on an FM3. Everything else is refused before
+#: Review; the port refuses it again if it ever got that far.
+FM3_PLAN_KINDS = ("set_param", "set_bypass", "set_channel", "set_scene")
+#: Switching either of these off silences the rig; the page never offers it.
+FM3_FIXED_BLOCKS = ("INPUT", "OUTPUT")
+
+
+def fm3_plan_note() -> str:
+    """The planner's whole vocabulary on an FM3 (#40), from fm9/fm3_map.py,
+    with the FM3's own ranges (they differ from the FM9 reference: delay Time
+    runs to 16000 ms, reverb Predelay to 1000 ms)."""
+    from fm9 import fm3_map
+    lines = ["DEVICE LIMITS (Fractal FM3). This unit takes ONLY these actions; "
+             "any other kind is refused:",
+             "- set_bypass and set_channel on blocks already in the preset "
+             "(never INPUT or OUTPUT)",
+             "- set_scene 1..8",
+             "- set_param, instance 1 only, on exactly these parameters "
+             "(name: range):"]
+    for (fam, pid), m in fm3_map.PARAMS.items():
+        s = reg.spec(fam, pid, 1)
+        scale = ", log taper" if m.scale == "log10" else ""
+        lines.append(f"  {fam} {s.name} ({m.label}): {m.dmin:g}..{m.dmax:g}{scale}")
+    lines.append("No add_block, reorder, set_type, set_cab, pedal binding, rename, "
+                 "tempo or store on this unit. If the request needs one, say so "
+                 "in the summary and do what these settings can.")
+    return "\n".join(lines)
+
+
+def _fm3_validate(a: Action) -> tuple[list[str], list[str]] | None:
+    """#40: the FM3's limits, or None to carry on with the normal checks
+    (block on/off, channel, scene). A setting is range-checked on the scale
+    measured on an FM3, not the FM9 reference's."""
+    from fm9 import fm3_map
+    from fm9.device import FM3_NOT_MAPPED
+    if a.kind not in FM3_PLAN_KINDS:
+        return [f"the FM3 cannot do {a.kind} from ToneCommand yet; it takes "
+                f"its measured settings, block on/off, channel and scene"], []
+    if a.kind == "set_scene":
+        return None
+    try:
+        fam, _eid = reg.resolve_block(a.block or "", a.instance)
+    except (KeyError, ValueError) as e:
+        return [str(e)], []
+    if a.kind in ("set_bypass", "set_channel"):
+        if fam in FM3_FIXED_BLOCKS:
+            return [f"{fam} cannot be switched from ToneCommand: switching it "
+                    f"off silences the rig"], []
+        # The block has to be one the FM3 reported in this preset, so an
+        # "amp 2" the unit does not have is refused here, not on the wire.
+        held = ((_last_snapshot.get("state") or {}).get("blocks")) or []
+        if held and not any(b.get("family") == fam and b.get("instance") == a.instance
+                            for b in held):
+            return [f"{fam} {a.instance} is not in the preset loaded on the FM3"], []
+        return None
+    # Only instance 1 of each block was measured. Checked before the name is
+    # resolved: a label like "Gain" resolves to instance 1 whatever was asked.
+    if (a.instance or 1) != 1:
+        return [FM3_NOT_MAPPED.format(what=f"{a.param or 'That setting'} on "
+                                      f"{fam} {a.instance} (only the first of "
+                                      f"each block is measured)")], []
+    spec = None
+    for (f, pid), pdata in reg.params.items():
+        if f == fam and pdata.get("name") == a.param:
+            spec = reg.spec(f, pid, a.instance)
+            break
+    if spec is None and a.param:
+        spec = reg.find_param(fam, a.param, a.instance)
+    m = fm3_map.lookup(spec.family, spec.param_id, spec.instance) if spec else None
+    if m is None:
+        return [FM3_NOT_MAPPED.format(what=(spec.label or spec.name) if spec
+                                      else (a.param or "that setting"))], []
+    if a.value is None or not isinstance(a.value, (int, float)):
+        return [f"{a.param} requires a numeric value, got {a.value!r}"], []
+    if not m.dmin <= a.value <= m.dmax:
+        return [f"{spec.name} value {a.value} outside the FM3's range "
+                f"{m.dmin:g}..{m.dmax:g} {spec.unit or ''}".rstrip()], []
+    return [], []
+
+
 def validate_action(a: Action) -> tuple[list[str], list[str]]:
     """Validate an action against the parameter reference BEFORE anything is
     sent. Returns (errors, warnings). Errors block transmission of that
@@ -3941,6 +4033,10 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
     """
     errors: list[str] = []
     warnings: list[str] = []
+    if device_context().kind == "fm3":
+        fm3 = _fm3_validate(a)
+        if fm3 is not None:
+            return fm3
     if a.kind == "set_scene":
         scene = a.value if a.value is not None else a.instance
         if not isinstance(scene, (int, float)) or not 1 <= int(scene) <= 8:
@@ -4038,7 +4134,7 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
             except (KeyError, ValueError) as e:
                 errors.append(f"reorder ref block: {e}")
     elif a.kind in ("bind_pedal", "unbind_pedal"):
-        spec = reg.find_param(fam, a.param or "")
+        spec = reg.find_param(fam, a.param or "", a.instance)
         if spec is None:
             for (f, pid), pdata in reg.params.items():
                 if f == fam and pdata.get("name") == a.param:
@@ -4089,7 +4185,7 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
                 spec = reg.spec(f, pid, a.instance)
                 break
         if spec is None and a.param:
-            spec = reg.find_param(fam, a.param)
+            spec = reg.find_param(fam, a.param, a.instance)
         if spec is None:
             errors.append(f"unknown parameter {a.param!r} on block {a.block}")
         elif a.value is None or not isinstance(a.value, (int, float)):
@@ -4461,7 +4557,7 @@ def _resolve_param(fam: str, name: str, instance: int):
     for (f, pid), pdata in reg.params.items():
         if f == fam and pdata.get("name") == name:
             return reg.spec(f, pid, instance)
-    return reg.find_param(fam, name) if name else None
+    return reg.find_param(fam, name, instance) if name else None
 
 
 #: The two onboard expression pedals, as modifier source ordinals (both decoded
@@ -4780,7 +4876,7 @@ def run_action(fm9: DeviceAdapter, a: Action) -> dict:
                 spec = reg.spec(f, pid, a.instance)
                 break
         if spec is None and a.param:
-            spec = reg.find_param(fam, a.param)
+            spec = reg.find_param(fam, a.param, a.instance)
         if spec is None:
             return {"ok": False, "detail": f"unknown param {a.param} on {fam}"}
         r = fm9.set_param_display(spec, float(a.value))
@@ -8625,7 +8721,7 @@ def _set_param_spec(a: Action):
         if f == fam and pdata.get("name") == a.param:
             return reg.spec(f, pid, a.instance)
     if a.param:
-        return reg.find_param(fam, a.param)
+        return reg.find_param(fam, a.param, a.instance)
     return None
 
 

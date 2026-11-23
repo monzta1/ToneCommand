@@ -5,6 +5,12 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- Ask for a tone on the FM3 (#40). The AI planner now plans for the FM3,
+  using only what it takes: the measured amp, reverb and delay settings (on
+  the FM3's own ranges), block on/off, channel and scene. Anything else a
+  plan asks for (a new block, an amp model, a cab, a rename, storing) shows
+  as refused at Review, saying why, and is never sent. The FM3 gets its own
+  example requests.
 - The FM3's measured settings now show as knobs on the page (#40): the amp's
   Gain, Bass, Mid, Treble, Master, Presence, Level and Balance, and the
   reverb's and delay's settings, read from the unit at the FM3's own places
@@ -15,6 +21,11 @@ Notable changes to ToneCommand. Dates are UTC.
   so a lossy link cannot hold up switching or writes. No
   type or amp model picker is offered on the FM3. A level at 0 dB now reads
   0.0, not -0.0.
+
+### Fixed
+- A setting named by its label in a plan or an edit ("Gain", "Mix") on a
+  second block (amp 2, delay 2) now changes that block; it used to change
+  the first one.
 
 ## 1.6.7 (2026-11-22)
 
