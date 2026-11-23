@@ -12282,7 +12282,7 @@ function devNamed() { return !!(lastState && lastState.device_params); }
 function sendTargetLabel() {
   if (window.AFX3ReviewedEdit?.active()) return 'AXE-FX III';
   return ((lastState && lastState.device_params && deviceState && deviceState.label)
-          || 'FM9').toUpperCase();
+          || deviceShort(deviceState)).toUpperCase();
 }
 
 // The gig-lock notice on the confirm screen. One definition, because the
@@ -12331,21 +12331,23 @@ function renderConfirmStage() {
     disarmSend();
     return;
   }
-  $('cintro').textContent = 'One final check before ToneCommand changes the FM9.';
+  // #40: the scenes path serves the FM3 too; it named the FM9 regardless.
+  const unit = deviceShort(deviceState);
+  $('cintro').textContent = `One final check before ToneCommand changes the ${unit}.`;
   $('acklabel').textContent = 'I reviewed the target and affected scenes';
-  $('apply').textContent = 'SEND TO FM9';
+  $('apply').textContent = `SEND TO ${sendTargetLabel()}`;
   const scenes = affectedScenes.size;
   const dev = currentPlan.device && currentPlan.device.preset;
   const stores = currentPlan.actions.filter(a => a.kind === 'store');
   const facts = [
     ['TARGET', dev
-      ? `FM9 · Preset ${esc(String(dev.editor ?? dev.number))} ${esc(dev.name || '')}`
-      : 'FM9 · loaded preset'],
+      ? `${unit} · Preset ${esc(String(dev.editor ?? dev.number))} ${esc(dev.name || '')}`
+      : `${unit} · loaded preset`],
     ['SCOPE', `${n} change${n === 1 ? '' : 's'}`
       + (scenes ? ` across ${scenes + 1} scenes` : '')],
     ['DESTINATION', stores.length
-      ? 'FM9, THEN SAVE OVER THE NAMED SLOT'
-      : 'FM9 · NOT SAVED'],
+      ? `${unit}, THEN SAVE OVER THE NAMED SLOT`
+      : `${unit} · NOT SAVED`],
     ['RECOVERY', stores.length
       ? 'UNDO READY · SAVED SLOTS CANNOT BE RESTORED'
       : 'UNDO READY'],

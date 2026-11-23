@@ -3690,7 +3690,8 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
                     result["request"] = body.prompt
                     # A shared profile has no live scene: only the tuning hint applies.
                     _off_role, _off_tuning = scene_hints(None, body.prompt, result["whole_rig"])
-                    result["cab_selection"] = cab_listening_set(
+                    # #40: the FM3's cab is not read or written, so no cab row
+                    result["cab_selection"] = None if kind == "fm3" else cab_listening_set(
                         result, _off_anchor, **{k2: v for k2, v in (("role", _off_role), ("tuning", _off_tuning)) if v})
                     result["amp_source"] = plan_amp_source(result, body.prompt)
             finally:
@@ -3799,7 +3800,8 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
             # rather than the player's raw words (brief 19.5, 26.4). #138: the
             # scene's role and the guitar's tuning ride along as soft hints.
             _role, _tuning = scene_hints(snap, body.prompt, result["whole_rig"])
-            result["cab_selection"] = cab_listening_set(
+            # #40: the FM3's cab is not read or written, so no cab row
+            result["cab_selection"] = None if device_context().kind == "fm3" else cab_listening_set(
                 result, anchor, **{k2: v for k2, v in (("role", _role), ("tuning", _tuning)) if v})
             result["amp_source"] = plan_amp_source(result, body.prompt)
             log.info("plan: %.1fs for %d action(s) via %s",

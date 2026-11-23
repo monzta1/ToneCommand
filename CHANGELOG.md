@@ -23,6 +23,14 @@ Notable changes to ToneCommand. Dates are UTC.
   0.0, not -0.0.
 
 ### Fixed
+- FM3: tapping a block's chip to switch it on or off (or change its channel)
+  could look like it did nothing (#40). The FM3 confirms a switch before
+  its block list shows it, and the page read the list straight away, so the
+  chip kept its old state. The switch now waits for the unit to settle and
+  reads the block back before answering.
+- FM3: the last check before sending said "FM9" and "changes the FM9"; it
+  now names the FM3. An FM3 plan no longer shows a cab / IR row, since the
+  FM3's cab is not read or changed yet.
 - A setting named by its label in a plan or an edit ("Gain", "Mix") on a
   second block (amp 2, delay 2) now changes that block; it used to change
   the first one.

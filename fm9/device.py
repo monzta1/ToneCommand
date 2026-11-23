@@ -1734,6 +1734,34 @@ class FM3(FM9):
     def capabilities(self) -> Capabilities:
         return self.CAPABILITIES
 
+    #: #40: a block switch is read back after the unit settles. The FM3's
+    #: echo arrives before the switch shows in its status dump, so the
+    #: page's re-read straight after a tap showed the old state and the tap
+    #: looked like it did nothing. Each try waits this long, then reads.
+    SWITCH_SETTLE = (0.15, 0.3, 0.6)
+
+    def _settled(self, read, want):
+        got = None
+        for wait in self.SWITCH_SETTLE:
+            _settle(self, wait)
+            got = read()
+            if got == want:
+                break
+        return got
+
+    def set_bypass(self, effect_id: int, bypassed: bool) -> bool | None:
+        """Switch, then read the block back once the unit has settled: the
+        answer is what the unit reports, not the echo."""
+        echo = super().set_bypass(effect_id, bypassed)
+        got = self._settled(lambda: self.get_bypass(effect_id), bool(bypassed))
+        return echo if got is None else got
+
+    def set_channel(self, effect_id: int, channel_0based: int) -> int | None:
+        """As set_bypass: the channel the unit reports once settled."""
+        echo = super().set_channel(effect_id, channel_0based)
+        got = self._settled(lambda: self.get_channel(effect_id), int(channel_0based))
+        return echo if got is None else got
+
     def bulk_read(self, effect_id: int, timeout: float = 1.5):
         """A documented no-send: parameter values are not read on the FM3,
         whose parameter map differs from the FM9 registry (#40)."""
