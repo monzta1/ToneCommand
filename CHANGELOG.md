@@ -16,6 +16,9 @@ Notable changes to ToneCommand. Dates are UTC.
   write promotion.
 
 ### Added
+- `tools/fm3_settings_check.py` (#40): drives the app's own FM3 code through
+  all 19 measured settings on a real FM3, a small step each, read back and put
+  back, then reloads the preset. The hardware proof for the FM3 settings.
 - The FM3 now changes its main settings (#40): amp Level, Balance, Gain, Bass,
   Mid, Treble, Master and Presence; reverb and delay Mix, Level and Balance;
   reverb Time, High Cut and Predelay; delay Time and Feedback. Each was
