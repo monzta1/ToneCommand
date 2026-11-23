@@ -63,8 +63,8 @@ def test_only_the_block_read_reaches_the_fm3():
     fns = {d[4] for d in sent if len(d) > 4}
     assert p.FN_BULK_READ in fns
     assert fns <= {p.FN_BULK_READ, p.FN_STATUS_DUMP, p.FN_PATCH_NAME}, fns
-    with pytest.raises(ReadOnly):
-        dev.outp.send(mido.Message("sysex", data=p.build_bulk_read_poll(66)[1:-1]))
+    with pytest.raises(ReadOnly):        # a write to an unmeasured place stays refused
+        dev.outp.send(mido.Message("sysex", data=p.build_set_param_continuous(66, 3, 0.5)[1:-1]))
 
 
 def test_a_missing_block_names_the_ones_there():

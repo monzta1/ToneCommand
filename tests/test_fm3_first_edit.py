@@ -38,14 +38,15 @@ def test_the_test_flips_reads_back_and_leaves_the_unit_as_it_was():
 
 def test_inside_an_opening_other_writes_are_still_refused():
     """Since #40 the FM3's own port lets bypass and channel through; the
-    opening adds nothing beyond that, and parameter writes stay refused."""
+    opening adds nothing beyond that, and unmeasured parameter writes stay
+    refused (fm9/fm3_map.py lists the measured ones)."""
     reg = Registry()
     dev = SimFM3(reg)
     reverb = reg.resolve_block("reverb", 1)[1]
     with fe.one_bypass_open(dev, reverb):
         dev.outp.send(_sysex(p.build_set_bypass(reverb, True)))
         with pytest.raises(ReadOnly):
-            dev.outp.send(_sysex(p.build_set_param_continuous(reverb, 1, 0.5)))
+            dev.outp.send(_sysex(p.build_set_param_continuous(reverb, 3, 0.5)))   # not a measured setting
         with pytest.raises(ReadOnly):
             dev.outp.send(mido.Message("control_change", control=7, value=0))
 

@@ -77,6 +77,11 @@ ALLOWED = {
     "status dump": p.build_status_dump(),
     "firmware": p.build_get_firmware(),
     "tempo query": p.build_get_tempo(),
+    # #40: the block read, and the knob write for a measured setting
+    "bulk read": p.build_bulk_read_poll(46),
+    "set param, reverb Mix": p.build_set_param_continuous(66, 13, 0.3),
+    "set param, amp Gain": p.build_set_param_continuous(58, 7, 0.5),
+    "set param, delay Time": p.build_set_param_continuous(70, 8, 1.0),
     # #40: the two writes proven on a real FM3 (fw 13.00), every value
     "set bypass, bypass": p.build_set_bypass(46, True),
     "set bypass, engage": p.build_set_bypass(46, False),
@@ -99,9 +104,12 @@ def _bad_checksum(f):
 REFUSED = {
     "get param (a typed set)": p.build_get_param(46, 1),
     "set param": p.build_set_param_continuous(46, 1, 0.5),
+    # #40: a knob write to a measured block, but a setting not measured
+    "set param, reverb word 3": p.build_set_param_continuous(66, 3, 0.5),
+    "set param, reverb 2": p.build_set_param_continuous(67, 13, 0.5),
+    "set param discrete, reverb Mix": p.build_set_param_discrete(66, 13, 1),
     "type name read (fn 0x01)": p.build_get_type_name(46, 0),
     "grid layout read (fn 0x01)": p.build_request_grid_layout(),
-    "bulk read": p.build_bulk_read_poll(46),
     "set bypass, value 2": p.envelope(p.FN_BYPASS, [46, 0, 2]),
     "set channel E": p.envelope(p.FN_CHANNEL, [46, 0, 4]),
     "set bypass extended": p.envelope(p.FN_BYPASS, [46, 0, 1, 0]),
@@ -153,7 +161,7 @@ def test_refuse_the_direct_senders_too(monkeypatch):
 def test_refuse_every_write_method_in_plain_words():
     dev = SimFM3()
     sent = _wire(dev)
-    for name in ("set_param_display", "set_param_wire", "set_param_ordinal", "set_params_batch",
+    for name in ("set_param_wire", "set_param_ordinal",
                  "set_tempo", "rename_preset", "rename_scene",
                  "store_preset", "install_preset", "install_user_cab", "place_block",
                  "connect_cells", "bind_modifier", "clear_modifier"):
@@ -275,11 +283,22 @@ def test_bypass_and_channel_through_apply_land_and_read_back(client):
     assert reverb["bypassed"] is True and reverb["channel"] == "B"
 
 
-def test_other_writes_through_apply_are_still_refused(client):
+def test_a_measured_setting_through_apply_lands(client):
+    """#40: reverb Mix is one of the settings measured on a real FM3."""
     r = client.post("/api/apply", json={"actions": [
         {"kind": "set_param", "block": "reverb", "instance": 1, "param": "mix", "value": 50}]})
     results = [x for x in r.json().get("results", []) if x.get("action")]
-    assert results and not any(x["ok"] for x in results), r.text
+    assert results and results[0]["ok"] and results[0]["after"] == 50.0, r.text
+
+
+def test_other_writes_through_apply_are_still_refused(client):
+    for action in ({"kind": "set_param", "block": "reverb", "instance": 1, "param": "size", "value": 50},
+                   {"kind": "set_type", "block": "amp", "instance": 1, "type_name": "Plexi 50W"}):
+        r = client.post("/api/apply", json={"actions": [action]})
+        results = [x for x in r.json().get("results", []) if x.get("action")]
+        assert results and not any(x["ok"] for x in results), r.text
+        if action["kind"] == "set_param":
+            assert "not one of the FM3 settings" in results[0]["detail"], r.text
 
 
 def test_page_switches_fm3_blocks_but_never_input_or_output():
