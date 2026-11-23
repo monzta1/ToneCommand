@@ -154,7 +154,7 @@ def test_the_send_page_names_the_connected_unit():
     """Tester 2026-11-23: the FM3's send page said 'FM9 · Preset 506' and
     'changes the FM9'. The scenes path names the selected unit."""
     from pathlib import Path
-    html = (Path(server.__file__).parent / "ui" / "index.html").read_text()
+    html = (Path(server.__file__).parent / "ui" / "index.html").read_text(encoding="utf-8")
     start = html.index("function renderConfirmStage()")
     body = html[start:html.index("\nfunction ", start + 10)]
     scenes_path = body[body.index("const unit = deviceShort(deviceState);"):]
