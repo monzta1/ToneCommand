@@ -2038,12 +2038,22 @@ def _fm3_knob_values(fm3, blocks, values: dict, meta: dict) -> None:
     unit's (delay Time runs to 16000 ms there). The knobs write through
     /api/apply set_param, which the FM3 handle already maps and reads back."""
     from fm9 import fm3_map
+    # A block read that gets no answer waits out its whole timeout, under
+    # the lock every write also needs. After one miss this poll reads no
+    # further blocks, and the next few polls skip the knobs, so a lossy link
+    # costs one timeout now and then rather than several on every poll.
+    if _fm3_knob_backoff["skip"] > 0:
+        _fm3_knob_backoff["skip"] -= 1
+        return
     for b in blocks:
         fam = reg.family_of_effect_id(b.effect_id)
         if not fam or fam[1] != 1 or fm3_map.EFFECT_IDS.get(fam[0]) != b.effect_id:
             continue
         fname = fam[0]
         got = fm3.fm3_settings(fname, b.channel, max(1, b.channels_supported))
+        if not got:
+            _fm3_knob_backoff["skip"] = _FM3_KNOB_SKIP
+            return
         for pid in fm3_map.PAGE_ORDER[fname]:
             if pid not in got:
                 continue
@@ -2054,6 +2064,10 @@ def _fm3_knob_values(fm3, blocks, values: dict, meta: dict) -> None:
                             "unit": _FM3_UNITS.get(s.name, s.unit or ""),
                             "label": m.label}
 
+
+#: Polls to skip the FM3's knob reads after a block read went unanswered.
+_FM3_KNOB_SKIP = 3
+_fm3_knob_backoff = {"skip": 0}
 
 #: The registry calls these two plain numbers; on the FM3 screen (and the
 #: FM9's) they read in dB and %, so the knobs say so.

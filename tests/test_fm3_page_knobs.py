@@ -20,8 +20,11 @@ def client(monkeypatch):
     monkeypatch.setattr(server, "_selected_kind", {"kind": None})
     monkeypatch.setattr(server, "_context", server._default_context)
     monkeypatch.setenv("TONECOMMAND_FM3_SIM", "1")
+    monkeypatch.setattr(server, "_fm3_knob_backoff", {"skip": 0})
     c = TestClient(server.app)
     assert c.post("/api/device/select", json={"kind": "fm3"}).status_code == 200
+    # every test below relies on the sim preset holding all three blocks
+    assert set(fm3_map.EFFECT_IDS) <= _present(c.get("/api/state").json())
     return c
 
 
@@ -45,33 +48,25 @@ def test_measured_settings_reach_the_page_with_the_fm3s_scale(client):
     _put("DISTORT", 11, 55507)                  # Gain 8.47
     s = client.get("/api/state").json()
     v, meta = s["values"], s["params"]
-    if "REVERB" in _present(s):
-        assert v["REVERB_MIX"] == 20.0 and meta["REVERB_MIX"]["label"] == "Mix"
-    if "DELAY" in _present(s):
-        assert v["DELAY_TIME"] == 16000.0 and meta["DELAY_TIME"]["max"] == 16000
-    if "DISTORT" in _present(s):
-        assert v["DISTORT_DRIVE"] == 8.47 and meta["DISTORT_DRIVE"]["label"] == "Gain"
-    assert set(fm3_map.EFFECT_IDS) <= _present(s), _present(s)   # so no branch above is skipped
+    assert v["REVERB_MIX"] == 20.0 and meta["REVERB_MIX"]["label"] == "Mix"
+    assert v["DELAY_TIME"] == 16000.0 and meta["DELAY_TIME"]["max"] == 16000
+    assert v["DISTORT_DRIVE"] == 8.47 and meta["DISTORT_DRIVE"]["label"] == "Gain"
 
 
 def test_the_knob_order_and_units_read_like_the_unit(client):
     s = client.get("/api/state").json()
     meta = s["params"]
-    if "DISTORT" in _present(s):
-        amp = [k for k in meta if meta[k]["family"] == "DISTORT"]
-        assert amp[0] == "DISTORT_DRIVE" and amp[-2:] == ["DISTORT_LEVEL", "DISTORT_PAN"]
-    if "REVERB" in _present(s):
-        assert meta["REVERB_LEVEL"]["unit"] == "db"
-        assert meta["REVERB_HICUT"]["scale"] == "log10"
-    if "DELAY" in _present(s):
-        assert meta["DELAY_FEED"]["unit"] == "percent"
+    amp = [k for k in meta if meta[k]["family"] == "DISTORT"]
+    assert amp[0] == "DISTORT_DRIVE" and amp[-2:] == ["DISTORT_LEVEL", "DISTORT_PAN"]
+    assert meta["REVERB_LEVEL"]["unit"] == "db"
+    assert meta["REVERB_HICUT"]["scale"] == "log10"
+    assert meta["DELAY_FEED"]["unit"] == "percent"
 
 
 def test_zero_db_reads_as_zero_not_minus_zero(client):
     _put("REVERB", 1, 52427)                    # 0.0 dB
     s = client.get("/api/state").json()
-    if "REVERB" in _present(s):
-        assert str(s["values"]["REVERB_LEVEL"]) == "0.0"
+    assert str(s["values"]["REVERB_LEVEL"]) == "0.0"
 
 
 def test_a_knob_write_lands_and_the_next_poll_shows_it(client):
@@ -107,6 +102,30 @@ def test_a_value_lost_on_the_link_is_left_off_not_guessed(client, monkeypatch):
     monkeypatch.setattr(dev, "_fm3_read_block", lossy)
     s = client.get("/api/state").json()
     assert s["connected"] and s["values"] == {} and s["params"] == {}
+
+
+def test_channel_b_shows_channel_bs_values(client):
+    st = _sim()
+    st.buffer["scenes"][st.scene][fm3_map.EFFECT_IDS["REVERB"]]["channel"] = 1
+    _put("REVERB", 0, 13107, channel=0)         # A: 20%
+    _put("REVERB", 0, 45874, channel=1)         # B: 70%
+    s = client.get("/api/state").json()
+    rev = next(b for b in s["blocks"] if b["family"] == "REVERB")
+    assert rev["channel"] == "B", rev
+    assert s["values"]["REVERB_MIX"] == 70.0
+
+
+def test_a_silent_block_read_backs_off_instead_of_stalling_every_poll(client, monkeypatch):
+    dev = server.get_fm9()
+    reads = []
+    monkeypatch.setattr(dev, "_fm3_read_block", lambda eid: reads.append(eid))   # no answer
+    s = client.get("/api/state").json()
+    assert s["connected"] and s["values"] == {} and len(reads) == 1             # stops at the first miss
+    for _ in range(server._FM3_KNOB_SKIP):
+        client.get("/api/state")
+    assert len(reads) == 1                                                       # skipped polls read nothing
+    client.get("/api/state")
+    assert len(reads) == 2                                                       # then tries again
 
 
 def test_the_page_offers_no_type_picker_on_a_read_only_device():

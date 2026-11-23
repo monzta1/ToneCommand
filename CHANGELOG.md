@@ -10,7 +10,9 @@ Notable changes to ToneCommand. Dates are UTC.
   reverb's and delay's settings, read from the unit at the FM3's own places
   on the FM3's own scales (delay Time runs to 16000 ms). Turning a knob
   changes the setting on the unit and reads it back. Each block is read once
-  per refresh; a value lost on the link is left off rather than guessed. No
+  per refresh; a value lost on the link is left off rather than guessed,
+  and if the unit does not answer a read, the knobs pause for a few refreshes
+  so a lossy link cannot hold up switching or writes. No
   type or amp model picker is offered on the FM3. A level at 0 dB now reads
   0.0, not -0.0.
 
