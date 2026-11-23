@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "catalog_version": "1.5.16-lang.2",
-  "catalog_sha256": "20ffc2d3e90076a3179eb9df156748302c9e58a54a6c2eecc15c4f1984220156",
+  "catalog_sha256": "3ee50629b13b11721277fef86a6e45257f493c620f2b3b9cafeae89a81028be8",
   "locale": "en",
   "name": "English",
   "translations": {
@@ -370,6 +370,7 @@
     "Not connected yet. Close Axe-Edit and other TC sessions before connecting.": "Not connected yet. Close Axe-Edit and other TC sessions before connecting.",
     "Not in route": "Not in route",
     "Not previously recorded as intentional reuse.": "Not previously recorded as intentional reuse.",
+    "Not saved yet. Load the preset again to put it back.": "Not saved yet. Load the preset again to put it back.",
     "Not saved yet. UNDO puts it back.": "Not saved yet. UNDO puts it back.",
     "Nothing logged yet.": "Nothing logged yet.",
     "Now: {{v0}} | Auto Engage: {{v1}}": "Now: {{v0}} | Auto Engage: {{v1}}",
