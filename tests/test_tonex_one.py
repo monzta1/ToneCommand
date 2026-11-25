@@ -344,3 +344,28 @@ def test_a_closed_link_never_touches_a_reused_descriptor():
     finally:
         for fd in (w, other_r, other_w):
             os.close(fd)
+
+
+# -- the slot board ---------------------------------------------------------------------
+
+def test_the_state_carries_twenty_preset_colours():
+    payloads, _ = p.unframe_stream(CAPTURE.read_bytes())
+    m = next(p.parse(x) for x in payloads if p.parse(x).type == p.T_STATE)
+    colors = p.State(m.payload[m.body_at:]).colors()
+    assert len(colors) == 20 and colors[0] == (255, 63, 0) and colors[3] == (255, 0, 255)
+
+
+def test_slot_rows_carry_each_presets_character_and_a_visible_colour(adapter):
+    adapter.state()
+    row = next(r for r in adapter.named_params() if r["name"] == "SLOT_B")
+    assert row["option_tags"]["14 64' Vox AC30"] == "CLEAN"
+    assert row["option_tags"]["6 Rockerverb Heavy Rhythm"] == "HI-GAIN"
+    assert row["option_colors"]["14 64' Vox AC30"] == "#ff00ff"      # stored dim: 10, 0, 10
+
+
+def test_the_page_draws_dual_and_stomp_with_the_live_one_lit(api):
+    rows = {r["name"]: r for r in api.get("/api/state").json()["device_params"]}
+    assert rows["SLOT_A"]["option_colors"] and rows["SLOT_A"]["option_tags"]
+    html = (Path(server.__file__).parent / "ui" / "index.html").read_text(encoding="utf-8")
+    assert "DUAL MODE" in html and "STOMP MODE" in html and "slotcard" in html
+    assert "param: 'ACTIVE_SLOT', type_name: c.dataset.slot" in html

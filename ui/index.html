@@ -194,6 +194,29 @@
     border: 1px solid var(--line); overflow: hidden; }
   .devbar span { display: block; height: 100%; background: var(--cyan);
     transition: width 220ms ease; }
+  /* #334: the ToneX One's slot board, the way its own editor draws it */
+  .slotboard { display: flex; gap: 14px; flex-wrap: wrap; padding: 6px 4px 2px; }
+  .slotmode { border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px 10px;
+    opacity: 0.62; flex: 0 1 auto; }
+  .slotmode.live { opacity: 1; border-style: solid; border-color: var(--cyan); }
+  .smh { font-size: var(--fs-label); letter-spacing: 0.2em; color: var(--muted); margin-bottom: 6px; }
+  .slotmode.live .smh { color: var(--cyan); }
+  .smnote { letter-spacing: 0.04em; margin-left: 8px; opacity: 0.8; text-transform: none; }
+  .slotcards { display: flex; gap: 10px; flex-wrap: wrap; }
+  .slotcard { width: 180px; max-width: 100%; border: 1px solid var(--line); border-top: 4px solid var(--slotc);
+    border-radius: 8px; background: var(--panel-2); padding: 8px 10px; cursor: pointer;
+    display: grid; gap: 4px; }
+  .slotcard.live { border-color: var(--slotc); box-shadow: 0 0 0 1px var(--slotc), 0 0 14px -4px var(--slotc); cursor: default; }
+  .sch { display: flex; align-items: center; gap: 8px; font-size: var(--fs-label); }
+  .sclet { min-width: 18px; height: 18px; border-radius: 9px; display: inline-grid; place-items: center;
+    background: var(--slotc); color: #0b0f14; font-weight: 700; }
+  .sclet:empty { width: 14px; min-width: 14px; height: 14px; }
+  .scnum { color: var(--muted); letter-spacing: 0.1em; }
+  .sclive { margin-left: auto; color: var(--slotc); letter-spacing: 0.16em; }
+  .scname { color: var(--text-strong); font-size: var(--fs-lead, 15px); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .sctag { font-size: var(--fs-label); letter-spacing: 0.14em; color: var(--muted); min-height: 1em; }
+  .scpick { margin-top: 2px; }
   /* #334: a device with grouped settings (the ToneX One) */
   .devgrouped { display: grid; gap: 8px; padding: 6px 4px;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
@@ -6805,6 +6828,12 @@ $('blocks').addEventListener('change', e => {
   el.blur();
   blockAction(act, el);
 });
+// #334: click a slot card (not its picker) to play that slot.
+$('blocks').addEventListener('click', e => {
+  const c = e.target.closest('.slotcard');
+  if (!c || e.target.closest('select') || c.classList.contains('live')) return;
+  blockAction({kind: 'set_device_param', param: 'ACTIVE_SLOT', type_name: c.dataset.slot}, c);
+});
 $('blocks').addEventListener('toggle', e => {
   const d = e.target.closest && e.target.closest('details.devgroup');
   if (!d) return;
@@ -7396,7 +7425,42 @@ function renderGroupedDevice(rows, box) {
   const group = (key, title) => `<details class="devgroup" data-group="${esc(key)}"`
     + `${devOpenGroups.has(key) ? ' open' : ''}><summary>${esc(title)}</summary>`
     + `<div class="devrows">${(by[key] || []).map(row).join('')}</div></details>`;
-  box.innerHTML = `<div class="devgrouped">${by.Pedal ? group('Pedal', 'PEDAL') : ''}`
+  // #334: a pedal with slots (the ToneX One) gets the board its own editor
+  // shows: dual mode's A and B, stomp mode's C, the live one lit. The slot
+  // and mode rows move onto the board; the Pedal group keeps the rest.
+  const named = Object.fromEntries(rows.map(r => [r.name, r]));
+  let board = '';
+  if (named.SLOT_A && named.ACTIVE_SLOT && named.MODE) {
+    const mode = String(named.MODE.value);
+    const act = String(named.ACTIVE_SLOT.value);
+    const card = (slot, key) => {
+      const r = named[key];
+      const v = String(r.value || '');
+      const tag = (r.option_tags || {})[v] || '';
+      const col = (r.option_colors || {})[v] || 'var(--line)';
+      const live = act === slot && (slot === 'STOMP') === (mode === 'STOMP');
+      const letter = slot === 'STOMP' ? '' : slot;
+      return `<div class="slotcard${live ? ' live' : ''}" data-slot="${esc(slot)}" style="--slotc:${esc(col)}"
+          title="${live ? 'playing now' : 'click to play this slot'}">
+        <div class="sch"><span class="sclet">${esc(letter)}</span><span class="scnum">${esc(v.split(' ')[0])}</span>
+          ${live ? '<span class="sclive">PLAYING</span>' : ''}</div>
+        <div class="scname" title="${esc(v)}">${esc(v.replace(/^\d+\s/, ''))}</div>
+        <div class="sctag">${esc(tag)}</div>
+        <select class="devsel scpick" data-param="${esc(key)}">${(r.options || []).map(o =>
+          `<option${String(o) === v ? ' selected' : ''}>${esc(String(o))}</option>`).join('')}</select>
+      </div>`;
+    };
+    board = `<div class="slotboard">
+      <div class="slotmode${mode === 'DUAL' ? ' live' : ''}"><div class="smh">DUAL MODE
+        <span class="smnote">footswitch flips A and B</span></div>
+        <div class="slotcards">${card('A', 'SLOT_A')}${card('B', 'SLOT_B')}</div></div>
+      <div class="slotmode${mode === 'STOMP' ? ' live' : ''}"><div class="smh">STOMP MODE
+        <span class="smnote">footswitch turns it on and off</span></div>
+        <div class="slotcards">${card('STOMP', 'SLOT_C')}</div></div>
+    </div>`;
+    by.Pedal = (by.Pedal || []).filter(r => !['SLOT_A', 'SLOT_B', 'SLOT_C', 'ACTIVE_SLOT', 'MODE'].includes(r.name));
+  }
+  box.innerHTML = board + `<div class="devgrouped">${by.Pedal && by.Pedal.length ? group('Pedal', 'PEDAL') : ''}`
     + DEV_GROUPS.filter(([k]) => by[k]).map(([k, t]) => group(k, t)).join('') + '</div>';
 }
 
