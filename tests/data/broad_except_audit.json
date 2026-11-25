@@ -493,6 +493,16 @@
    "function": "_block_not_on_grid",
    "ordinal": 1,
    "disposition": "unreachable: wraps reg.resolve_block only, a registry lookup with no device handle in the try body (#311)"
+  },
+  {
+   "function": "_tonex_one_reconnect",
+   "ordinal": 1,
+   "disposition": "unreachable: closes the ToneX One's serial handle, which declares no gated capability; a dead handle is being dropped anyway"
+  },
+  {
+   "function": "_tonex_one_reconnect",
+   "ordinal": 2,
+   "disposition": "unreachable: _build_context opens the ToneX One link (hello only); no gated capability is called, and a failure means the pedal is not back yet, retried on the next poll"
   }
  ]
 }

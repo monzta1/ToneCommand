@@ -20,6 +20,17 @@ import server
 import test_device_catalog as tdc
 from devices import catalog, usb
 
+
+@pytest.fixture(autouse=True)
+def _the_one_as_an_unknown_device(monkeypatch):
+    """These tests were written with the ToneX One as their unknown USB
+    instrument, using its real descriptor. It is a known device since #334;
+    its catalog entry is hidden here so the descriptor keeps testing the
+    unknown-device path it was read off the unit for."""
+    real = catalog.load
+    monkeypatch.setattr(catalog, "load",
+                        lambda: tuple(e for e in real() if e["kind"] != "tonex_one"))
+
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "ioreg_tonex_one.plist"
 #: The ToneX One as read off the real unit (#258): USB audio, CDC serial,

@@ -5,6 +5,20 @@ Notable changes to ToneCommand. Dates are UTC.
 ## Unreleased
 
 ### Added
+- The IK Multimedia ToneX One (#334). Plug it in over USB and ToneCommand
+  finds it, shows its twenty presets, which ones sit in slots A, B and the
+  stomp slot, the mode (dual or stomp), the cab sim, and every setting of the
+  preset playing: amp model gain, volume, presence and depth, EQ, noise gate,
+  compressor, reverb, modulation and delay. Each can be changed from the page
+  or by asking for a sound ("put the best clean amp for my overdrive pedals on
+  A and B"), and every change is read back from the pedal before it shows.
+  The One saves every change on its own, so before the first change of a
+  session ToneCommand saves a backup of all twenty presets and the pedal's
+  state, and says where. New tone models are still loaded with IK's TONEX
+  Editor; close the Editor while ToneCommand talks to the pedal. macOS and
+  Linux for now. Protocol from vit3k/tonex_controller and
+  Builty/TonexOneController (see THIRD_PARTY_NOTICES.md), checked on a real
+  One.
 - Ask for a tone on the FM3 (#40). The AI planner now plans for the FM3,
   using only what it takes: the measured amp, reverb and delay settings (on
   the FM3's own ranges), block on/off, channel and scene. Anything else a

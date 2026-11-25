@@ -16,6 +16,17 @@ ONE, SYNTH, KEYBOARD = tdd.ONE, tdd.SYNTH, tdd.KEYBOARD
 AUDIO = {"inputs": 2, "outputs": 2, "sample_rate": 44100}
 
 
+@pytest.fixture(autouse=True)
+def _the_one_as_an_unknown_device(monkeypatch):
+    """These tests were written with the ToneX One as their unknown USB
+    instrument, using its real descriptor. It is a known device since #334;
+    its catalog entry is hidden here so the descriptor keeps testing the
+    unknown-device path it was read off the unit for."""
+    real = catalog.load
+    monkeypatch.setattr(catalog, "load",
+                        lambda: tuple(e for e in real() if e["kind"] != "tonex_one"))
+
+
 class Port:
     def __init__(self, name, pending=()):
         self.name, self.pending, self.closed = name, list(pending), False

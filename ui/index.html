@@ -194,6 +194,27 @@
     border: 1px solid var(--line); overflow: hidden; }
   .devbar span { display: block; height: 100%; background: var(--cyan);
     transition: width 220ms ease; }
+  /* #334: a device with grouped settings (the ToneX One) */
+  .devgrouped { display: grid; gap: 8px; padding: 6px 4px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+  .devgroup { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+    background: var(--panel-2); }
+  .devgroup summary { cursor: pointer; font-size: var(--fs-label); letter-spacing: 0.2em;
+    color: var(--cyan); }
+  .devrows { display: grid; gap: 5px; margin-top: 6px; }
+  .devrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center; gap: 8px; }
+  .devrow .lbl { font-size: var(--fs-label); letter-spacing: 0.1em; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .devsel, .devnum { width: 100%; min-width: 0; background: var(--panel); color: var(--text-strong);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
+    font: inherit; font-size: var(--fs-label); }
+  .devsel:focus, .devnum:focus { outline: none; border-color: var(--cyan); }
+  /* The grouped panel is taller than the IR-2's strip: it gets room and
+     scrolls inside itself, so the request box below stays in view. */
+  body.named-device #context .pathzone:has(.devgrouped),
+  body.named-device #blocks:has(.devgrouped) { height: auto; max-height: none; overflow: visible; }
+  .devgrouped { max-height: 42vh; overflow-y: auto; }
   .cnote.cerr { border-left: 2px solid var(--amber); padding-left: 10px; }
   .reportbtn { padding: 4px 10px; font-size: var(--fs-label);
     margin-left: 8px; vertical-align: baseline; }
@@ -4482,7 +4503,7 @@ function noteSlotName(number, name) {
   if (number === currentPresetNumber && lastState.preset) {
     lastState.preset.name = name;
     $('preset').innerHTML =
-      `<span class="lbl">${lastState.device_params ? 'VOICING' : 'PRESET'}</span><span class="pnum">${lastState.preset.editor ?? number}</span>`
+      `<span class="lbl">${lastState.device_params && !namedHasSlots(lastState) ? 'VOICING' : 'PRESET'}</span><span class="pnum">${lastState.preset.editor ?? number}</span>`
       + `<b>${esc(name)}</b><span class="caret"></span>`;
   }
 }
@@ -4628,7 +4649,7 @@ async function gotoPreset(n, force) {
       const r = await fetch('/api/apply', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({actions: [{kind: 'set_device_param',
-                                         param: 'AMP', value: Number(n)}]}),
+                                         param: namedPresetParam(lastState), value: Number(n)}]}),
       });
       const d = await r.json();
       const bad = (d.results || []).find(x => x.ok === false);
@@ -6766,6 +6787,30 @@ async function blockAction(action, btn, what) {
   }
 }
 
+// #334: a grouped device's controls send one setting each, read back.
+$('blocks').addEventListener('change', e => {
+  const el = e.target.closest('.devsel, .devnum');
+  if (!el) return;
+  const param = el.dataset.param;
+  // An emptied box is not a value: Number('') is 0, and the pedal would
+  // save it. Put the pedal's own value back instead.
+  if (el.matches('.devnum') && (el.value.trim() === '' || !Number.isFinite(Number(el.value)))) {
+    el.blur();
+    refresh();
+    return;
+  }
+  const act = el.matches('.devsel')
+    ? {kind: 'set_device_param', param, type_name: el.value}
+    : {kind: 'set_device_param', param, value: Number(el.value)};
+  el.blur();
+  blockAction(act, el);
+});
+$('blocks').addEventListener('toggle', e => {
+  const d = e.target.closest && e.target.closest('details.devgroup');
+  if (!d) return;
+  if (d.open) devOpenGroups.add(d.dataset.group); else devOpenGroups.delete(d.dataset.group);
+}, true);
+
 // The panel drawing is an OVERVIEW. Any click on it opens the readable copy,
 // including a click on a block, because at 74px cells and 6.5px labels the
 // small one is for seeing the shape of the rig rather than for aiming at it.
@@ -6822,7 +6867,8 @@ $('gridbig').addEventListener('click', e => {
 // always has. `deviceGen` is bumped by a selection; a poll that started
 // before the bump leaves the device block alone (a stale answer must never
 // revert a fresh choice).
-const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', ir2: 'IR-2', fm3: 'FM3', axefx3: 'AXE-FX III' };
+const DEVICE_SHORT = { fm9: 'FM9', headrush: 'HEADRUSH', ir2: 'IR-2', fm3: 'FM3', axefx3: 'AXE-FX III',
+  tonex_one: 'TONEX ONE' };
 let deviceGen = 0;
 let deviceState = null;
 function deviceShort(dev) {
@@ -7182,7 +7228,7 @@ async function refresh() {
     // confirmation, so it does not need the belt and braces, and the name is
     // what you are actually reading. Rebuild the caret: innerHTML replaces it.
     if (s.preset) $('preset').innerHTML =
-      `<span class="lbl">${s.device_params ? 'VOICING' : 'PRESET'}</span><span class="pnum">${s.preset.editor ?? s.preset.number}</span>` +
+      `<span class="lbl">${s.device_params && !namedHasSlots(s) ? 'VOICING' : 'PRESET'}</span><span class="pnum">${s.preset.editor ?? s.preset.number}</span>` +
       `<b>${esc(s.preset.name)}</b><span class="caret"></span>`;
     // A device with named parameters has no scenes, no grid and no blocks.
     // Running the FM9's renderers over its state threw, and the throw landed
@@ -7317,6 +7363,43 @@ function renderReadOnlyBlocks(s) {
 // A device whose whole surface is named parameters (#198). The FM9 draws a
 // signal grid and eight scenes; this pedal is one amp and six knobs, so it
 // draws those. Live values, straight off the unit, updated by the same poll.
+// #334: a device with slots of presets (the ToneX One) picks a preset by
+// loading it into the slot now playing; the IR-2 picks a voicing (AMP).
+function namedHasSlots(s) {
+  return !!((s && s.device_params) || []).find(r => r.name === 'ACTIVE_SLOT');
+}
+function namedPresetParam(s) {
+  const act = ((s && s.device_params) || []).find(r => r.name === 'ACTIVE_SLOT');
+  return act ? 'SLOT_' + ({A: 'A', B: 'B', STOMP: 'C'}[act.value] || 'A') : 'AMP';
+}
+
+// #334: a device that groups its settings (the ToneX One: the pedal's slots
+// and mode, then the playing preset's amp, EQ, gate, compressor, reverb,
+// modulation and delay) gets a control per setting. A change goes through
+// /api/apply like any other and is read back from the pedal before it shows.
+const DEV_GROUPS = [['MODEL', 'AMP MODEL'], ['EQ', 'EQ'], ['GATE', 'NOISE GATE'],
+  ['COMP', 'COMPRESSOR'], ['REVERB', 'REVERB'], ['MOD', 'MODULATION'],
+  ['DELAY', 'DELAY'], ['VIR', 'CAB (VIR)']];
+const devOpenGroups = new Set(['Pedal', 'MODEL', 'EQ']);
+function renderGroupedDevice(rows, box) {
+  const focused = document.activeElement;
+  if (focused && box.contains(focused) && focused.matches('.devsel, .devnum')) return;
+  const by = {};
+  for (const r of rows) (by[r.group || 'OTHER'] = by[r.group || 'OTHER'] || []).push(r);
+  const ctl = r => (r.options || []).length
+    ? `<select class="devsel" data-param="${esc(r.name)}">${r.options.map(o =>
+        `<option${String(o) === String(r.value) ? ' selected' : ''}>${esc(String(o))}</option>`).join('')}</select>`
+    : `<input class="devnum" type="number" data-param="${esc(r.name)}" min="${r.lo}" max="${r.hi}"`
+      + ` step="${r.step || ((r.hi - r.lo) > 50 ? 1 : 0.1)}" value="${esc(String(r.value))}">`;
+  const row = r => `<label class="devrow" title="${esc(r.about || '')}">`
+    + `<span class="lbl">${esc(String(r.name).replace(/_/g, ' '))}</span>${ctl(r)}</label>`;
+  const group = (key, title) => `<details class="devgroup" data-group="${esc(key)}"`
+    + `${devOpenGroups.has(key) ? ' open' : ''}><summary>${esc(title)}</summary>`
+    + `<div class="devrows">${(by[key] || []).map(row).join('')}</div></details>`;
+  box.innerHTML = `<div class="devgrouped">${by.Pedal ? group('Pedal', 'PEDAL') : ''}`
+    + DEV_GROUPS.filter(([k]) => by[k]).map(([k, t]) => group(k, t)).join('') + '</div>';
+}
+
 function renderDeviceParams(s) {
   const rows = s.device_params || [];
   const box = $('blocks');          // where the FM9 draws its signal chain
@@ -7325,6 +7408,16 @@ function renderDeviceParams(s) {
   // and stale from whatever was last connected.
   const sc = $('scenes');
   if (sc) sc.innerHTML = '';
+  if (rows.some(r => r.group)) {
+    renderGroupedDevice(rows, box);
+    const g = $('gridwhy');
+    if (g) g.textContent = '';
+    document.body.classList.add('named-device');
+    const ctx = $('context');
+    if (ctx) ctx.setAttribute('data-label', 'LIVE ' +
+      ((deviceState && deviceState.label) || 'DEVICE').toUpperCase() + ' CONTEXT');
+    return;
+  }
   const amp = rows.find(r => (r.options || []).length);
   const knobs = rows.filter(r => !(r.options || []).length);
   box.innerHTML = `
@@ -7983,6 +8076,14 @@ const DEVICE_EXAMPLES = {
     ['Brighter',       'brighter amp, more presence'],
   ],
   axefx3: [],
+  // #334: what the ToneX One can do: pick presets for its slots, shape the
+  // playing preset's amp, EQ and effects.
+  tonex_one: [
+    ['Clean on A and B', 'put the best clean amp for my overdrive pedals on both A and B'],
+    ['Tighter',          'tighter low end, a little more gain'],
+    ['Less reverb',      'less reverb on this preset'],
+    ['Lead boost',       'a lead tone on B: more gain and volume, a touch of delay'],
+  ],
 };
 
 function renderExamples() {
