@@ -369,3 +369,11 @@ def test_the_page_draws_dual_and_stomp_with_the_live_one_lit(api):
     html = (Path(server.__file__).parent / "ui" / "index.html").read_text(encoding="utf-8")
     assert "DUAL MODE" in html and "STOMP MODE" in html and "slotcard" in html
     assert "param: 'ACTIVE_SLOT', type_name: c.dataset.slot" in html
+
+
+def test_a_stop_never_waits_forever_on_an_open_browser():
+    """2026-11-25: one kept-alive Chrome socket kept a stopped server alive
+    for minutes, holding the ToneX One's port, so the restarted server could
+    not open the pedal ('Resource busy')."""
+    src = (Path(server.__file__)).read_text(encoding="utf-8")
+    assert "timeout_graceful_shutdown=5" in src

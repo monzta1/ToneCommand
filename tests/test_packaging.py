@@ -51,10 +51,10 @@ def test_port_env_is_honoured(monkeypatch):
     called = {}
     monkeypatch.setattr(server.ai_settings, "apply_to_env", lambda: None)
     monkeypatch.setattr(server, "_pump_coremidi", lambda: None)
-    monkeypatch.setattr(uvicorn, "run", lambda app, host, port: called.update(host=host, port=port))
+    monkeypatch.setattr(uvicorn, "run", lambda app, host, port, **kw: called.update(host=host, port=port, **kw))
     monkeypatch.setenv("TONECOMMAND_PORT", "8917")
     server.main()
-    assert called == {"host": "127.0.0.1", "port": 8917}
+    assert called == {"host": "127.0.0.1", "port": 8917, "timeout_graceful_shutdown": 5}
 
 
 def test_workflow_is_tag_or_manual_only():

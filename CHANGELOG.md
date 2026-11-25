@@ -40,6 +40,10 @@ Notable changes to ToneCommand. Dates are UTC.
   0.0, not -0.0.
 
 ### Fixed
+- Stopping ToneCommand no longer hangs while a browser tab is open. It waited
+  for every open browser connection to close; one kept-alive connection
+  kept a stopped server running, still holding the ToneX One, so the next
+  start could not open the pedal. A stop now waits at most five seconds.
 - FM3: tapping a block's chip to switch it on or off (or change its channel)
   could look like it did nothing (#40). The FM3 confirms a switch before
   its block list shows it, and the page read the list straight away, so the
