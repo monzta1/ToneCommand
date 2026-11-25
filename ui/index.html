@@ -6828,9 +6828,10 @@ $('blocks').addEventListener('change', e => {
   el.blur();
   blockAction(act, el);
 });
-// #334: click a slot card (not its picker) to play that slot.
-$('blocks').addEventListener('click', e => {
-  const c = e.target.closest('.slotcard');
+// #334: click a slot card (not its picker) to play that slot. Bound on the
+// document so the chain panel's own click handler stays the first on #blocks.
+document.addEventListener('click', e => {
+  const c = e.target.closest('#blocks .slotcard');
   if (!c || e.target.closest('select') || c.classList.contains('live')) return;
   blockAction({kind: 'set_device_param', param: 'ACTIVE_SLOT', type_name: c.dataset.slot}, c);
 });
