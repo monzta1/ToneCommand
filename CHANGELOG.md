@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.8 (2026-11-25)
+
 ### Added
 - The IK Multimedia ToneX One (#334). Plug it in over USB and ToneCommand
   finds it, shows its twenty presets, which ones sit in slots A, B and the

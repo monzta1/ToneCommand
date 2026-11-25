@@ -6,7 +6,7 @@
 
 <p align="center"><strong>OLD SOUL. NEW MACHINE. HUMANS IN COMMAND.</strong></p>
 
-<p align="center"><em>Multi-device: full support for the Fractal FM9 and the BOSS IR-2</em></p>
+<p align="center"><em>Multi-device: full support for the Fractal FM9, the BOSS IR-2 and the IK Multimedia ToneX One</em></p>
 
 <p align="center"><a href="https://tonecommand.com"><strong>tonecommand.com</strong></a>: install guides, docs, screenshots, recipes and downloads, in one place.</p>
 
@@ -27,8 +27,9 @@ layer guards all of them.
 |---|---|
 | **Fractal FM9** | Full: blocks, scenes, amps, cabs, modifiers, stores, preset files |
 | **BOSS IR-2** | Full: all seven parameters, every amp voicing, and your own cab IRs |
-| **Fractal FM3** | Connects through a USB MIDI interface on its 5-pin MIDI ports (the FM3 has no MIDI over USB): presets, scenes, block on/off and channel, and the main amp, reverb and delay settings measured on a real FM3 (amp Level, Balance, Gain, Bass, Mid, Treble, Master, Presence; reverb and delay Mix, Level, Balance; reverb Time, High Cut, Predelay; delay Time, Feedback); everything else read-only for now, full support next ([#40](https://github.com/monzta1/ToneCommand/issues/40)) |
-| **HeadRush, IK ToneX** | HeadRush rigs and parameters; ToneX captures listed, read-only by design |
+| **Fractal FM3** | Connects through a USB MIDI interface on its 5-pin MIDI ports (the FM3 has no MIDI over USB): presets, scenes, block on/off and channel, and the main amp, reverb and delay settings measured on a real FM3 (amp Level, Balance, Gain, Bass, Mid, Treble, Master, Presence; reverb and delay Mix, Level, Balance; reverb Time, High Cut, Predelay; delay Time, Feedback), changed from the page or by asking for a tone in words; everything else read-only for now, full support next ([#40](https://github.com/monzta1/ToneCommand/issues/40)) |
+| **IK Multimedia ToneX One** | Full: its twenty presets, slots A, B and stomp drawn like IK's editor, dual or stomp mode, cab sim, and every setting of the preset playing (amp, EQ, gate, compressor, reverb, modulation, delay), from the page or in words; each change read back, and a backup of all twenty presets before the first change. New tone models still load with IK's TONEX Editor. macOS and Linux ([#334](https://github.com/monzta1/ToneCommand/issues/334)) |
+| **HeadRush, IK ToneX pedal** | HeadRush rigs and parameters; the bigger ToneX pedal's captures listed, read-only by design |
 
 Every device and exactly what it can do: [docs/DEVICES.md](docs/DEVICES.md).
 
