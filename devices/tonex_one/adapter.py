@@ -197,6 +197,7 @@ class ToneXOneAdapter:
             opts = _options(prm)
             out.append({"name": prm.name, "lo": prm.lo, "hi": prm.hi, "init": None,
                         "options": list(opts) if opts else [],
+                        "step": 1 if prm.kind in ("switch", "select") else None,
                         "group": prm.name.split("_")[0], "about": prm.short})
         return out
 
@@ -214,7 +215,12 @@ class ToneXOneAdapter:
                               "settings": {prm.name: pr.params[prm.index] for prm in P.PARAMS}}
         d = backup_dir()
         d.mkdir(parents=True, exist_ok=True)
-        path = d / f"tonex_one_{time.strftime('%Y-%m-%d_%H%M%S')}.json"
+        stamp = time.strftime('%Y-%m-%d_%H%M%S')
+        path = d / f"tonex_one_{stamp}.json"
+        n = 1
+        while path.exists():                   # two sessions in one second
+            n += 1
+            path = d / f"tonex_one_{stamp}_{n}.json"
         path.write_text(json.dumps({
             "firmware": self.firmware_label(),
             "state": {"slot_a": st.slot_a + 1, "slot_b": st.slot_b + 1,
@@ -265,6 +271,8 @@ class ToneXOneAdapter:
         value = float(value)
         if not prm.lo <= value <= prm.hi:
             raise ValueError(f"{prm.name} takes {prm.lo} to {prm.hi}, got {value}")
+        if prm.kind in ("switch", "select") and value != int(value):
+            raise ValueError(f"{prm.name} takes a whole number, got {value}")
         self._backup_once()
         got = self.io.set_param(prm.index, value)
         label = opts[int(round(got))] if opts and 0 <= int(round(got)) < len(opts) else None

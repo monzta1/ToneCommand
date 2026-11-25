@@ -254,5 +254,93 @@ def test_the_page_draws_the_one_in_groups_with_its_own_examples():
 def test_the_settings_table_is_complete_and_names_are_unique():
     assert len(P.PARAMS) == 109 and len({x.name for x in P.PARAMS}) == 109
     assert set(P.WRITABLE) == {x.index for x in P.PARAMS if not x.blocked}
+    assert P.WRITABLE[P.BY_NAME["REVERB_MODEL"].index][2] is True
     for x in P.PARAMS:
         assert x.lo <= x.hi and struct.pack("<f", x.lo)
+
+
+# -- the review's findings (#335) -----------------------------------------------------
+
+def test_a_setting_lands_on_the_preset_playing_after_a_footswitch_press():
+    """A press since the last read moves the playing preset; the write must
+    follow it, because the pedal saves to whichever preset plays."""
+    c = _client()
+    c.read_state()                                 # remembers A (preset 1)
+    c.link.footswitch()                            # now B (preset 14) plays
+    idx = P.BY_NAME["EQ_BASS"].index
+    before_a = c.link.value(0, idx)
+    assert c.set_param(idx, 3.0) == 3.0
+    assert c.link.value(13, idx) == 3.0 and c.link.value(0, idx) == before_a
+
+
+def test_read_back_is_exact_so_a_clamp_is_not_a_pass(monkeypatch):
+    c = _client()
+    idx = P.BY_NAME["EQ_MID_FREQ"].index
+    real = c.link._set_param
+    monkeypatch.setattr(c.link, "_set_param",
+                        lambda preset, i, v4: real(preset, i, struct.pack("<f", 4999.0)))
+    with pytest.raises(Exception, match="reports 4999"):
+        c.set_param(idx, 5000.0)
+
+
+@pytest.mark.parametrize("name,value", [("REVERB_MODEL", 2.5), ("DELAY_ENABLE", 0.5)])
+def test_a_switch_or_choice_takes_whole_numbers_only(adapter, name, value):
+    with pytest.raises(ValueError, match="whole number"):
+        adapter.set_param(name, value)
+    with pytest.raises(p.ProtocolError, match="whole number"):
+        p.SendGate(P.WRITABLE).checked_frame(p.set_param(P.BY_NAME[name].index, value))
+
+
+def test_validation_refuses_a_fraction_on_a_switch(api):
+    r = api.post("/api/apply", json={"actions": [
+        {"kind": "set_device_param", "param": "DELAY_ENABLE", "value": 0.5}]}).json()
+    assert not r["results"][0]["ok"] and "whole number" in r["results"][0]["detail"]
+
+
+def test_the_gate_bounds_trim_and_bypass_in_a_raw_state_write(gate):
+    raw = bytearray(gate.last_state.raw)
+    raw[p.OFF_INPUT_TRIM:p.OFF_INPUT_TRIM + 4] = struct.pack("<f", 40.0)
+    with pytest.raises(p.ProtocolError, match="trim"):
+        gate.checked_frame(p.write_state(p.State(bytes(raw))))
+
+
+def test_an_unplugged_port_reads_as_not_found(tmp_path):
+    from devices.tonex_one.client import SerialLink, ToneXOneNotFound
+    link = object.__new__(SerialLink)
+    r, w = __import__("os").pipe()
+    __import__("os").close(w)                       # the other end is gone: EOF
+    link.fd = r
+    with pytest.raises(ToneXOneNotFound, match="unplugged"):
+        link.read()
+    link.close()
+
+
+def test_two_backups_in_one_second_do_not_overwrite(tmp_path, monkeypatch):
+    monkeypatch.setenv("TONECOMMAND_TONEX_ONE_BACKUPS", str(tmp_path))
+    monkeypatch.setattr("time.strftime", lambda fmt, *a: "2026-11-25_120000")
+    for _ in range(2):
+        ToneXOneAdapter(_client()).set_param("EQ_BASS", 4)
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_the_page_never_sends_an_emptied_box():
+    html = (Path(server.__file__).parent / "ui" / "index.html").read_text(encoding="utf-8")
+    assert "el.value.trim() === ''" in html
+
+
+def test_a_closed_link_never_touches_a_reused_descriptor():
+    import os
+    from devices.tonex_one.client import SerialLink, ToneXOneNotFound
+    link = object.__new__(SerialLink)
+    r, w = os.pipe()
+    link.fd = r
+    link.close()
+    other_r, other_w = os.pipe()          # may reuse the closed number
+    try:
+        with pytest.raises(ToneXOneNotFound, match="closed"):
+            link.read()
+        with pytest.raises(ToneXOneNotFound, match="closed"):
+            link.write(b"x")
+    finally:
+        for fd in (w, other_r, other_w):
+            os.close(fd)

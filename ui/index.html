@@ -6792,6 +6792,13 @@ $('blocks').addEventListener('change', e => {
   const el = e.target.closest('.devsel, .devnum');
   if (!el) return;
   const param = el.dataset.param;
+  // An emptied box is not a value: Number('') is 0, and the pedal would
+  // save it. Put the pedal's own value back instead.
+  if (el.matches('.devnum') && (el.value.trim() === '' || !Number.isFinite(Number(el.value)))) {
+    el.blur();
+    refresh();
+    return;
+  }
   const act = el.matches('.devsel')
     ? {kind: 'set_device_param', param, type_name: el.value}
     : {kind: 'set_device_param', param, value: Number(el.value)};
@@ -7383,7 +7390,7 @@ function renderGroupedDevice(rows, box) {
     ? `<select class="devsel" data-param="${esc(r.name)}">${r.options.map(o =>
         `<option${String(o) === String(r.value) ? ' selected' : ''}>${esc(String(o))}</option>`).join('')}</select>`
     : `<input class="devnum" type="number" data-param="${esc(r.name)}" min="${r.lo}" max="${r.hi}"`
-      + ` step="${(r.hi - r.lo) > 50 ? 1 : 0.1}" value="${esc(String(r.value))}">`;
+      + ` step="${r.step || ((r.hi - r.lo) > 50 ? 1 : 0.1)}" value="${esc(String(r.value))}">`;
   const row = r => `<label class="devrow" title="${esc(r.about || '')}">`
     + `<span class="lbl">${esc(String(r.name).replace(/_/g, ' '))}</span>${ctl(r)}</label>`;
   const group = (key, title) => `<details class="devgroup" data-group="${esc(key)}"`

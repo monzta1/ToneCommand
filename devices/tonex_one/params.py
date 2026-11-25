@@ -139,6 +139,9 @@ PARAMS: tuple[Param, ...] = (
 BY_NAME = {p.name: p for p in PARAMS}
 
 #: index -> (lo, hi) for every setting the send gate lets through.
-WRITABLE = {p.index: (p.lo, p.hi) for p in PARAMS if not p.blocked}
+#: The third item says the setting takes whole numbers only (a switch or a
+#: list choice), so the gate refuses 0.5 on an on/off switch.
+WRITABLE = {p.index: (p.lo, p.hi, p.kind in ("switch", "select"))
+            for p in PARAMS if not p.blocked}
 
 assert len(PARAMS) == 109 and all(p.index == i for i, p in enumerate(PARAMS))

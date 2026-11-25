@@ -370,6 +370,8 @@ class SendGate:
                 raise ProtocolError(f"setting {idx} is not one ToneCommand may write")
             if not (math.isfinite(value) and rng[0] - 1e-6 <= value <= rng[1] + 1e-6):
                 raise ProtocolError(f"setting {idx}: {value} is outside {rng[0]}..{rng[1]}")
+            if len(rng) > 2 and rng[2] and value != int(value):
+                raise ProtocolError(f"setting {idx} takes a whole number, got {value}")
             return frame(payload)
         if payload[:5] == bytes([0xB9, 0x03, 0x81, 0x06, 0x03]) and self.last_state is not None:
             raw = payload[11:]
@@ -381,6 +383,11 @@ class SendGate:
             moved = [i for i in range(n) if raw[i] != old[i] and i not in allowed]
             if moved:
                 raise ProtocolError(f"a state write may not change bytes {moved[:6]}")
-            State(raw).check()
+            new = State(raw)
+            new.check()
+            if not (math.isfinite(new.input_trim) and -15.0 <= new.input_trim <= 15.0):
+                raise ProtocolError("input trim must be -15..15 dB")
+            if raw[n - END_BYPASS] > 1:
+                raise ProtocolError("bypass must be 0 or 1")
             return frame(payload)
         raise ProtocolError("not a message ToneCommand sends to the ToneX One")

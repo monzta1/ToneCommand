@@ -13,6 +13,7 @@ shows it.
 from __future__ import annotations
 
 import os
+import struct
 import time
 
 from . import params as P
@@ -62,7 +63,12 @@ class SerialLink:
             os.close(self.fd)
             raise
 
+    def _live(self) -> None:
+        if self.fd < 0:
+            raise ToneXOneNotFound("the ToneX One link is closed")
+
     def write(self, data: bytes) -> None:
+        self._live()
         view = memoryview(data)
         deadline = time.monotonic() + 2.0
         while view:
@@ -73,20 +79,32 @@ class SerialLink:
                 if time.monotonic() > deadline:
                     raise ToneXOneNotFound("the ToneX One stopped taking data")
                 time.sleep(0.002)
+            except OSError as e:
+                raise ToneXOneNotFound(f"the ToneX One link dropped: {e.strerror}")
 
     def read(self) -> bytes:
+        self._live()
         try:
-            return os.read(self.fd, 65536)
+            data = os.read(self.fd, 65536)
         except BlockingIOError:
             return b""
         except OSError as e:
             raise ToneXOneNotFound(f"the ToneX One link dropped: {e.strerror}")
+        if not data:
+            # No data is EAGAIN on a live port; an empty read is the port
+            # hanging up, which is what an unplug looks like.
+            raise ToneXOneNotFound("the ToneX One was unplugged")
+        return data
 
     def close(self) -> None:
-        try:
-            os.close(self.fd)
-        except OSError:
-            pass
+        # Marked dead at once: the OS reuses fd numbers, and a later read or
+        # write on a closed link must not reach whatever opened next.
+        fd, self.fd = self.fd, -1
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 class ToneXOneClient:
@@ -201,19 +219,26 @@ class ToneXOneClient:
     def set_param(self, index: int, value: float) -> float:
         """Change one setting of the preset now playing; returns what the
         pedal then reports for it."""
-        st = self.gate.last_state or self.read_state()
-        active = st.active_preset
+        # The preset playing is read NOW, not remembered: a footswitch press
+        # since the last read moves it, and this write lands on whichever
+        # preset plays, where the pedal saves it at once.
+        self.drain_events()
+        active = self.read_state().active_preset
         self._send(p.set_param(index, value))
+        # The pedal stores a float32; what it reports back must be exactly
+        # that float, so a clamp or a rounding is a failure, not a pass.
+        want = struct.unpack("<f", struct.pack("<f", float(value)))[0]
         got = None
         for wait in self.SETTLE:
             time.sleep(wait)
             got = self.read_preset(active).params[index]
-            if abs(got - value) <= 1e-3 * max(1.0, abs(value)):
+            if got == want:
                 return got
         raise VerifyFailed(f"setting {P.PARAMS[index].name}: wrote {value}, the pedal "
                            f"reports {got}")
 
     def write_state(self, **fields) -> p.State:
+        self.drain_events()
         st = self.read_state()
         new = st.changed(**fields)
         self._send(p.write_state(new))

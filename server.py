@@ -2748,6 +2748,24 @@ def _drop_silent_fm3() -> None:
     select_device_context(DeviceContext(ctx.kind, ctx.registry, None, ctx.label))
 
 
+def _tonex_one_reconnect() -> None:
+    """#334: an unplugged ToneX One leaves a dead serial handle behind. On a
+    failed read, drop it and open the pedal again if it is back on USB, so
+    plugging it back in is all it takes. Opening sends only a hello."""
+    import os
+    if device_context().kind != "tonex_one" or \
+            os.environ.get("TONECOMMAND_TONEX_ONE_SIM") == "1":
+        return
+    try:
+        device_context().adapter.close()
+    except Exception:      # noqa: BLE001  a dead handle is being dropped anyway
+        pass
+    try:
+        select_device_context(_build_context("tonex_one"))
+    except Exception as e:      # noqa: BLE001  not back yet; the next poll tries again
+        log.info("tonex_one: not reconnected yet: %s", e)
+
+
 def _named_param_state(adapter, device: dict) -> dict:
     """The state block for a device whose surface is named parameters.
 
@@ -2766,7 +2784,7 @@ def _named_param_state(adapter, device: dict) -> dict:
                "options": spec["options"]}
         # #334: a device that groups its settings says how, so the page can
         # draw a section per group (the ToneX One's gate, EQ, reverb, ...).
-        for extra in ("group", "about"):
+        for extra in ("group", "about", "step"):
             if spec.get(extra):
                 row[extra] = spec[extra]
         rows.append(row)
@@ -2802,6 +2820,7 @@ def api_state():
                 raise
             except Exception as e:      # noqa: BLE001  reported, not swallowed
                 note_connection(False, str(e))           # #212: in the report too
+                _tonex_one_reconnect()
                 return JSONResponse({"connected": False, "error": str(e),
                                      "gig_mode": _gig_mode["on"],
                                      "device": device}, status_code=200)
@@ -4108,6 +4127,9 @@ def validate_action(a: Action) -> tuple[list[str], list[str]]:
         elif not spec["lo"] <= float(a.value) <= spec["hi"]:
             errors.append(f"{name} takes {spec['lo']} to {spec['hi']}, "
                           f"got {a.value}")
+        elif spec.get("step") == 1 and float(a.value) != int(float(a.value)):
+            # #334: an on/off switch or a list choice takes whole numbers
+            errors.append(f"{name} takes a whole number, got {a.value}")
         return errors, warnings
     if a.kind == "store":
         from fm9.device import get_store_slots
