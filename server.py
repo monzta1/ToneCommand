@@ -2784,7 +2784,7 @@ def _named_param_state(adapter, device: dict) -> dict:
                "options": spec["options"]}
         # #334: a device that groups its settings says how, so the page can
         # draw a section per group (the ToneX One's gate, EQ, reverb, ...).
-        for extra in ("group", "about", "step"):
+        for extra in ("group", "about", "step", "option_tags", "option_colors"):
             if spec.get(extra):
                 row[extra] = spec[extra]
         rows.append(row)

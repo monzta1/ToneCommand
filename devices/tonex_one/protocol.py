@@ -230,6 +230,17 @@ class State:
         at = self._end(END_TUNING_REF)
         return self.raw[at] | self.raw[at + 1] << 8
 
+    def colors(self) -> list[tuple[int, int, int]]:
+        """The twenty preset colours the pedal shows, as RGB. An unexpected
+        shape gives an empty list: colours are decoration, never a reason
+        to refuse a state."""
+        try:
+            rows = Reader(self.raw, OFF_TUNING_MODE + 1).value()
+            out = [tuple(int(c) for c in row[:3]) for row in rows]
+            return out if len(out) == PRESETS else []
+        except (ProtocolError, TypeError, ValueError, IndexError):
+            return []
+
     @property
     def active_preset(self) -> int:
         return (self.slot_a, self.slot_b, self.slot_c)[min(self.current_slot, 2)]

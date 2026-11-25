@@ -173,14 +173,37 @@ class ToneXOneAdapter:
 
     # --- NamedParams --------------------------------------------------------
 
+    def slot_looks(self) -> tuple[dict, dict]:
+        """(option -> character tag, option -> colour), for the slot board."""
+        names = self.preset_names()
+        try:
+            colors = self.io.gate.last_state.colors() if self.io.gate.last_state else []
+        except Exception:                    # noqa: BLE001  decoration only
+            colors = []
+        tags, cols = {}, {}
+        for i, n in names.items():
+            key = f"{i + 1} {n}"
+            tags[key] = self._tags.get(i, {}).get("character") or ""
+            if i < len(colors):
+                # The pedal stores LED levels, some very dim (10, 0, 10):
+                # brightened to full strength, hue kept, so a card shows it.
+                top = max(colors[i]) or 1
+                cols[key] = "#%02x%02x%02x" % tuple(min(255, round(c * 255 / top))
+                                                    for c in colors[i])
+        return tags, cols
+
     def named_params(self) -> list:
         slots = self.slot_options()
+        tags, cols = self.slot_looks()
         out = [
             {"name": "SLOT_A", "lo": 1, "hi": p.PRESETS, "init": None, "options": slots,
+             "option_tags": tags, "option_colors": cols,
              "group": "Pedal", "about": "preset in slot A (dual mode)"},
             {"name": "SLOT_B", "lo": 1, "hi": p.PRESETS, "init": None, "options": slots,
+             "option_tags": tags, "option_colors": cols,
              "group": "Pedal", "about": "preset in slot B (dual mode)"},
             {"name": "SLOT_C", "lo": 1, "hi": p.PRESETS, "init": None, "options": slots,
+             "option_tags": tags, "option_colors": cols,
              "group": "Pedal", "about": "preset in the stomp slot"},
             {"name": "ACTIVE_SLOT", "lo": 0, "hi": 0, "init": None, "options": list(ACTIVE),
              "group": "Pedal", "about": "which slot is playing"},

@@ -12,6 +12,9 @@ Notable changes to ToneCommand. Dates are UTC.
   compressor, reverb, modulation and delay. Each can be changed from the page
   or by asking for a sound ("put the best clean amp for my overdrive pedals on
   A and B"), and every change is read back from the pedal before it shows.
+  The page draws the pedal the way IK's editor does: dual mode's A and B and
+  stomp mode's slot as cards, each in the preset's own colour with its
+  character (CLEAN, HI-GAIN), the one playing lit; click a card to play it.
   The One saves every change on its own, so before the first change of a
   session ToneCommand saves a backup of all twenty presets and the pedal's
   state, and says where. New tone models are still loaded with IK's TONEX
