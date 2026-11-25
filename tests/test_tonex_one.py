@@ -377,3 +377,31 @@ def test_a_stop_never_waits_forever_on_an_open_browser():
     not open the pedal ('Resource busy')."""
     src = (Path(server.__file__)).read_text(encoding="utf-8")
     assert "timeout_graceful_shutdown=5" in src
+
+
+def test_tonex_one_imports_no_other_device_package():
+    """#208 P4: the One's package must ship on its own, so it may use the
+    core (fm9.*, devices.usb) but no other device's package."""
+    import re
+    from pathlib import Path
+    pkg = Path(__file__).resolve().parents[1] / "devices" / "tonex_one"
+    bad = []
+    for f in pkg.glob("*.py"):
+        for n, line in enumerate(f.read_text().splitlines(), 1):
+            m = re.search(r"(?:from|import)\s+devices\.(\w+)", line)
+            if m and m.group(1) not in ("tonex_one", "usb"):
+                bad.append(f"{f.name}:{n}: {line.strip()}")
+    assert bad == []
+
+
+def test_tonex_one_validate_keeps_only_device_params():
+    from devices.tonex_one import planning
+    out = planning.validate({"actions": [
+        {"kind": "set_device_param", "param": "SLOT_A", "type_name": "8 CL HIWTT"},
+        {"kind": "set_param", "param": "x"},
+        {"kind": "set_device_param"}]})
+    assert [a["param"] for a in out["actions"]] == ["SLOT_A"]
+    assert out["actions"][0]["value"] is None and out["clarification"] is None
+    asked = planning.validate({"clarification": "Which slot?", "actions": [
+        {"kind": "set_device_param", "param": "SLOT_A", "value": 1}]})
+    assert asked["actions"] == []
