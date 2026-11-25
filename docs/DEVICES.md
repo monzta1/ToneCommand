@@ -16,7 +16,8 @@ header and a build is refused until you say which device it is for.
 | **Fractal FM3** | Presets, scenes, block on/off and channel, and the measured amp, reverb and delay settings (below), through a USB MIDI interface | From the unit | No MIDI over USB: choose the interface on its 5-pin MIDI ports in the Devices FM3 card (#221). Proven on a tester's FM3, fw 13.00 (#40) |
 | **HeadRush** | Rigs and parameters | From the unit | Core-verified. One verification rerun and one acked-too-early defect still open (#33, #166) |
 | **Fractal Axe-Fx III** | Read-only (new in 1.6.0) | From the unit | Presets, scenes, firmware, block bypass and channels. Mark I, Mark II and Turbo. Verified on a Mark II against Axe-Edit |
-| **IK Multimedia ToneX** | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
+| **IK Multimedia ToneX One** | Full: presets in slots, mode, cab sim, every setting of the preset playing (new in 1.6.8) | From the unit | USB serial, no MIDI. Every change read back; backup of all twenty presets before the first change. Tone models load with the TONEX Editor (#334) |
+| **IK Multimedia ToneX** (the bigger pedal) | None, by design | Observed | Captures listed, nothing written. The upload path is undecoded (#27) and stays closed |
 
 Wanted next, each with hardware as the only real blocker: full FM3 control
 (#40), Axe-Fx III editing (#190), AM4 (#41), VP4 (#191), Kemper, Boss ES-5. A device
@@ -181,7 +182,41 @@ supported and useful, and it is honest about being unfinished: #33 is held open
 for one verification rerun and #166 records a real defect, where the device
 acknowledges a rig load before the chain has actually been replaced.
 
-## IK Multimedia ToneX
+## IK Multimedia ToneX One
+
+New in 1.6.8 (#334). Plug the One in over USB and close IK's TONEX Editor
+(both talk to the pedal over the same link). ToneCommand finds it by its USB
+identity and shows:
+
+- the twenty presets, and which sit in slot A, slot B and the stomp slot,
+  drawn the way IK's editor draws them: dual mode's A and B, stomp mode's
+  slot, each card in the preset's own colour with its character (CLEAN,
+  HI-GAIN), the slot playing lit. Click a card to play it; pick a preset on
+  a card to put it there.
+- the mode (dual: the switch flips A and B; stomp: it turns the stomp slot
+  on and off), the cab sim and the input trim.
+- every setting of the preset playing: amp model gain, volume, presence and
+  depth, EQ, noise gate, compressor, reverb, modulation and delay.
+
+Each can be changed from the page or by asking for a sound ("put the best
+clean amp for my overdrive pedals on both A and B"). Every change is read
+back from the pedal before it shows.
+
+**The One saves every change at once.** There is no edit buffer to discard
+and no undo on the pedal, so before the first change of a session
+ToneCommand writes a backup of all twenty presets and the pedal's state to
+`~/.tonecommand/tonex_one/backups/` and says where.
+
+Not here: loading new tone models onto the pedal (use the TONEX Editor),
+renaming presets, and Windows (macOS and Linux for now). Five settings whose
+meaning is not settled are shown nowhere and never written. Unplugging and
+plugging back in is picked up on its own.
+
+The protocol was decoded by the community, vit3k/tonex_controller and
+Builty/TonexOneController (see THIRD_PARTY_NOTICES.md), and every message
+ToneCommand sends was checked on a real One (fw 1.3.17).
+
+## IK Multimedia ToneX (the bigger pedal)
 
 Read-only on purpose. ToneCommand lists what captures are loaded and reports
 what the pedal announces over its serial port, and it has no code path that

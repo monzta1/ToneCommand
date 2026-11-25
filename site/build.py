@@ -529,12 +529,12 @@ def build_home(readme: str, release: dict) -> None:
 
     hero = f"""
 <aside class="newsbar">
-  <p><strong>New in 1.6.0</strong> The <a href="/devices/#fractal-axe-fx-iii-read-only">Fractal Axe-Fx III</a>
-  joins the arsenal: plug it in and ToneCommand reads its presets, scenes and
-  blocks (read-only for now, Mark I, Mark II and Turbo). And ToneCommand speaks
-  Dutch and German: pick a language in Settings. Thanks to
-  <a href="https://github.com/Axelman8">@Axelman8</a> for both.
-  <a href="https://github.com/monzta1/ToneCommand/releases/tag/v1.6.0">What's new</a></p>
+  <p><strong>New in 1.6.8</strong> The <a href="/devices/#ik-multimedia-tonex-one">IK Multimedia ToneX One</a>
+  joins the arsenal with full control: its presets in slots A, B and stomp,
+  mode, cab sim and every setting of the preset playing, from the page or in
+  words, each change read back. The FM3 now takes requests in words too.
+  Thanks to vit3k and Builty, whose work decoded the One.
+  <a href="https://github.com/monzta1/ToneCommand/releases/tag/v1.6.8">What's new</a></p>
 </aside>
 
 <section class="hero2">
