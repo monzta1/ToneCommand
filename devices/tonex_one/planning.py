@@ -107,8 +107,28 @@ SHAPE = ('{"summary": str, "clarification": str|null, "actions": '
 
 
 def validate(plan_obj: dict) -> dict:
-    from devices.ir2 import planning as base
-    return base.validate(plan_obj)
+    """Keep only what the One can take: set_device_param actions with a
+    param. A clarifying question means nothing is decided yet, so it carries
+    zero actions. Kept here rather than borrowed from another device's
+    package, so this adapter can ship on its own (#208 P4)."""
+    plan_obj.setdefault("summary", "")
+    plan_obj.setdefault("clarification", None)
+    if (plan_obj.get("clarification") or "").strip():
+        plan_obj["actions"] = []
+    clean = []
+    for a in plan_obj.get("actions") or []:
+        if not isinstance(a, dict) or a.get("kind") != "set_device_param":
+            continue
+        if not a.get("param"):
+            continue
+        a.setdefault("value", None)
+        a.setdefault("type_name", None)
+        a.setdefault("reason", "")
+        a["block"] = None
+        a["instance"] = 1
+        clean.append(a)
+    plan_obj["actions"] = clean
+    return plan_obj
 
 
 def as_json(obj) -> str:

@@ -4,6 +4,11 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Changed
+- The ToneX One's planner checks its own plans instead of borrowing the
+  IR-2's checker, so its support can later ship as a module of its own
+  (#208). A test keeps every ToneX One file free of other devices' code.
+
 ## 1.6.8 (2026-11-25)
 
 ### Added
