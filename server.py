@@ -222,6 +222,8 @@ DEVICE_KINDS = {
     # #212: read-only through the FM9 module, addressed as an FM3.
     "fm3": "Fractal FM3",
     "axefx3": "Fractal Axe-Fx III",
+    # #334: full control over its USB serial link (no MIDI on this pedal).
+    "tonex_one": "IK Multimedia ToneX One",
 }
 #: Chosen explicitly, by kind, through /api/device/select. None means no
 #: choice has been made, which is only a problem when there is a choice.
@@ -266,6 +268,10 @@ def available_devices() -> list[dict]:
     # #212: an FM3 is listed when DPDP sees its port, like the IR-2.
     if os.environ.get("TONECOMMAND_FM3_SIM") == "1" or _fm3_port_present():
         out.append({"kind": "fm3", "label": DEVICE_KINDS["fm3"]})
+    # #334: a ToneX One is listed when its USB identity is on the bus.
+    if os.environ.get("TONECOMMAND_TONEX_ONE_SIM") == "1" or any(
+            d["kind"] == "tonex_one" for d in detected_devices()):
+        out.append({"kind": "tonex_one", "label": DEVICE_KINDS["tonex_one"]})
     return out
 
 
@@ -354,6 +360,19 @@ def _build_context(kind: str, *, axefx3_chassis=None) -> DeviceContext:
         # with, exactly as the ToneX context does; nothing reads it here.
         return DeviceContext("ir2", FM9_REGISTRY, IR2Adapter(client=client),
                              DEVICE_KINDS["ir2"])
+    if kind == "tonex_one":
+        # #334: the pedal by its USB identity, or the simulator seeded from
+        # a real One's capture.
+        from devices.tonex_one.adapter import ToneXOneAdapter
+        from devices.tonex_one.client import ToneXOneClient
+        if os.environ.get("TONECOMMAND_TONEX_ONE_SIM") == "1":
+            from devices.tonex_one.sim import SimLink
+            client = ToneXOneClient(SimLink())
+            client.SETTLE = (0.0,)
+        else:
+            client = ToneXOneClient()
+        return DeviceContext("tonex_one", FM9_REGISTRY, ToneXOneAdapter(client),
+                             DEVICE_KINDS["tonex_one"])
     if kind == "fm3":
         # #212: the FM9 module addressed as an FM3, read-only at its port.
         # The FM9 registry is lent for the status dump's block names; no
@@ -2742,9 +2761,15 @@ def _named_param_state(adapter, device: dict) -> dict:
     rows = []
     for spec in adapter.named_params():
         value = patch.get(spec["name"])
-        rows.append({"name": spec["name"], "value": value,
-                     "lo": spec["lo"], "hi": spec["hi"],
-                     "options": spec["options"]})
+        row = {"name": spec["name"], "value": value,
+               "lo": spec["lo"], "hi": spec["hi"],
+               "options": spec["options"]}
+        # #334: a device that groups its settings says how, so the page can
+        # draw a section per group (the ToneX One's gate, EQ, reverb, ...).
+        for extra in ("group", "about"):
+            if spec.get(extra):
+                row[extra] = spec[extra]
+        rows.append(row)
     # NOT "params": that key is the FM9's own block/parameter metadata, and
     # renderParams() read this list as if it were that dict and threw, which
     # landed in refresh()'s catch and painted the header OFFLINE for a pedal
@@ -3044,6 +3069,17 @@ def _fit_planned_renames(actions: list) -> None:
                 else _fit_build_name(raw)
 
 
+def named_planning(adapter):
+    """#334: the planning module (prompt, schema, validator) of a device
+    whose surface is named parameters. A device brings its own as
+    `PLANNING`; the IR-2, which came first, is the fallback."""
+    mod = getattr(adapter, "PLANNING", None)
+    if mod is not None:
+        return mod
+    from devices.ir2 import planning
+    return planning
+
+
 def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None, cancel=None):
     """#230: a source built on a device that declares named parameters. A rig
     is compiled against what the device publishes (rigcompile.compile_for_params)
@@ -3052,7 +3088,7 @@ def _describe_build_for_device(body: BuildBody, spec: dict, dev, on_status=None,
     those. The plan comes from the device's own prompt, schema and validator,
     then the same validation every plan gets. No FM9 is read."""
     from fm9 import riggraph, rigcompile
-    from devices.ir2 import planning as devplan
+    devplan = named_planning(dev)
     label = device_context().label or "this device"
     compiled = {}
     if spec.get("rig"):
@@ -3507,7 +3543,7 @@ def _plan_counting(prompt: str, context: str, on_count=None, cancel=None):
     adapter = device_context().adapter
     if getattr(adapter, "capabilities", None) and \
             adapter.capabilities().has_named_params:
-        from devices.ir2 import planning as devplan
+        devplan = named_planning(adapter)
         return planner.plan(prompt, devplan.device_state(adapter),
                             devplan.param_reference(adapter),
                             system=devplan.SYSTEM, shape=devplan.SHAPE,
@@ -3729,7 +3765,7 @@ def _plan_for(body: PromptBody, on_count=None, cancel=None, on_status=None):
     _dev = device_context().adapter
     if getattr(_dev, "capabilities", None) and \
             _dev.capabilities().has_named_params:
-        from devices.ir2 import planning as devplan
+        devplan = named_planning(_dev)
         return planner.plan(body.prompt, devplan.device_state(_dev),
                             devplan.param_reference(_dev),
                             system=devplan.SYSTEM, shape=devplan.SHAPE,
@@ -8806,6 +8842,10 @@ def _apply_for(body: ApplyBody, on_step=None):
             # FM9-shaped reads it refuses, and a scan cut short could leave
             # the scene it swept to; reloading the preset is its undo.
             fm3_writes = device_context().kind == "fm3"
+            # #334: the ToneX One keeps every change at once and has no edit
+            # buffer to snapshot; its adapter writes a backup of all twenty
+            # presets before the first change instead, and says where.
+            own_backup = device_context().kind == "tonex_one"
             # Snapshot before anything is written, so undo is always there
             # rather than something you had to remember to arm. It is silent
             # and costs about a quarter second, which is the whole reason it
@@ -8815,7 +8855,7 @@ def _apply_for(body: ApplyBody, on_step=None):
             # Only for actions that actually write. A scene change is the
             # rig's own control surface and undoing it means pressing the
             # other scene, and storing is guarded by its own confirmation.
-            if (not fm3_writes
+            if (not fm3_writes and not own_backup
                     and any(a.kind not in ("set_scene", "store") for a in body.actions)):
                 try:
                     _take("undo")
@@ -9087,7 +9127,10 @@ def _apply_for(body: ApplyBody, on_step=None):
     log.info("apply: %.1fs for %d action(s)%s", _send_s, len(body.actions),
              "".join(f"; {r['action'].get('kind', '?')} {r['seconds']:.1f}s"
                      for r in slow if r.get("action")))
-    return {"results": results, "health": health_findings,
+    # #334: where the ToneX One's pre-change backup went, once per session.
+    _bk = getattr(device_context().adapter, "backup_path", None)
+    backup = str(_bk) if _bk and device_context().kind == "tonex_one" else None
+    return {"results": results, "health": health_findings, "backup": backup,
             "timing": {"send_s": round(_send_s, 1),
                        "actions": len(body.actions),
                        "slowest": [{"kind": (r.get("action") or {}).get("kind"),

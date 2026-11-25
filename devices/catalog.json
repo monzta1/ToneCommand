@@ -4,6 +4,7 @@
     {"kind": "fm9", "label": "Fractal FM9", "ports": ["\\bfm9\\b"], "adapter": "fm9", "issue": null, "verified": true},
     {"kind": "ir2", "label": "BOSS IR-2", "ports": ["\\bir-2\\b"], "adapter": "ir2", "issue": null, "verified": true},
     {"kind": "headrush", "label": "HeadRush", "ports": [], "adapter": "headrush", "issue": null, "verified": false},
+    {"kind": "tonex_one", "label": "IK Multimedia ToneX One", "ports": [], "usb": [[6499, 209]], "adapter": "tonex_one", "issue": 334, "verified": true},
     {"kind": "tonex", "label": "IK Multimedia ToneX", "ports": ["^tonex$"], "usb": [[6499, 104]], "adapter": "tonex", "issue": 27, "verified": true},
     {"kind": "fm3", "label": "Fractal FM3", "ports": ["\\bfm3\\b"], "adapter": "fm3", "issue": 40, "verified": false, "read_only": true},
     {"kind": "am4", "label": "Fractal AM4", "ports": ["\\bam4\\b"], "adapter": null, "issue": 41, "verified": false},

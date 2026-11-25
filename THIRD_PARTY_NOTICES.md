@@ -310,3 +310,25 @@ the MIT license. Source: https://github.com/i18next/i18next and npm package
 https://www.npmjs.com/package/i18next/v/26.5.5. The unmodified browser build
 is in `ui/languages/i18next.min.js`; its license is included beside it as
 `i18next.LICENSE`. There is no runtime CDN or translation-service dependency.
+
+---
+
+## ToneX One protocol and settings table (#334)
+
+`devices/tonex_one/` is written for ToneCommand. What it knows about the
+IK Multimedia ToneX One's USB protocol comes from two community projects,
+and every frame it relies on was then checked on a real One.
+
+- **vit3k/tonex_controller**, `protocol.md`: the framing, value encoding,
+  hello, state and preset messages. Copyright (c) vit3k. MIT License.
+  https://github.com/vit3k/tonex_controller
+- **Builty/TonexOneController**, `source/main/usb_tonex_one.c`,
+  `source/main/tonex_params.c`, `source/main/web/script.js`: the state
+  offsets, the single-setting message, and the order, names, ranges and
+  option names of the 109 preset settings (`devices/tonex_one/params.py`).
+  Copyright (c) Greg Smith. Licensed under the Apache License, Version 2.0.
+  https://github.com/Builty/TonexOneController
+  http://www.apache.org/licenses/LICENSE-2.0
+
+ToneX, ToneX One and TONEX are trademarks of IK Multimedia. ToneCommand is
+not affiliated with or endorsed by IK Multimedia.
