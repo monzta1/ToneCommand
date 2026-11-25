@@ -387,7 +387,7 @@ def test_tonex_one_imports_no_other_device_package():
     pkg = Path(__file__).resolve().parents[1] / "devices" / "tonex_one"
     bad = []
     for f in pkg.glob("*.py"):
-        for n, line in enumerate(f.read_text().splitlines(), 1):
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             m = re.search(r"(?:from|import)\s+devices\.(\w+)", line)
             if m and m.group(1) not in ("tonex_one", "usb"):
                 bad.append(f"{f.name}:{n}: {line.strip()}")
