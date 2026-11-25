@@ -93,10 +93,12 @@ py-modules = ["server"]
 # (found 2026-09-20 with the numpy defect; editable installs hid both).
 # #209: devices.ir2 and devices.tonex were missing, so a non-editable install
 # could not build either device; the test now checks dotted subpackages.
-packages = ["fm9", "devices", "devices.headrush", "devices.axefx3", "devices.ir2", "devices.tonex", "tools"]
+packages = ["fm9", "devices", "devices.headrush", "devices.axefx3", "devices.ir2", "devices.tonex", "devices.tonex_one", "tools"]
 
 [tool.setuptools.package-data]
 "devices.axefx3" = ["data/*.json"]
+# #334: a real ToneX One's frames, which seed its simulator.
+"devices.tonex_one" = ["data/*.bin"]
 # #209: the DPDP device catalog is data the devices package reads at runtime.
 # #261: so are the reviewed DDLP profiles.
 devices = ["catalog.json", "profiles/*.json"]

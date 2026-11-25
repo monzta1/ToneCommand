@@ -20,6 +20,7 @@ from devices.tonex_one.client import ToneXOneClient
 from devices.tonex_one.sim import SimLink
 
 FIX = Path(__file__).parent / "fixtures" / "tonex_one"
+CAPTURE = Path(__file__).parents[1] / "devices" / "tonex_one" / "data" / "read_all_2026-11-25.bin"
 
 
 def _client():
@@ -31,7 +32,7 @@ def _client():
 # -- the protocol, against the pedal's own frames ------------------------------
 
 def test_every_captured_frame_checks_and_names_all_twenty_presets():
-    payloads, _ = p.unframe_stream((FIX / "read_all_2026-11-25.bin").read_bytes())
+    payloads, _ = p.unframe_stream(CAPTURE.read_bytes())
     types = [p.parse(x).type for x in payloads]
     assert types.count(p.T_PRESET) == 20 and p.T_STATE in types and p.T_HELLO in types
     names = {}
@@ -45,7 +46,7 @@ def test_every_captured_frame_checks_and_names_all_twenty_presets():
 
 
 def test_the_state_reads_as_the_pedal_showed_it():
-    payloads, _ = p.unframe_stream((FIX / "read_all_2026-11-25.bin").read_bytes())
+    payloads, _ = p.unframe_stream(CAPTURE.read_bytes())
     m = next(p.parse(x) for x in payloads if p.parse(x).type == p.T_STATE)
     st = p.State(m.payload[m.body_at:])
     st.check()
@@ -78,7 +79,7 @@ def test_a_corrupted_frame_is_dropped_not_misread():
 @pytest.fixture
 def gate():
     g = p.SendGate(P.WRITABLE)
-    payloads, _ = p.unframe_stream((FIX / "read_all_2026-11-25.bin").read_bytes())
+    payloads, _ = p.unframe_stream(CAPTURE.read_bytes())
     m = next(p.parse(x) for x in payloads if p.parse(x).type == p.T_STATE)
     g.last_state = p.State(m.payload[m.body_at:])
     return g

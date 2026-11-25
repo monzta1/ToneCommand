@@ -1,6 +1,6 @@
 """An in-memory ToneX One, so the suite runs with no pedal on the desk.
 
-It is seeded from a real capture of one (tests/fixtures/tonex_one/), so its
+It is seeded from a real capture of one (devices/tonex_one/data/), so its
 twenty presets, their settings and its state are what a real unit sent. It
 answers the same frames the pedal does, applies a setting change to the
 preset now playing and a state write whole, and, like the pedal, ignores a
@@ -13,8 +13,7 @@ from pathlib import Path
 
 from . import protocol as p
 
-FIXTURE = (Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "tonex_one"
-           / "read_all_2026-11-25.bin")
+FIXTURE = Path(__file__).resolve().parent / "data" / "read_all_2026-11-25.bin"
 
 
 class SimLink:
