@@ -75,6 +75,8 @@ Planning for the FM3 within its limits (#40) brings it to 9,168 lines.
 Leaving the cab row off FM3 plans (#40) brings it to 9,170 lines.
 The ToneX One (#334: its device kind, planner hook, backup notice and
 grouped settings, reconnect after an unplug) brings it to 9,235 lines.
+A bounded wait on stop, so an open browser cannot keep a stopped server
+holding the pedal (#334), brings it to 9,238 lines.
 
 `devices/axefx3/observed_firmware.py` names complete observed firmware responses
 for status display only. Unknown replies retain their raw version. Recognition
@@ -149,7 +151,7 @@ locally, and the only way to catch a layout regression is a screenshot.
 **Fix:** split into `ui/index.html`, `ui/app.css`, and JavaScript modules by
 concern. Served as static files. No behaviour change, mechanical, testable.
 
-### 2. `server.py` is 9,235 lines and 123 routes
+### 2. `server.py` is 9,238 lines and 123 routes
 
 Every concern in one module: device polling, planning, applying, settings,
 recipes, sharing, snapshots, profiles, slot admin. Eight pieces of

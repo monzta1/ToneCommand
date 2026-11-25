@@ -9184,7 +9184,10 @@ def main():
     print(f"ToneCommand {_version}: open http://127.0.0.1:{port}\n"
           f"If the page does not respond: http://127.0.0.1:{port}/report",
           flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    # A stop (SIGTERM) waits at most this long for open browser connections.
+    # Without a limit, one kept-alive Chrome socket kept a stopped server
+    # alive indefinitely, still holding the ToneX One's serial port (#334).
+    uvicorn.run(app, host="127.0.0.1", port=port, timeout_graceful_shutdown=5)
 
 
 
