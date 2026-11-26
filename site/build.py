@@ -529,12 +529,12 @@ def build_home(readme: str, release: dict) -> None:
 
     hero = f"""
 <aside class="newsbar">
-  <p><strong>New in 1.6.8</strong> The <a href="/devices/#ik-multimedia-tonex-one">IK Multimedia ToneX One</a>
-  joins the arsenal with full control: its presets in slots A, B and stomp,
-  mode, cab sim and every setting of the preset playing, from the page or in
-  words, each change read back. The FM3 now takes requests in words too.
-  Thanks to vit3k and Builty, whose work decoded the One.
-  <a href="https://github.com/monzta1/ToneCommand/releases/tag/v1.6.8">What's new</a></p>
+  <p><strong>New in 1.6.9</strong> Security hardening from an independent review:
+  changes now need your install's own access key, AI keys go only to the
+  address they were set up for, and updates install only published releases.
+  Thanks to Craftsman on the Fractal forum.
+  <a href="https://github.com/monzta1/ToneCommand/blob/main/SECURITY.md">Security model</a> ·
+  <a href="https://github.com/monzta1/ToneCommand/releases/tag/v1.6.9">What's new</a></p>
 </aside>
 
 <section class="hero2">
