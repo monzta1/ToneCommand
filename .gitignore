@@ -28,6 +28,8 @@ tonecommand.egg-info/
 
 # the AI backend choice, which holds an API key
 ai_settings.json
+cliproxy_key.txt
+access_key.txt
 store_slots.json
 designs/
 outbox.json

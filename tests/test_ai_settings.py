@@ -1186,7 +1186,7 @@ def test_a_model_listing_is_what_finished_means(monkeypatch):
     assert done is True and "1 model" in why
 
 
-def test_the_password_is_stable_across_calls():
+def test_the_password_is_stable_across_calls(store):
     """The setup command bakes it into a config file and ToneCommand sends it
     on every request afterwards. A fresh one per page load would leave those
     two disagreeing with no sign of why."""
@@ -1194,21 +1194,26 @@ def test_the_password_is_stable_across_calls():
     assert len(ai_settings.cliproxy_key()) == 32
 
 
-def test_the_setup_command_edits_the_real_config_and_restarts():
+def test_the_setup_command_edits_the_real_config_and_restarts(store):
+    """It reads the password from its file rather than carrying it, so the
+    line can be shown on the page without showing the secret (#340)."""
     cmd = ai_settings.cliproxy_setup_command()
     if ai_settings.cliproxy_config_path():
-        assert ai_settings.cliproxy_key() in cmd
+        assert ai_settings.cliproxy_key() not in cmd
+        assert str(ai_settings.cliproxy_key_path()) in cmd
         assert "your-api-key-1" in cmd
         assert "brew services restart cliproxyapi" in cmd
 
 
-def test_the_browser_fills_the_password_in(monkeypatch):
-    """Making somebody carry a 32 character string between two boxes is a
-    step that exists only because we put it there."""
+def test_the_password_never_goes_to_the_page(store, monkeypatch):
+    """#340: the server stores it against the connector's address itself."""
+    monkeypatch.setattr(ai_settings, "setup_step_state", lambda i: (True, i))
+    state = ai_settings.setup_guide_state()
+    assert "key" not in state
+    assert ai_settings.cliproxy_key() not in str(state)
     ui = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
     fn = ui.split("function renderSetup()")[1].split("\n}\n\n")[0]
-    assert "$('aikey').value = g.key;" in fn
-    assert "g.keyFor" in fn, "only for the service it belongs to"
+    assert "g.key" not in fn.replace("g.keyFor", "")
 
 
 def test_the_guide_reports_the_next_undone_step(monkeypatch):

@@ -69,6 +69,7 @@ def test_a_broken_new_version_is_reverted_not_shipped(monkeypatch):
     """The core safety promise: a release that does not import must never take
     the app down. It is reverted, and no restart is offered."""
     monkeypatch.setattr(updates, "can_auto_update", lambda root: (True, ""))
+    monkeypatch.setattr(updates, "_move_to_release", lambda root: "")
     seen = []
 
     class R:

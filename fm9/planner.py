@@ -400,6 +400,11 @@ def _env(name: str, default: str = "") -> str:
     """
     if name in os.environ:
         return _unquote(os.environ[name]) or default
+    return _env_file(name) or default
+
+
+def _env_file(name: str) -> str:
+    """Only the NAME= line in .env, ignoring the process environment."""
     val = ""
     env_file = _env_path()
     if env_file.exists():
@@ -407,7 +412,7 @@ def _env(name: str, default: str = "") -> str:
             if line.strip().startswith(f"{name}="):
                 val = _unquote(line.split("=", 1)[1])
                 break
-    return val or default
+    return val
 
 
 def _env_int(name: str, default: int) -> int:

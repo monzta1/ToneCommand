@@ -457,7 +457,7 @@ python3 -m venv .venv
 .venv/bin/tonecommand
 ```
 
-Then open <http://127.0.0.1:8909> with the FM9 connected and powered on.
+Your browser opens ToneCommand by itself, with the FM9 connected and powered on. That first link lets this browser make changes; after it, <http://127.0.0.1:8909> or a bookmark is enough. On another browser, run `.venv/bin/tonecommand --link` for the link again. To start without opening a browser, set `TONECOMMAND_NO_BROWSER=1`.
 
 A signed-in Claude Code CLI is found on its own; any other AI is a chip in
 the gear menu ([docs/AI-BACKENDS.md](docs/AI-BACKENDS.md)). To build tones

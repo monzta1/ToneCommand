@@ -4,6 +4,38 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+### Security
+Fixes from an independent review of 1.6.7 (#340). Thanks to Craftsman on
+the Fractal forum for the review.
+- Every request that changes something (a write to your unit, an update, a
+  setup step, a settings change) now needs this install's access key. The
+  key is random, kept in a file only your account can read, and reaches
+  your browser once, through the link ToneCommand opens when it starts; the
+  browser keeps it, so the plain address and bookmarks work afterwards. A
+  browser without it can still look, and the page says how to get it
+  (`tonecommand --link` prints the link again). The server's request log
+  hides the key. ToneCommand now opens your browser when it starts; set
+  `TONECOMMAND_NO_BROWSER=1` to stop that.
+- SECURITY.md: what the local server trusts, where keys are kept and sent,
+  how updates are checked, and how to report a problem privately.
+- An AI service key now goes only to the address it was set up for. Before,
+  a key with no address of its own could be sent to any address chosen in
+  the settings, and a key set by hand in `.env` could reach an address
+  picked in the panel.
+- The ChatGPT connector's local password is now random, made once per
+  install and kept in a file only your account can read. It was derived
+  from the machine, so it could be worked out, and the setup page received
+  it. An install on the old password moves to a new one when ToneCommand
+  starts, and the connector restarts to read it. The password no longer
+  goes to the page at all.
+- Requests larger than 64 MB are refused before they are read, and a
+  capture drop is limited to 100 files, 16 MB each and 48 MB in all,
+  checked before anything is decoded.
+- The one-click update now installs the latest release, never unreleased
+  work on main. It moves only to an annotated release tag that is on the
+  main branch on GitHub, from a checkout whose remote is GitHub. A checkout
+  already ahead of the latest release is left as it is and says so.
+
 ### Changed
 - The ToneX One's planner checks its own plans instead of borrowing the
   IR-2's checker, so its support can later ship as a module of its own

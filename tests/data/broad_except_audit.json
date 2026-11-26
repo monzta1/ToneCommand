@@ -480,6 +480,11 @@
    "disposition": "unreachable: builds the scrubbed diagnostics package for /report (#282) with query_device=False, so it lists MIDI port names and never uses a device handle"
   },
   {
+   "function": "main._migrate",
+   "ordinal": 1,
+   "disposition": "unreachable: moves the AI connector off its old derived password (#340) in a background thread at startup; no device handle in the try body, and a failure is logged and never stops startup"
+  },
+  {
    "function": "main",
    "ordinal": 1,
    "disposition": "unreachable: reads the version for the startup line (#282) before the server starts; no device handle in the try body"

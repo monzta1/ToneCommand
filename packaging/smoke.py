@@ -31,7 +31,8 @@ def main() -> int:
         raise SystemExit(f"missing app executable: {binary}")
     port = free_port()
     env = os.environ.copy()
-    env.update({"TONECOMMAND_SIM": "1", "TONECOMMAND_PORT": str(port)})
+    env.update({"TONECOMMAND_SIM": "1", "TONECOMMAND_PORT": str(port),
+                "TONECOMMAND_NO_BROWSER": "1"})
     process = subprocess.Popen([str(binary)], cwd=root, env=env,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, start_new_session=True)

@@ -3,7 +3,8 @@
 ToneCommand is installed as an editable git checkout (pip install -e .), so an
 update is a `git pull` plus a reinstall, not a package download. This module
 tells the app which version it is running, whether GitHub has a newer release,
-and (only on request, never on its own) pulls and reinstalls it.
+and (only on request, never on its own) moves to that release's tag and
+reinstalls it. Unreleased work on main is never installed (#340).
 
 Design rules that matter for a live hardware tool:
 - The update CHECK is network, cached, and fails silently offline like the rest
@@ -198,6 +199,50 @@ def _revert(root: Path, commit: str) -> None:
         pass
 
 
+_TAG = re.compile(r"v\d+\.\d+\.\d+")
+
+
+def _move_to_release(root: Path) -> str:
+    """Fast-forward to the latest published release tag, and nothing newer
+    (#340). "" on success, else why not.
+
+    Before 1.6.9 this was `git pull`, which installs whatever is on main,
+    released or not. Now the target is the tag GitHub names as the latest
+    release, and it is taken only if: the remote is GitHub, the tag is an
+    annotated release tag, and its commit is on the remote's main branch.
+    """
+    url = _git(root, "config", "--get", "remote.origin.url", timeout=5).stdout.strip()
+    if not re.match(r"(https://github\.com/|git@github\.com:)[\w.-]+/[\w.-]+?(\.git)?/?$", url):
+        return "this checkout does not come from GitHub, so it is not updated automatically"
+    rel = latest_release(root, force=True)
+    tag = "v" + (rel or {}).get("version", "")
+    if not rel or not _TAG.fullmatch(tag):
+        return "could not find the latest release on GitHub"
+    fetch = _git(root, "fetch", "--tags", "origin", "main", timeout=120)
+    if fetch.returncode != 0:
+        return f"could not fetch from GitHub: {(fetch.stderr or fetch.stdout).strip()[:200]}"
+    if _git(root, "cat-file", "-t", f"refs/tags/{tag}", timeout=8).stdout.strip() != "tag":
+        return f"{tag} is not an annotated release tag"
+    commit = _git(root, "rev-parse", f"refs/tags/{tag}^{{commit}}", timeout=8).stdout.strip()
+    if not commit or _git(root, "merge-base", "--is-ancestor", commit,
+                          "refs/remotes/origin/main", timeout=15).returncode != 0:
+        return f"{tag} is not on the main branch on GitHub"
+    head = _git(root, "rev-parse", "HEAD", timeout=8).stdout.strip()
+    if head == commit:
+        return f"already on {tag}, the latest release"
+    if _git(root, "merge-base", "--is-ancestor", commit, "HEAD", timeout=15).returncode == 0:
+        # A fast-forward to an older commit is a silent no-op, which would
+        # be reported as an update while unreleased code keeps running.
+        return (f"this checkout is ahead of the latest release ({tag}); it is left "
+                f"as it is and updates again from the next release")
+    merge = _git(root, "merge", "--ff-only", commit, timeout=60)
+    if merge.returncode != 0:
+        return f"could not move to {tag}: {(merge.stderr or merge.stdout).strip()[:200]}"
+    if _git(root, "rev-parse", "HEAD", timeout=8).stdout.strip() != commit:
+        return f"the checkout did not end on {tag}"
+    return ""
+
+
 def run_update(root: Path) -> dict:
     """Pull, reinstall, and PROVE the new code loads before the app will restart
     into it. Guarded by can_auto_update. Never restarts the process itself.
@@ -215,11 +260,11 @@ def run_update(root: Path) -> dict:
     old = ""
     try:
         old = _git(root, "rev-parse", "HEAD", timeout=8).stdout.strip()
-        pull = _git(root, "pull", "--ff-only", timeout=120)
-        if pull.returncode != 0:
+        problem = _move_to_release(root)
+        if problem:
+            _revert(root, old)
             return {"ok": False, "restart_required": False,
-                    "detail": f"git pull failed, nothing changed: "
-                              f"{(pull.stderr or pull.stdout).strip()[:200]}"}
+                    "detail": f"{problem}; nothing changed"}
         inst = subprocess.run([sys.executable, "-m", "pip", "install", "-e", "."],
                               cwd=str(root), capture_output=True, text=True,
                               timeout=600)
@@ -283,7 +328,9 @@ def restart_process(root: Path, close_hook=None) -> None:
         "for _ in range(240):\n"          # wait up to 2 minutes for the port
         "    if not bound(): break\n"
         "    time.sleep(0.5)\n"
-        "subprocess.Popen([py, '-c', 'from server import main; main()'], cwd=root)\n"
+        "import os\n"
+        "env = dict(os.environ, TONECOMMAND_NO_BROWSER='1')\n"   # #340: the page is already open
+        "subprocess.Popen([py, '-c', 'from server import main; main()'], cwd=root, env=env)\n"
     )
     try:
         subprocess.Popen([py, "-c", relaunch], cwd=str(root),
