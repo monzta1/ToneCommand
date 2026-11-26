@@ -6,7 +6,8 @@ The bundled macOS download contains `ToneCommand.app` and its own Python, so
 Python and a terminal are not needed. The first chunk is not signed by an identified developer. After downloading and unzipping it, open the app; if
 macOS says it cannot verify the developer, Control-click `ToneCommand.app`,
 choose **Open**, then choose **Open** again. The app opens its local page at
-`http://127.0.0.1:8909`. This bundle is macOS-only; Windows builds and signing
+`http://127.0.0.1:8909` through a one-time link that lets this browser make
+changes; after that, the plain address or a bookmark is enough. This bundle is macOS-only; Windows builds and signing
 are planned for later chunks.
 
 ToneCommand runs on **macOS, Windows and Linux**. macOS is the tested path;
@@ -40,7 +41,7 @@ Run:
 
 ```bash
 .venv/bin/tonecommand
-# open http://127.0.0.1:8909 with the FM9 connected and powered on
+# your browser opens ToneCommand; connect and power on the FM9
 ```
 
 ## Windows
@@ -71,7 +72,7 @@ cd ToneCommand
 python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/tonecommand
-# open http://127.0.0.1:8909 with the FM9 connected and powered on
+# your browser opens ToneCommand; connect and power on the FM9
 ```
 
 Linux notes:

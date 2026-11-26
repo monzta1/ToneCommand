@@ -59,7 +59,17 @@ from pathlib import Path
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
-UI_URL = os.environ.get("TONECOMMAND_UI_URL", "http://127.0.0.1:8909/")
+def _default_url() -> str:
+    """#340: the opening link, so the probe's own browser holds the access key."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from fm9 import access
+        return access.link(8909)
+    except Exception:                     # noqa: BLE001  the plain address still reads
+        return "http://127.0.0.1:8909/"
+
+
+UI_URL = os.environ.get("TONECOMMAND_UI_URL") or _default_url()
 PROFILE = Path(os.environ.get("TMPDIR", "/tmp")) / "tonecommand-ui-probe"
 
 

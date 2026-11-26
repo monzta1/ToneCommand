@@ -403,6 +403,7 @@ def _table(sim) -> list[dict]:
         ("POST", "/api/designs/{design_id}/check", {"design_id": design["id"]}, None, None),
         ("GET", "/api/gig", {}, None, None),
         ("GET", "/api/version", {}, None, None),
+        ("GET", "/api/access", {}, None, None),
         ("POST", "/api/version/check", {}, None, None),
         ("GET", "/api/diagnostics/share-package", {}, None, None),
         ("POST", "/api/update", {}, None, None),
@@ -714,9 +715,9 @@ def test_audit_counts_are_reported_honestly():
     blocks = _except_exception_blocks(ast.parse(SERVER.read_text(encoding="utf-8")))
     reraised = sum(1 for _h, before, _b in blocks.values()
                    if _handles_decline_first(before))
-    assert len(blocks) == 99          # #334: the ToneX One's reconnect (two)
+    assert len(blocks) == 100         # #340: the connector password move at startup
     assert reraised == 38
-    assert len(blocks) - reraised == 61
+    assert len(blocks) - reraised == 62
 
 
 def test_capability_declined_is_its_own_type_and_the_handler_shapes_the_409(world):

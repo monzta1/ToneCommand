@@ -103,13 +103,10 @@ minutes, and it prints a lot of text. Scrolling text is good.*
 
 ## What you should see
 
-The last command prints a line ending in something like:
-
-```
-Uvicorn running on http://127.0.0.1:8909
-```
-
-Now open your web browser and go to **http://127.0.0.1:8909**
+Your web browser opens ToneCommand by itself. If it does not, the command
+prints a link starting `http://127.0.0.1:8909/?key=`: open that one. It lets
+this browser make changes; after the first time, **http://127.0.0.1:8909** or
+a bookmark is enough.
 
 With the FM9 switched on and plugged in by USB, the link indicator at the top
 of the page turns green and names your preset. That is it: you are running.
@@ -126,7 +123,7 @@ You only do steps 1 to 4 once. After that:
 .venv\Scripts\tonecommand
 ```
 
-4. Go to **http://127.0.0.1:8909** in your browser.
+4. Your browser opens it, or go to **http://127.0.0.1:8909** as before.
 
 ## If something goes wrong
 

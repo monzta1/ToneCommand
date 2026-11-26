@@ -86,9 +86,48 @@ def _host_name(netloc: str) -> str:
     return m.group(1).strip("[]") if m else ""
 
 
+#: #340: the largest request body any route takes. The biggest real one is a
+#: preset bank or a batch of captures, a few megabytes; this leaves room for
+#: that and refuses anything that would only exhaust memory.
+MAX_BODY_BYTES = 64 * 1024 * 1024
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+#: #340: every request that changes something carries this install's access
+#: key (fm9/access.py), as the cookie the opening link set or as a header.
+#: Off only in the test suite's own fixture, which turns it back on where
+#: the key is what is being tested.
+_REQUIRE_ACCESS_KEY = True
+_NEEDS_KEY = ("This browser cannot make changes yet. Open ToneCommand from the "
+              "link it showed when it started (run `tonecommand --link` to see "
+              "it again).")
+
+
+def _has_access_key(scope) -> bool:
+    """The key as our header or our cookie. The Cookie header is split by
+    hand: http.cookies stops silently at the first cookie it cannot parse,
+    and cookies are shared by every app on 127.0.0.1, so one odd cookie from
+    another local tool would otherwise hide ours and lock the user out."""
+    from fm9 import access
+    for k, v in scope.get("headers", []):
+        name = k.decode("latin-1").lower()
+        if name == access.HEADER and access.matches(v.decode("latin-1").strip()):
+            return True
+        if name == "cookie":
+            for part in v.decode("latin-1").split(";"):
+                cname, sep, cvalue = part.strip().partition("=")
+                if sep and cname == access.COOKIE and access.matches(cvalue.strip().strip('"')):
+                    return True
+    return False
+
+
 class _LocalOnly:
     """Refuse requests whose Host is not this machine, and cross-origin
-    writes. Pure ASGI, so the streaming routes pass through untouched."""
+    writes, and bodies over MAX_BODY_BYTES. Pure ASGI, so the streaming
+    routes pass through untouched."""
 
     def __init__(self, app):
         self.inner = app
@@ -113,12 +152,60 @@ class _LocalOnly:
                 # origin is exactly http://<Host>.
                 if origins and origins[0].lower() != f"http://{hosts[0].lower()}":
                     refusal = "Cross-origin requests may not change anything here."
+            if refusal is None and _REQUIRE_ACCESS_KEY and (
+                    scope["type"] == "websocket"
+                    or scope.get("method", "GET") not in _SAFE_METHODS) \
+                    and not _has_access_key(scope):
+                # #340: a change needs this install's key, which only the
+                # browser opened through ToneCommand's own link holds.
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                await JSONResponse({"error": _NEEDS_KEY, "needsKey": True},
+                                   status_code=401)(scope, receive, send)
+                return
             if refusal is not None:
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 1008})
                     return
                 await JSONResponse({"error": refusal}, status_code=403)(scope, receive, send)
                 return
+        if scope["type"] == "http":
+            too_big = JSONResponse({"error": "That request is too large."}, status_code=413)
+            for k, v in scope.get("headers", []):
+                if k.lower() == b"content-length":
+                    try:
+                        declared = int(v)
+                    except ValueError:
+                        declared = MAX_BODY_BYTES + 1
+                    if declared > MAX_BODY_BYTES:
+                        await too_big(scope, receive, send)
+                        return
+            # A body sent without a length (chunked) is counted as it arrives.
+            seen = 0
+            started = False
+
+            async def counted_receive():
+                nonlocal seen
+                message = await receive()
+                if message.get("type") == "http.request":
+                    seen += len(message.get("body", b""))
+                    if seen > MAX_BODY_BYTES:
+                        raise _BodyTooLarge()
+                return message
+
+            async def tracked_send(message):
+                nonlocal started
+                if message.get("type") == "http.response.start":
+                    started = True
+                await send(message)
+
+            try:
+                await self.inner(scope, counted_receive, tracked_send)
+            except _BodyTooLarge:
+                if not started:
+                    await too_big(scope, receive, send)
+            return
         await self.inner(scope, receive, send)
 
 
@@ -2475,9 +2562,20 @@ _SERVER_VERSION_SLOT = re.compile(r"(<span\b[^>]*\bdata-server-version\b[^>]*>)(
 
 
 @app.get("/")
-def index():
+def index(key: str = ""):
     """The page, with the running version filled in by the server (#282),
-    so it shows even when the page's own script fails to run."""
+    so it shows even when the page's own script fails to run.
+
+    #340: opened as /?key=..., the key becomes a cookie this browser keeps
+    and the page reloads at the plain address, so the key does not stay in
+    the address bar, the history or a bookmark."""
+    if key:
+        from fm9 import access
+        resp = RedirectResponse("/", status_code=303)
+        if access.matches(key):
+            resp.set_cookie(access.COOKIE, access.key(), max_age=10 * 365 * 24 * 3600,
+                            httponly=True, samesite="strict", path="/")
+        return resp
     import html as _html
     page = resource_path("ui", "index.html").read_text(encoding="utf-8")
     badge = _html.escape(_badge_text())
@@ -5110,6 +5208,12 @@ def api_artist_pack(body: dict):
     return out
 
 
+#: #340: a .nam capture is a few hundred kilobytes; these bound a drop.
+INTAKE_MAX_FILES = 100
+INTAKE_MAX_FILE_BYTES = 16 * 1024 * 1024
+INTAKE_MAX_TOTAL_BYTES = 48 * 1024 * 1024
+
+
 @app.post("/api/captures/intake")
 def api_captures_intake(body: dict):
     """Bring your own captures (#149, the intake half): dropped .nam files
@@ -5121,6 +5225,22 @@ def api_captures_intake(body: dict):
     if not isinstance(files, list) or not files:
         return JSONResponse({"error": "drop one or more .nam files"},
                             status_code=400)
+    # #340: counted and sized before anything is decoded.
+    if len(files) > INTAKE_MAX_FILES:
+        return JSONResponse({"error": f"drop at most {INTAKE_MAX_FILES} files at a time"},
+                            status_code=413)
+    total = 0
+    for f in files:
+        encoded = (f or {}).get("data") if isinstance(f, dict) else None
+        size = len(encoded) * 3 // 4 if isinstance(encoded, str) else 0
+        total += size
+        if size > INTAKE_MAX_FILE_BYTES:
+            return JSONResponse({"error": f"{(f or {}).get('name', 'a file')} is larger than "
+                                          f"{INTAKE_MAX_FILE_BYTES // (1024 * 1024)} MB, "
+                                          f"too big to be a capture"}, status_code=413)
+    if total > INTAKE_MAX_TOTAL_BYTES:
+        return JSONResponse({"error": "those files are too large together; drop fewer at a time"},
+                            status_code=413)
     inputs = []
     for f in files:
         try:
@@ -7876,6 +7996,14 @@ def api_diagnostics_share_package(scope: str | None = None,
             "url": _report_link(pkg["title"]), "entries": pkg["entry_count"]}
 
 
+@app.get("/api/access")
+def api_access(request: Request):
+    """#340: whether this browser holds the access key, so the page can say
+    how to get it before a change is refused rather than after."""
+    granted = _has_access_key(request.scope) or not _REQUIRE_ACCESS_KEY
+    return {"granted": granted, "detail": "" if granted else _NEEDS_KEY}
+
+
 @app.post("/api/update")
 def api_update():
     """Pull, reinstall, and restart the server so the player does nothing.
@@ -9160,8 +9288,26 @@ def _apply_for(body: ApplyBody, on_step=None):
 
 
 def main():
+    import sys as _sys
+    if "--link" in _sys.argv[1:]:
+        # #340: the opening link again, for a browser that does not have it.
+        from fm9 import access as _access
+        print(_access.link(int(_os.environ.get("TONECOMMAND_PORT", "8909") or 8909)))
+        return
     # a choice made in the UI has to survive a restart, and the planner reads
     # its configuration from the environment, so push the saved one there
+    # #340: an install still on the old derived connector password moves to
+    # a random one before anything uses it.
+    # In the background: restarting the connector can take a while, and the
+    # page must not wait on it.
+    def _migrate():
+        try:
+            moved = ai_settings.migrate_cliproxy_key()
+            if moved:
+                log.warning("connector: %s", moved)
+        except Exception as exc:                     # noqa: BLE001  logged, never fatal
+            log.warning("connector password migration failed: %s", exc)
+    threading.Thread(target=_migrate, name="connector-password", daemon=True).start()
     ai_settings.apply_to_env()
     # The bus watcher starts before the first enumeration so the process's
     # very first CoreMIDI snapshot is already backed by notifications.
@@ -9181,9 +9327,29 @@ def main():
         _version = _updates.current_version()
     except Exception:      # noqa: BLE001  a startup banner must never stop the server
         _version = "(version not read)"
-    print(f"ToneCommand {_version}: open http://127.0.0.1:{port}\n"
+    from fm9 import access as _access
+    import logging as _logging
+    # #340: the opening link carries the key; the request log never does.
+    _logging.getLogger("uvicorn.access").addFilter(_access.ScrubKeyFilter())
+    try:
+        _link = _access.link(port)
+    except OSError as exc:
+        # No writable place for the key: the page still opens and reads;
+        # changes are refused with the reason until this is fixed.
+        _link = f"http://127.0.0.1:{port}/"
+        print(f"ToneCommand could not create its access key ({exc}); "
+              f"changes from the page are refused until it can.", flush=True)
+    print(f"ToneCommand {_version}: open {_link}\n"
+          f"(that link lets this browser make changes; after the first visit "
+          f"http://127.0.0.1:{port} is enough)\n"
           f"If the page does not respond: http://127.0.0.1:{port}/report",
           flush=True)
+    # #340: the browser gets the key through this link. Not after a
+    # self-update restart: that page is already open and keeps its cookie.
+    if not _os.environ.get("TONECOMMAND_NO_BROWSER"):
+        import threading as _threading
+        import webbrowser as _webbrowser
+        _threading.Timer(1.5, lambda: _webbrowser.open_new_tab(_link)).start()
     # A stop (SIGTERM) waits at most this long for open browser connections.
     # Without a limit, one kept-alive Chrome socket kept a stopped server
     # alive indefinitely, still holding the ToneX One's serial port (#334).

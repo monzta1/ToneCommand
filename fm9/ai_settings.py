@@ -286,6 +286,11 @@ class AiSettings:
     #: flag, picking Auto was indistinguishable from never having opened the
     #: panel, so a PLANNER_BACKEND pin in .env could not be cleared from here.
     backend_explicit: bool = False
+    #: The endpoint the bare "openai" key was configured for by hand
+    #: (PLANNER_BASE_URL beside PLANNER_API_KEY). That key goes to this
+    #: address and no other: a key is never sent to a service it was not
+    #: set up for.
+    legacy_url: str = ""
 
     def slot_for(self, backend: str | None = None) -> str:
         """Where this backend's model and key are stored.
@@ -315,8 +320,9 @@ class AiSettings:
 
     def key_for(self, backend: str | None = None) -> str:
         slot = self.slot_for(backend)
-        got = self.keys.get(slot, "")
-        if not got and slot.startswith("openai@"):
+        got = self.keys.get(slot, "") or _connector_key_for(slot)
+        if not got and slot.startswith("openai@") and self.legacy_url \
+                and slot == "openai@" + self.legacy_url.rstrip("/"):
             got = self.keys.get("openai", "")
         return got
 
@@ -326,18 +332,50 @@ class AiSettings:
                 "model": self.model_for(), "hasKey": bool(self.key_for())}
 
 
+def _hand_value(name: str) -> str:
+    """The user's own value for a variable: what stood in the environment
+    before this module wrote over it, else the .env line. Never our write,
+    so a key injected for one service cannot be read back as the user's
+    key and offered to another."""
+    if name in _APPLIED:
+        prior = _APPLIED[name][1]
+        if prior is not None:
+            return planner._unquote(prior)
+        return planner._env_file(name)
+    return planner._env(name)
+
+
+def _connector_key_for(slot: str) -> str:
+    """The local connector's own password, for its own address only, when no
+    copy is stored: the manual setup line writes it into the connector's
+    config without ToneCommand storing it (#340)."""
+    if slot != "openai@" + CLIPROXY_DEFAULT_URL.rstrip("/"):
+        return ""
+    from . import access
+    path = cliproxy_key_path()
+    if not any(p.exists() for p in (path, access.user_dir() / path.name)):
+        return ""                      # never set up: no password to make up
+    try:
+        return cliproxy_key()
+    except OSError:
+        return ""
+
+
 def _from_env() -> AiSettings:
     """Seed from however the user has configured things by hand."""
+    hand_url = _hand_value("PLANNER_BASE_URL").rstrip("/")
+    hand_key = _hand_value("PLANNER_API_KEY")
     return AiSettings(
         backend=planner._env("PLANNER_BACKEND").lower(),
-        base_url=planner._env("PLANNER_BASE_URL"),
+        base_url=hand_url,
+        legacy_url=hand_url,
         models={k: v for k, v in
                 (("openai", planner._env("PLANNER_MODEL")),
                  ("grok", planner._env("GROK_CLI_MODEL")),
                  ("cli", planner._env("CLAUDE_CLI_MODEL")),
                  ("api", planner._env("CLAUDE_API_MODEL"))) if v},
         keys={k: v for k, v in
-              (("openai", planner._env("PLANNER_API_KEY")),
+              (("openai", hand_key),
                ("api", planner._env("ANTHROPIC_API_KEY"))) if v},
     )
 
@@ -517,17 +555,16 @@ def _check_runnable(backend: str, updated: AiSettings) -> None:
     if not backend:
         return
     env = _from_env()
-    # _from_env() can see the key that apply_to_env() injected for the
-    # PREVIOUS service. That is not an underlying user setting and must not
-    # make a newly selected named service look configured. A genuine shell
-    # or .env key still counts when this process has not overlaid it.
+    # _from_env() reads only the user's own shell or .env values, never what
+    # apply_to_env() injected for the PREVIOUS service, and the user's own
+    # key counts only for the address it was set up beside.
     if backend == "openai" and updated.base_url:
         base = updated.base_url.rstrip("/")
         preset = next((p for p in ENDPOINT_PRESETS
                        if p["url"].rstrip("/") == base), None)
         has_key = bool(updated.key_for("openai"))
-        if not has_key and "PLANNER_API_KEY" not in _APPLIED:
-            has_key = bool(env.key_for("openai"))
+        if not has_key and env.legacy_url and base == env.legacy_url:
+            has_key = bool(env.keys.get("openai"))
         if preset and preset["key"] == "required" and not has_key:
             raise ValueError(
                 f"{BACKEND_LABELS[backend]} needs an API key for "
@@ -535,7 +572,7 @@ def _check_runnable(backend: str, updated: AiSettings) -> None:
     merged = AiSettings(
         backend=backend, base_url=updated.base_url or env.base_url,
         models=updated.models,
-        keys={**env.keys, **updated.keys})
+        keys={**env.keys, **updated.keys}, legacy_url=env.legacy_url)
     problem = missing_setup(backend, merged)
     if problem:
         raise ValueError(f"{BACKEND_LABELS[backend]} needs {problem}")
@@ -592,6 +629,13 @@ def apply_to_env(settings: AiSettings | None = None) -> AiSettings:
         wanted[fields["model"]] = settings.model_for()
     if fields.get("key") and settings.key_for():
         wanted[fields["key"]] = settings.key_for()
+    elif (fields.get("key") and fields.get("baseUrl") and fields["baseUrl"] in wanted
+          and settings.base_url.rstrip("/")
+          != _hand_value(fields["baseUrl"]).rstrip("/")):
+        # An address of our choosing, not the one the user's own key was set
+        # up for, and no key of its own: a PRESENT blank, so the planner does
+        # not reach past it to a hand-set key in .env for another service.
+        wanted[fields["key"]] = ""
     for name in _MANAGED:
         if name in wanted:
             _inject(name, wanted[name])
@@ -775,8 +819,11 @@ def key_for_url(base_url: str) -> str:
     Gemini address must never send the ChatGPT key to Google.
     """
     s = load()
-    return (s.keys.get("openai@" + base_url.rstrip("/"))
-            or s.keys.get("openai") or "")
+    url = base_url.rstrip("/")
+    got = s.keys.get("openai@" + url) or _connector_key_for("openai@" + url)
+    if not got and s.legacy_url and url == s.legacy_url.rstrip("/"):
+        got = s.keys.get("openai")
+    return got or ""
 
 
 def _endpoint_models(base_url: str = "", key: str | None = None
@@ -1036,8 +1083,9 @@ def setup_guide_state() -> dict:
         s["canRun"] = s["id"] in RUNNABLE and bool(_brew())
     return {**SETUP_GUIDE, "steps": steps, "next": nxt,
             "complete": not nxt,
-            # So the browser can fill it in and nobody has to see it.
-            "key": cliproxy_key(), "keyFor": CLIPROXY_DEFAULT_URL}
+            # The password itself never goes to the page (#340); the server
+            # stores it against this address when the connector is set up.
+            "keyFor": CLIPROXY_DEFAULT_URL}
 
 
 def cliproxy_config_path() -> str:
@@ -1050,40 +1098,131 @@ def cliproxy_config_path() -> str:
     return ""
 
 
-def cliproxy_key() -> str:
-    """A stable local password for the connector, derived rather than stored.
+def cliproxy_key_path() -> Path:
+    """Where the connector's password lives: beside the settings file,
+    readable by this user account only."""
+    override = os.environ.get("TONECOMMAND_CLIPROXY_KEY_FILE", "").strip()
+    if override:
+        return Path(override)
+    return settings_path().parent / "cliproxy_key.txt"
 
-    It has to be the same value every time: the setup command bakes it into a
-    config file, and ToneCommand sends it on every request afterwards. A fresh
-    random one per page load would leave those two disagreeing with no sign of
-    why. Derived from the machine, so it is not a shared secret from a repo
-    either, and never written down by us.
 
-    Local only. It authenticates a browser on this laptop to a proxy on this
-    laptop; it is not a credential for any upstream service.
-    """
+def _legacy_cliproxy_key() -> str:
+    """The password releases up to 1.6.8 derived from the config path and the
+    user id. Predictable by anyone who knows the recipe, so it is only ever
+    looked for, to be replaced (#340)."""
     import getpass
     import hashlib
-    import os
-    # os.getuid() is POSIX only and raises on Windows (#186). The uid stays
-    # the seed wherever it exists, so a key already baked into a config file
-    # on macOS or Linux keeps its value; Windows derives from the account
-    # name, which is just as stable for one laptop's browser talking to one
-    # laptop's proxy.
     identity = os.getuid() if hasattr(os, "getuid") else os.environ.get("USERNAME") or getpass.getuser()
     seed = f"tonecommand-cliproxy{cliproxy_config_path()}{identity}"
     return hashlib.sha256(seed.encode()).hexdigest()[:32]
 
 
+def cliproxy_key() -> str:
+    """The connector's local password: random, made once per install, kept
+    in an owner-only file (#340).
+
+    It has to be the same value every time: the setup step bakes it into the
+    connector's config, and ToneCommand sends it on every request afterwards.
+    It never goes to the browser; the server stores it against the
+    connector's address itself.
+    """
+    import secrets
+    from . import access
+    _, key = access.secret_file(cliproxy_key_path(), lambda: secrets.token_hex(16))
+    if not re.fullmatch(r"[0-9a-f]{32}", key):
+        raise OSError("the connector password file does not hold a password")
+    return key
+
+
+def _remember_key(slot: str, key: str, only_if: str | None = None) -> bool:
+    """Store `key` for `slot` in the settings file, touching nothing else.
+    With `only_if`, only a slot whose current key equals it is changed."""
+    path = settings_path()
+    raw: dict = {}
+    if path.exists():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError, OSError):
+            return False                     # never overwrite what we cannot read
+        if not isinstance(raw, dict):
+            return False
+    keys = raw.get("keys") if isinstance(raw.get("keys"), dict) else {}
+    if only_if is not None and keys.get(slot) != only_if:
+        return False
+    keys[slot] = key
+    raw["keys"] = keys
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_private(path, json.dumps(raw, indent=2) + "\n")
+    return True
+
+
+def _cliproxy_slot() -> str:
+    return "openai@" + CLIPROXY_DEFAULT_URL.rstrip("/")
+
+
+def migrate_cliproxy_key() -> str:
+    """Move an install off the old derived password (#340). "" when there
+    was nothing to do, else what was done.
+
+    Only when the connector's config holds the old password. Order matters,
+    so a crash part way leaves something the next start finishes: the new
+    password is made, then stored for ToneCommand, then written into the
+    connector's config, then the connector restarts to read it. Until the
+    config changes, the old password is still in it and the next start runs
+    this again with the same new password.
+    """
+    import subprocess
+    cfg = cliproxy_config_path()
+    if not cfg:
+        return ""
+    legacy = _legacy_cliproxy_key()
+    try:
+        text = Path(cfg).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if legacy not in text:
+        return ""
+    new = cliproxy_key()
+    raw_keys = {}
+    try:
+        raw_keys = json.loads(settings_path().read_text(encoding="utf-8")).get("keys") or {}
+    except (OSError, ValueError, AttributeError):
+        pass
+    for slot, value in list(raw_keys.items()) if isinstance(raw_keys, dict) else []:
+        if value == legacy:
+            _remember_key(slot, new, only_if=legacy)
+    _remember_key(_cliproxy_slot(), new)
+    try:
+        Path(cfg).write_text(text.replace(legacy, new), encoding="utf-8")
+    except OSError as exc:
+        return f"could not update the connector's password: {exc}"
+    brew = _brew()
+    if not brew:
+        return ("the connector's password was replaced with a random one; restart "
+                "the connector (brew services restart cliproxyapi) to use it")
+    done = subprocess.run([brew, "services", "restart", "cliproxyapi"],
+                          capture_output=True, text=True, timeout=180)
+    if done.returncode != 0:
+        return ("the connector's password was replaced with a random one, but the "
+                "connector did not restart: run brew services restart cliproxyapi")
+    return "the connector's password was replaced with a random one"
+
+
 def cliproxy_setup_command() -> str:
-    """The one line that replaces the template passwords and restarts it."""
+    """The one line that replaces the template passwords and restarts it.
+    It reads the password from its owner-only file rather than carrying it,
+    so the line can be shown on the page without showing the secret."""
+    import shlex
     cfg = cliproxy_config_path()
     if not cfg:
         return "brew services start cliproxyapi"
-    key = cliproxy_key()
-    return (f"sed -i '' 's/\"your-api-key-1\"/\"{key}\"/; "
-            f"/\"your-api-key-2\"/d; /\"your-api-key-3\"/d' {cfg} "
-            f"&& brew services restart cliproxyapi")
+    cliproxy_key()                           # make sure the file exists
+    kp = shlex.quote(str(cliproxy_key_path()))
+    return (f"K=$(cat {kp}) && sed -i '' "
+            f"\"s/\\\"your-api-key-1\\\"/\\\"$K\\\"/; "
+            f"/\\\"your-api-key-2\\\"/d; /\\\"your-api-key-3\\\"/d\" "
+            f"{shlex.quote(cfg)} && brew services restart cliproxyapi")
 
 
 def cliproxy_probe() -> tuple[bool, str]:
@@ -1181,8 +1320,12 @@ def _write_api_key(path: str, key: str) -> str:
     out, replaced = [], False
     for line in text.splitlines(keepends=True):
         stripped = line.strip()
+        legacy = _legacy_cliproxy_key()
         if stripped in ('- "your-api-key-1"', "- 'your-api-key-1'"):
             out.append(line.replace("your-api-key-1", key))
+            replaced = True
+        elif legacy in stripped:
+            out.append(line.replace(legacy, key))   # #340: off the old password
             replaced = True
         elif stripped in ('- "your-api-key-2"', '- "your-api-key-3"',
                           "- 'your-api-key-2'", "- 'your-api-key-3'"):
@@ -1268,5 +1411,7 @@ def run_setup_step(step_id: str) -> dict:
         time.sleep(1)
         ok, why = cliproxy_probe()
         if ok:
+            _remember_key(_cliproxy_slot(), cliproxy_key())
+            apply_to_env()
             return {"ok": True, "detail": why, "output": tail}
     return {"ok": False, "output": tail, "detail": why}

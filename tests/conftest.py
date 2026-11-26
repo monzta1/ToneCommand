@@ -128,6 +128,16 @@ def signed():
 
 
 @pytest.fixture(autouse=True)
+def _keys_in_tmp(tmp_path, monkeypatch):
+    """#340: the access key and the connector password are real secrets in
+    the install folder; a test makes its own, never touches those."""
+    monkeypatch.setenv("TONECOMMAND_ACCESS_KEY_FILE", str(tmp_path / "access_key.txt"))
+    monkeypatch.setenv("TONECOMMAND_CLIPROXY_KEY_FILE", str(tmp_path / "cliproxy_key.txt"))
+    from fm9 import access
+    monkeypatch.setattr(access, "user_dir", lambda: tmp_path / "home-tonecommand")
+
+
+@pytest.fixture(autouse=True)
 def _no_hardware_in_device_discovery(monkeypatch):
     """The device list must not depend on what is plugged into the machine.
 
@@ -144,6 +154,9 @@ def _no_hardware_in_device_discovery(monkeypatch):
     # #291: Starlette's TestClient sends "Host: testserver"; the real server
     # answers only to this machine's names.
     monkeypatch.setattr(server, "_TRUSTED_HOSTS", server._TRUSTED_HOSTS | {"testserver"})
+    # #340: the access key is tested on its own in tests/test_security_review.py.
+    monkeypatch.setattr(server, "_REQUIRE_ACCESS_KEY", False)
+    monkeypatch.setenv("TONECOMMAND_NO_BROWSER", "1")
     monkeypatch.setattr(server, "_ir2_port_present", lambda: False)
     # #209: the detected list reads the same bus, so it is off for the same
     # reason; tests/test_device_catalog.py turns the real one back on.

@@ -3523,6 +3523,12 @@
     border-bottom: 1px solid rgba(255,180,84,0.4);
     box-shadow: var(--bevel);
   }
+  #keybanner {
+    flex: 0 0 auto; padding: 9px 18px; font-size: var(--fs-hint);
+    background: linear-gradient(180deg, rgba(255,180,84,0.14), rgba(255,180,84,0.05));
+    border-bottom: 1px solid rgba(255,180,84,0.4);
+  }
+  #keybanner .updtext { color: var(--amber); letter-spacing: 0.04em; }
   #updbanner .updtext { color: var(--amber); letter-spacing: 0.04em; }
   #updbanner #updnotes { color: var(--cyan); }
   #updbanner #upddismiss { margin-left: auto; }
@@ -3635,6 +3641,11 @@
     <button class="small" id="devcardlearn" hidden aria-label="Help ToneCommand learn it" title="listens only: nothing is sent to the device">HELP TONECOMMAND LEARN IT</button>
     <button class="small" id="devcardclose" title="hide this">DISMISS</button>
     <div class="sendbar devcardbar" id="devcardbar" hidden><i></i></div>
+  </div>
+
+  <!-- #340: shown while this browser does not hold the access key -->
+  <div id="keybanner" hidden>
+    <span class="updtext" id="keytext"></span>
   </div>
 
   <div id="updbanner" hidden>
@@ -4305,6 +4316,30 @@
 <script src="/axefx3-reviewed-edit.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+
+// #340: a change needs this install's access key, which this browser holds
+// as a cookie once it has been opened through ToneCommand's own link. Say
+// so up front, and again if a change is refused for want of it.
+function showKeyBanner(detail) {
+  const b = document.getElementById('keybanner');
+  if (!b) return;
+  document.getElementById('keytext').textContent = detail
+    || 'This browser cannot make changes yet. Open ToneCommand from the link it showed when it started.';
+  b.hidden = false;
+}
+(function () {
+  const plain = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const r = await plain(...args);
+    if (r.status === 401) {
+      r.clone().json().then(d => { if (d && d.needsKey) showKeyBanner(d.error); })
+        .catch(() => {});
+    }
+    return r;
+  };
+  plain('/api/access').then(r => r.json())
+    .then(d => { if (!d.granted) showKeyBanner(d.detail); }).catch(() => {});
+})();
 
 let currentPlan = null;
 
@@ -10793,18 +10828,13 @@ function renderSetup() {
   if (box.hidden) return;
   const g = setupGuide;
   if (g.complete) {
-    // Fill the password in rather than showing it and asking for a copy. It
-    // authenticates this laptop to a proxy on this laptop, it is derived
-    // rather than chosen, and making somebody carry a 32 character string
-    // between two boxes is a step that exists only because we put it there.
-    if (g.key && $('aibaseurl').value.trim().replace(/\/+$/, '')
-                 === String(g.keyFor || '').replace(/\/+$/, '')) {
-      $('aikey').value = g.key;
-    }
+    // The password never comes to the page (#340): the server made it,
+    // keeps it in an owner-only file and stored it against the connector's
+    // address itself, so there is nothing to carry between boxes.
     box.innerHTML = `<div class="swrap">
       <h4>YOU ARE SET UP</h4>
       <p class="sintro">${esc(g.steps[g.steps.length - 1].detail)}
-        The password is filled in for you. Press SAVE and send a prompt.
+        The password is saved for you. Press SAVE and send a prompt.
         Nothing else to do, and it starts itself whenever you log in.</p>
       <div class="sbtns"><button class="go" id="sclose">CLOSE</button></div>
     </div>`;
