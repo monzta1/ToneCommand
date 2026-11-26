@@ -4,6 +4,8 @@ Notable changes to ToneCommand. Dates are UTC.
 
 ## Unreleased
 
+## 1.6.9 (2026-11-26)
+
 ### Security
 Fixes from an independent review of 1.6.7 (#340). Thanks to Craftsman on
 the Fractal forum for the review.
